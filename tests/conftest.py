@@ -184,6 +184,31 @@ def disc(disc_id: str = DISC_ID, name: str = DISC_NAME) -> dict[str, Any]:
     }
 
 
+# What the box tells about the figure on it; the library knows these chapters not
+PLAYBACK_INFO_SERIES = "Box-Serie"
+PLAYBACK_INFO_IMAGE = "https://img.example.com/box-t1.png"
+PLAYBACK_INFO_CHAPTERS: list[dict[str, Any]] = [
+    {"id": "p1", "title": "Box-Kapitel 1", "seconds": 180, "transcoding": False},
+    {"id": "p2", "title": "Box-Kapitel 2", "seconds": 240, "transcoding": False},
+    {"id": "p3", "title": "Box-Kapitel 3", "seconds": 60, "transcoding": True},
+]
+
+
+def playback_info(
+    name: str = TONIE_NAME,
+    series: str | None = PLAYBACK_INFO_SERIES,
+    image_url: str | None = PLAYBACK_INFO_IMAGE,
+    chapters: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Return GET /playback-info/{box}/{tonie}: the figure as the box sees it."""
+    return {
+        "title": name,
+        "series": series,
+        "tonieImageUrl": image_url,
+        "chapters": PLAYBACK_INFO_CHAPTERS if chapters is None else chapters,
+    }
+
+
 # ---------------------------------------------------------------- the cloud
 
 
@@ -205,12 +230,18 @@ class Account:
     rest_unreachable: bool = False
     # The GraphQL field myDiscs answers with errors instead of data
     discs_error: bool = False
+    # Every playback-info call answers this status instead of a figure
+    playback_info_status: int | None = None
+    # Every playback-info call waits for this event before it answers
+    playback_info_gate: asyncio.Event | None = None
     page_size: int = 100
     households: list[dict[str, Any]] = field(default_factory=list)
     boxes: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     creative_tonies: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     content_tonies: list[dict[str, Any]] = field(default_factory=list)
     discs: list[dict[str, Any]] = field(default_factory=list)
+    # What GET /playback-info/{box}/{tonie} answers; a pair not listed is a 404
+    playback_info: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     tokens_issued: int = 0
     refresh_token: str = ""
     access_tokens: set[str] = field(default_factory=set)
@@ -259,6 +290,7 @@ class FakeCloud:
         self.unreachable = False
         self.token_calls: list[dict[str, str]] = []
         self.graphql_calls: list[tuple[str, str | None]] = []
+        self.playback_info_calls: list[tuple[str, str]] = []
         mocker.post(TOKEN_URL, side_effect=self._token)
         mocker.get(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
         mocker.post(f"{API_BASE}/graphql", side_effect=self._graphql)
@@ -347,6 +379,16 @@ class FakeCloud:
             household, kind = match.groups()
             items = account.boxes if kind == "tonieboxes" else account.creative_tonies
             return _json(method, url, 200, items.get(household, []))
+        if match := re.fullmatch(r"/playback-info/([^/]+)/([^/]+)", path):
+            box_id, tonie_id = match.groups()
+            self.playback_info_calls.append((box_id, tonie_id))
+            if account.playback_info_gate is not None:
+                await account.playback_info_gate.wait()
+            if account.playback_info_status is not None:
+                return _json(method, url, account.playback_info_status, {"message": "error"})
+            if (info := account.playback_info.get((box_id, tonie_id))) is None:
+                return _json(method, url, 404, {"message": "not found"})
+            return _json(method, url, 200, info)
         return _json(method, url, 404, {"message": "not found"})
 
     async def _graphql(

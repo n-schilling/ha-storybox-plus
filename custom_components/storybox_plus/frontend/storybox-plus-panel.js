@@ -47,6 +47,9 @@ if (!customElements.get("storybox-plus-panel")) {
       online: "Online", offline: "Offline", unknown: "Unknown", charging: "charging",
       sleepUntil: "Sleep timer until {t}", sleepOn: "Sleep timer active", firmware: "Firmware",
       classicNote: "The classic box reports no live data.", lastSeen: "Last seen {t}", never: "never",
+      battery: "Battery", perFull: "about {h} h per full charge", perFullProjected: "about {h} h per full charge, projected",
+      charge1: "1 charge", chargesN: "{n} charges", nowSince: "now {t} since {p} %", noCycles: "no discharge recorded yet",
+      history: "Charge history", colDay: "Day", colOn: "Run time", colLevel: "Level", colPerFull: "Per full charge",
       playing: "Playing", paused: "Paused", placed: "Figure placed", nothing: "Nothing on the box",
       chapter: "Chapter", unknownFigure: "Unknown figure", search: "Search figures and chapters …",
       kind_all: "All", kind_content: "Tonies", kind_creative: "Creative-Tonies", kind_disc: "Discs",
@@ -73,6 +76,9 @@ if (!customElements.get("storybox-plus-panel")) {
       online: "Online", offline: "Offline", unknown: "Unbekannt", charging: "lädt",
       sleepUntil: "Schlaf-Timer bis {t}", sleepOn: "Schlaf-Timer aktiv", firmware: "Firmware",
       classicNote: "Die klassische Box meldet keine Live-Daten.", lastSeen: "Zuletzt gesehen {t}", never: "nie",
+      battery: "Akku", perFull: "etwa {h} h pro Ladung", perFullProjected: "voraussichtlich etwa {h} h pro Ladung",
+      charge1: "1 Ladung", chargesN: "{n} Ladungen", nowSince: "jetzt {t} seit {p} %", noCycles: "noch kein Entladezyklus erfasst",
+      history: "Ladungsverlauf", colDay: "Tag", colOn: "Laufzeit", colLevel: "Ladestand", colPerFull: "Pro Ladung",
       playing: "Spielt", paused: "Pausiert", placed: "Figur aufgestellt", nothing: "Nichts auf der Box",
       chapter: "Kapitel", unknownFigure: "Unbekannte Figur", search: "Figuren und Kapitel suchen …",
       kind_all: "Alle", kind_content: "Tonies", kind_creative: "Kreativ-Tonies", kind_disc: "Discs",
@@ -109,6 +115,8 @@ if (!customElements.get("storybox-plus-panel")) {
     const v = Math.floor(s);
     return `${Math.floor(v / 60)}:${pad(v % 60)}`;
   };
+  // Battery hours from the backend, as "h:mm h"; nothing is made of a missing value
+  const hours = (h) => (Number.isFinite(h) ? `${hm(h * 3600)} h` : "–");
   // Local calendar days as "YYYY-MM-DD", like the backend's per_day keys
   const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const parseDay = (key) => {
@@ -279,9 +287,10 @@ if (!customElements.get("storybox-plus-panel")) {
           for (const c of root.querySelectorAll("[data-kind]")) c.classList.toggle("on", c.dataset.kind === this._kind);
           this._refreshList();
         }
-        const head = el.closest?.("[data-figure]");
+        // A fold (a figure's chapters, a box's charge history) opens and closes on its head
+        const head = el.closest?.("[data-fold]");
         if (head) {
-          const id = head.dataset.figure;
+          const id = head.dataset.fold;
           const open = !this._open.has(id);
           if (open) this._open.add(id); else this._open.delete(id);
           head.parentElement.classList.toggle("open", open);
@@ -356,6 +365,10 @@ if (!customElements.get("storybox-plus-panel")) {
       return d.toLocaleDateString(this._lang, long
         ? { weekday: "short", day: "numeric", month: "short", year: "numeric" }
         : { day: "numeric", month: "short" });
+    }
+
+    _num(n) {
+      return Number.isFinite(n) ? n.toLocaleString(this._lang, { maximumFractionDigits: 1 }) : "–";
     }
 
     _relative(iso) {
@@ -437,7 +450,7 @@ if (!customElements.get("storybox-plus-panel")) {
       const sleep = this._sleep(b.sleep_timer);
       if (sleep) facts.push(`<span class="fact">${icon("sleep")}${esc(sleep)}</span>`);
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
-      if (live) body += this._playback(b.playback);
+      if (live) body += this._battery(b.battery_stats, b.id) + this._playback(b.playback);
       else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
       if ((!live || b.online !== true) && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
@@ -452,6 +465,37 @@ if (!customElements.get("storybox-plus-panel")) {
       const until = time(timer.until);
       if (!Number.isFinite(until)) return this._t.sleepOn;
       return fill(this._t.sleepUntil, { t: new Date(until).toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit" }) });
+    }
+
+    // How long a charge lasts: a summary line and, behind a fold, the completed
+    // discharges. The numbers are the backend's; here they are only formatted.
+    _battery(s, boxId) {
+      const t = this._t;
+      if (!s) return "";
+      const cur = s.current;
+      const parts = [];
+      if (Number.isFinite(s.average_full_hours)) parts.push(fill(t.perFull, { h: this._num(s.average_full_hours) }));
+      else if (Number.isFinite(cur?.per_full)) parts.push(fill(t.perFullProjected, { h: this._num(cur.per_full) }));
+      if (s.count > 0) parts.push(fill(s.count === 1 ? t.charge1 : t.chargesN, { n: s.count }));
+      if (Number.isFinite(cur?.hours) && Number.isFinite(cur?.from)) parts.push(fill(t.nowSince, { t: hours(cur.hours), p: cur.from }));
+      let html = `<div class="muted small">${esc(`${t.battery}: ${parts.length ? parts.join(" · ") : t.noCycles}`)}</div>`;
+      const cycles = Array.isArray(s.cycles) ? s.cycles : [];
+      if (cycles.length) {
+        const max = Math.max(...cycles.map((c) => c.per_full).filter(Number.isFinite), 0);
+        const key = `batt:${boxId}`;
+        const open = this._open.has(key);
+        const rows = cycles.map((c) => {
+          const width = max > 0 && Number.isFinite(c.per_full) ? ((100 * c.per_full) / max).toFixed(1) : 0;
+          const level = Number.isFinite(c.from) && Number.isFinite(c.to) ? `${c.from} % → ${c.to} %` : "–";
+          return `<tr><td>${esc(this._date(c.day))}</td><td>${esc(hours(c.hours))}</td><td>${esc(level)}</td>` +
+            `<td><div class="pf"><div class="bar"><div style="width:${width}%"></div></div><span>${esc(hours(c.per_full))}</span></div></td></tr>`;
+        }).join("");
+        html += `<div class="fold${open ? " open" : ""}"><button class="fig-head" data-fold="${esc(key)}" aria-expanded="${open}">` +
+          `<span class="headline">${esc(t.history)}</span>${icon("chevron")}</button><div class="detail"><table class="cycles"><thead><tr>` +
+          `<th>${esc(t.colDay)}</th><th>${esc(t.colOn)}</th><th>${esc(t.colLevel)}</th><th>${esc(t.colPerFull)}</th></tr></thead>` +
+          `<tbody>${rows}</tbody></table></div></div>`;
+      }
+      return `<div class="battery">${html}</div>`;
     }
 
     _playback(p) {
@@ -542,7 +586,7 @@ if (!customElements.get("storybox-plus-panel")) {
           `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
           `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span></li>`).join("")}</ol>`
         : `<div class="muted small">${esc(t.noChapters)}</div>`;
-      return `<div class="figure${open ? " open" : ""}"><button class="fig-head" data-figure="${esc(f.id)}" aria-expanded="${open}">` +
+      return `<div class="figure${open ? " open" : ""}"><button class="fig-head" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
         `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
         `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
         `<span class="badges">${badges}</span>${icon("chevron")}</button><div class="detail">${detail}</div></div>`;
@@ -743,11 +787,23 @@ if (!customElements.get("storybox-plus-panel")) {
   .lock { display: inline-flex; color: var(--secondary-text-color); }
   .lock .mdi { width: 18px; height: 18px; }
   .fig-head > .mdi:last-child { color: var(--secondary-text-color); transition: transform 0.2s; }
-  .figure.open .fig-head > .mdi:last-child { transform: rotate(180deg); }
+  .open > .fig-head > .mdi:last-child { transform: rotate(180deg); }
   .detail { display: none; padding: 0 16px 12px 84px; }
   .narrow .detail { padding-left: 16px; }
-  .figure.open .detail { display: block; }
+  .open > .detail { display: block; }
   .detail .small { margin: 0 0 6px; }
+  /* The charge history of a box: a fold inside the card, a small table with a bar per cycle */
+  .battery { margin-bottom: 12px; }
+  .battery .small { margin-top: 0; }
+  .fold .fig-head { justify-content: space-between; gap: 8px; width: calc(100% + 8px); margin: 4px -4px 0; padding: 4px; border-radius: 8px; }
+  .fold .detail { padding: 2px 0 4px; }
+  table.cycles th, table.cycles td { padding: 4px 10px 4px 0; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.cycles th { font-weight: 400; font-size: 12px; color: var(--secondary-text-color); }
+  table.cycles th:last-child, table.cycles td:last-child { width: 100%; padding-right: 0; }
+  table.cycles tbody tr + tr td { border-top: 1px solid var(--divider-color); }
+  .pf { display: flex; align-items: center; gap: 8px; }
+  .pf .bar { flex: 1 1 32px; height: 5px; }
+  .pf span { min-width: 44px; text-align: right; color: var(--secondary-text-color); }
   .chapters { list-style: none; margin: 0; padding: 0; }
   .chapters li { display: flex; align-items: center; gap: 10px; padding: 5px 0; line-height: 20px; }
   .chapters li + li { border-top: 1px solid var(--divider-color); }

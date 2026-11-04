@@ -19,11 +19,13 @@ from .models import (
     Household,
     Library,
     Tonie,
+    TonieDetails,
     parse_box,
     parse_content_tonie,
     parse_creative_tonie,
     parse_disc,
     parse_household,
+    parse_playback_info,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +40,23 @@ _CONTENT_TONIE_FIELDS = (
     "series { name } chapters { id title seconds transcoding }"
 )
 _DISC_FIELDS = "id householdId title coverImageUrl discImageUrl lock language salesId"
+
+
+def _shape(node: dict[str, Any]) -> dict[str, Any]:
+    """Describe a node for the debug log: types and sizes, no titles or IDs."""
+    shape: dict[str, Any] = {}
+    for key, value in node.items():
+        if value is None or isinstance(value, bool | int | float):
+            shape[key] = value
+        elif isinstance(value, list):
+            shape[key] = f"list[{len(value)}]"
+        elif isinstance(value, dict):
+            shape[key] = f"dict{sorted(value)}"
+        elif key in ("lock", "languageName", "language"):
+            shape[key] = value
+        else:
+            shape[key] = f"{type(value).__name__}[{len(str(value))}]"
+    return shape
 
 
 class CloudClient:
@@ -121,6 +140,8 @@ class CloudClient:
             for edge in connection.get("edges") or []:
                 if isinstance(edge, dict) and isinstance(edge.get("node"), dict):
                     nodes.append(edge["node"])
+            if cursor is None and nodes and _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug("GraphQL %s: shape of the first node: %s", field, _shape(nodes[0]))
             page = connection.get("pageInfo") or {}
             cursor = page.get("endCursor") if isinstance(page, dict) else None
             if not (isinstance(page, dict) and page.get("hasNextPage") and cursor):
@@ -162,6 +183,25 @@ class CloudClient:
         """Return the discs of all households."""
         nodes = await self._graphql_nodes("myDiscs", _DISC_FIELDS)
         return [t for node in nodes if (t := parse_disc(node))]
+
+    async def async_playback_info(self, box_id: str, tonie_id: str) -> TonieDetails | None:
+        """Return the chapters of the figure that stands on a box.
+
+        The cloud tells the chapters of a bought figure only this way, for the
+        figure a box has in front of it. None when the cloud knows nothing.
+        """
+        try:
+            data = await self._request("GET", f"/playback-info/{box_id}/{tonie_id}")
+        except CloudResponseError as err:
+            if err.status in (400, 404):
+                _LOGGER.debug("Playback info: the cloud answered %s", err.status)
+                return None
+            raise
+        if not isinstance(data, dict):
+            _LOGGER.debug("Playback info: no object in the answer")
+            return None
+        _LOGGER.debug("Playback info: shape of the answer: %s", _shape(data))
+        return parse_playback_info(data)
 
     async def async_library(self) -> Library:
         """Return households, boxes and figures in one go."""

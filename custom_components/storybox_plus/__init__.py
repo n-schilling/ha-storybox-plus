@@ -7,6 +7,7 @@ entities; the figures and the listening statistics live on the page.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
@@ -18,6 +19,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.ssl import client_context
 
 from .analytics import Analytics, AnalyticsData
+from .battery import BatteryStats
 from .cloud import Auth, CloudAuthError, CloudClient, CloudError, PushClient, PushEvent, TokenSet
 from .const import (
     CONF_ANALYTICS,
@@ -44,6 +46,16 @@ PLATFORMS: list[Platform] = [
 def analytics_store(hass: HomeAssistant, entry_id: str) -> Store[AnalyticsData]:
     """Return the store of the listening sums of an entry."""
     return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.analytics")
+
+
+def details_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the chapters learned from the boxes."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.chapters")
+
+
+def battery_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the battery cycles."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.battery")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> bool:
@@ -97,10 +109,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
         on_event=_push_event,
         on_connected=_push_connected,
     )
-    coordinator = StoryboxCoordinator(hass, entry, client, push, analytics)
+    battery_stats = BatteryStats(battery_store(hass, entry.entry_id), dt_util.now)
+    await battery_stats.async_load()
+    coordinator = StoryboxCoordinator(
+        hass, entry, client, push, analytics, details_store(hass, entry.entry_id), battery_stats
+    )
+    await coordinator.async_load_details()
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = RuntimeData(
-        auth=auth, client=client, push=push, coordinator=coordinator, analytics=analytics
+        auth=auth,
+        client=client,
+        push=push,
+        coordinator=coordinator,
+        analytics=analytics,
+        battery_stats=battery_stats,
     )
 
     await async_register_frontend(hass)
@@ -129,14 +151,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
         return False
     if entry.runtime_data.analytics is not None:
         await entry.runtime_data.analytics.async_save()
+    await entry.runtime_data.battery_stats.async_save()
     if not any(e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e is not entry):
         async_unregister_panel(hass)
     return True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> None:
-    """Forget the listening sums of a removed account."""
+    """Forget the listening sums and the learned chapters of a removed account."""
     await analytics_store(hass, entry.entry_id).async_remove()
+    await details_store(hass, entry.entry_id).async_remove()
+    await battery_store(hass, entry.entry_id).async_remove()
 
 
 @callback

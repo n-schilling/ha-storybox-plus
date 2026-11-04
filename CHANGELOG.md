@@ -13,7 +13,9 @@ First version, for the private test phase.
 - Sign-in with the account of the app; only a refresh token is stored, never the password. The token is renewed and rotated automatically; a refused token asks for a new sign-in.
 - One device per box with a connectivity sensor. The Toniebox 2 adds battery, charging, a media player (play, pause, volume, chapters, seeking within a chapter) and a figure event (placed, removed).
 - Live state of the Toniebox 2 through the cloud's push channel; the classic box is read from the REST API every 5 minutes.
+- Chapters of bought figures are learned from the box they stand on and kept, because the cloud's library does not list them.
 - Listening time as daily sums per figure and box, kept in the integration's own store (option, on by default).
+- How long a charge of the Toniebox 2 lasts: discharge cycles with hours switched on, percent used and the projection per full charge.
 - A page for administrators with the boxes, the figures with their chapters and the listening statistics.
 - Diagnostics without tokens, names, addresses or listening data.
 

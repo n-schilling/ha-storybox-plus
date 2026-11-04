@@ -86,6 +86,7 @@ async def test_overview(
         "volume": 7,
         "volume_max": 13,
         "sleep_timer": {"state": "on", "until": "2026-11-04T20:00:00+00:00"},
+        "battery_stats": {"current": None, "cycles": [], "count": 0, "average_full_hours": None},
     }
     received_at = playback.pop("received_at")
     assert isinstance(received_at, str)
@@ -109,6 +110,7 @@ async def test_overview(
     assert classic["volume"] is None
     assert classic["sleep_timer"] is None
     assert classic["playback"] is None
+    assert classic["battery_stats"] is None
 
 
 async def test_overview_before_any_push(

@@ -18,6 +18,7 @@ from .models import (
     Playback,
     SleepTimer,
     Tonie,
+    TonieDetails,
     TonieKind,
     Volume,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "SleepTimer",
     "TokenSet",
     "Tonie",
+    "TonieDetails",
     "TonieKind",
     "Volume",
 ]

@@ -75,6 +75,16 @@ class Tonie:
 
 
 @dataclass(frozen=True, slots=True)
+class TonieDetails:
+    """What the cloud tells about a figure once it stands on a box (playback info)."""
+
+    title: str | None = None
+    series: str | None = None
+    image_url: str | None = None
+    chapters: tuple[Chapter, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Box:
     """A box as the REST API describes it."""
 
@@ -360,6 +370,16 @@ def parse_disc(data: dict[str, Any]) -> Tonie | None:
         image_url=_text(data, "coverImageUrl", "discImageUrl"),
         language=_text(data, "language"),
         locked=bool(data.get("lock")),
+        chapters=_chapters(data),
+    )
+
+
+def parse_playback_info(data: dict[str, Any]) -> TonieDetails:
+    """Parse GET /playback-info/{box}/{tonie}: the chapters of the figure on a box."""
+    return TonieDetails(
+        title=_text(data, "title"),
+        series=_text(data, "series"),
+        image_url=_text(data, "tonieImageUrl", "coverUrl", "imageUrl"),
         chapters=_chapters(data),
     )
 

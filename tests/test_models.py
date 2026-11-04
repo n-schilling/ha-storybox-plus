@@ -14,6 +14,7 @@ from custom_components.storybox_plus.cloud.models import (
     Generation,
     Playback,
     Tonie,
+    TonieDetails,
     TonieKind,
     Volume,
     normalize_mac,
@@ -27,11 +28,22 @@ from custom_components.storybox_plus.cloud.models import (
     parse_household,
     parse_online,
     parse_playback,
+    parse_playback_info,
     parse_sleep_timer,
     parse_volume,
 )
 
-from .conftest import classic_box, content_tonie, creative_tonie, disc, tb2_box
+from .conftest import (
+    PLAYBACK_INFO_IMAGE,
+    PLAYBACK_INFO_SERIES,
+    TONIE_NAME,
+    classic_box,
+    content_tonie,
+    creative_tonie,
+    disc,
+    playback_info,
+    tb2_box,
+)
 
 EPOCH = datetime(2026, 11, 4, 10, 0, tzinfo=UTC)
 
@@ -270,6 +282,59 @@ def test_parse_disc() -> None:
     assert fallback.name == "Disc"
     assert fallback.image_url == "https://img.example.com/x"
     assert parse_disc({"id": "d"}) is None
+
+
+def test_parse_playback_info() -> None:
+    """The box tells title, series, picture and the chapters of the figure on it."""
+    details = parse_playback_info(playback_info())
+    assert details.title == TONIE_NAME
+    assert details.series == PLAYBACK_INFO_SERIES
+    assert details.image_url == PLAYBACK_INFO_IMAGE
+    assert [(c.id, c.title, c.seconds, c.transcoding) for c in details.chapters] == [
+        ("p1", "Box-Kapitel 1", 180.0, False),
+        ("p2", "Box-Kapitel 2", 240.0, False),
+        ("p3", "Box-Kapitel 3", 60.0, True),
+    ]
+    assert all(c.file is None for c in details.chapters)
+
+
+def test_parse_playback_info_without_fields() -> None:
+    """Missing or odd fields leave the details empty instead of failing."""
+    assert parse_playback_info({}) == TonieDetails()
+    sparse = parse_playback_info(
+        {"title": "", "series": 5, "tonieImageUrl": None, "chapters": "none"}
+    )
+    assert sparse == TonieDetails(title=None, series=None, image_url=None, chapters=())
+    broken = parse_playback_info(
+        playback_info(chapters=[{"id": "a", "title": "A"}, "x", {"title": "no id"}, {"id": "b"}])
+    )
+    assert [(c.id, c.title, c.seconds) for c in broken.chapters] == [
+        ("a", "A", None),
+        ("b", "", None),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        (
+            {"tonieImageUrl": "https://img/tonie", "coverUrl": "https://img/cover"},
+            "https://img/tonie",
+        ),
+        ({"tonieImageUrl": None, "coverUrl": "https://img/cover"}, "https://img/cover"),
+        (
+            {"tonieImageUrl": "", "coverUrl": None, "imageUrl": "https://img/image"},
+            "https://img/image",
+        ),
+        ({"coverUrl": 7, "imageUrl": ["https://img/list"]}, None),
+    ],
+)
+def test_parse_playback_info_image_fallbacks(fields: dict[str, Any], expected: str | None) -> None:
+    """The figure's own picture comes first, then the cover, then a plain image URL."""
+    data = playback_info()
+    del data["tonieImageUrl"]
+    data.update(fields)
+    assert parse_playback_info(data).image_url == expected
 
 
 @pytest.mark.parametrize(

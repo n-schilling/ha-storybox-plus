@@ -128,6 +128,7 @@ def _box_dict(
             else None
         ),
         "playback": playback,
+        "battery_stats": coordinator.battery_stats.summary(box.id) if box.live else None,
     }
 
 

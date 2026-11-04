@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import aiohttp
@@ -25,13 +26,24 @@ from custom_components.storybox_plus.cloud import (
     TonieKind,
 )
 from custom_components.storybox_plus.cloud.auth import TOKEN_URL
-from custom_components.storybox_plus.cloud.rest import API_BASE, PAGE_SIZE
+from custom_components.storybox_plus.cloud.rest import API_BASE, PAGE_SIZE, _shape
 
-from .conftest import JSON_HEADERS, classic_box, content_tonie, creative_tonie, disc, tb2_box
+from .conftest import (
+    JSON_HEADERS,
+    PLAYBACK_INFO_SERIES,
+    TONIE_NAME,
+    classic_box,
+    content_tonie,
+    creative_tonie,
+    disc,
+    playback_info,
+    tb2_box,
+)
 
 ME = f"{API_BASE}/me"
 HOUSEHOLDS = f"{API_BASE}/households"
 GRAPHQL = f"{API_BASE}/graphql"
+PLAYBACK_INFO = f"{API_BASE}/playback-info/box1/t1"
 
 
 def _token_answer(access: str) -> dict[str, Any]:
@@ -258,6 +270,100 @@ async def test_graphql_without_data(
     aioclient_mock.post(GRAPHQL, json=body)
     with pytest.raises(CloudResponseError, match="myContentTonies answered no data"):
         await client.async_content_tonies()
+
+
+def test_shape_names_types_and_sizes_only() -> None:
+    """The debug dump of a node keeps numbers, flags and the lock, never titles or IDs."""
+    assert _shape(content_tonie()) == {
+        "id": "str[2]",
+        "householdId": "str[3]",
+        "title": "str[15]",
+        "imageUrl": "str[30]",
+        "coverUrl": None,
+        "lock": False,
+        "languageName": "Deutsch",
+        "salesId": "str[3]",
+        "series": "dict['name']",
+        "chapters": "list[2]",
+    }
+    assert _shape({"count": 3, "ratio": 1.5, "language": "de", "lock": True, "b": {}}) == {
+        "count": 3,
+        "ratio": 1.5,
+        "language": "de",
+        "lock": True,
+        "b": "dict[]",
+    }
+
+
+async def test_graphql_debug_log_holds_only_the_shape(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """With debug logging on, the first node's shape is logged once per query, without names."""
+    caplog.set_level(logging.DEBUG, logger="custom_components.storybox_plus.cloud.rest")
+    pages = {
+        None: _page("myContentTonies", [content_tonie("t1"), content_tonie("t2")], cursor="c2"),
+        "c2": _page("myContentTonies", [content_tonie("t3")]),
+    }
+
+    async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
+        return AiohttpClientMockResponse(
+            method=method, url=url, json=pages[data["variables"]["cursor"]]
+        )
+
+    aioclient_mock.post(GRAPHQL, side_effect=graphql)
+    await client.async_content_tonies()
+    shapes = [r.message for r in caplog.records if "shape of the first node" in r.message]
+    assert len(shapes) == 1
+    assert "'title': 'str[15]'" in shapes[0]
+    assert "'chapters': 'list[2]'" in shapes[0]
+    assert TONIE_NAME not in shapes[0]
+    assert "'t1'" not in shapes[0]
+
+
+async def test_playback_info(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
+    """The figure on a box is read with its chapters."""
+    aioclient_mock.get(PLAYBACK_INFO, json=playback_info())
+    details = await client.async_playback_info("box1", "t1")
+    assert details is not None
+    assert details.title == TONIE_NAME
+    assert details.series == PLAYBACK_INFO_SERIES
+    assert [c.id for c in details.chapters] == ["p1", "p2", "p3"]
+    (call,) = _calls(aioclient_mock, PLAYBACK_INFO)
+    assert call[0] == "GET"
+    assert call[3] == {"Authorization": "Bearer access-1"}
+
+
+@pytest.mark.parametrize("status", [400, 404])
+async def test_playback_info_unknown_figure(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient, status: int
+) -> None:
+    """A figure the cloud knows nothing about is no error, just nothing."""
+    aioclient_mock.get(PLAYBACK_INFO, status=status, json={"message": "no"})
+    assert await client.async_playback_info("box1", "t1") is None
+    assert len(_calls(aioclient_mock, PLAYBACK_INFO)) == 1
+
+
+async def test_playback_info_errors(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """Other errors and lost connections are passed on."""
+    aioclient_mock.get(PLAYBACK_INFO, status=500, json={"message": "no"})
+    with pytest.raises(CloudResponseError) as err:
+        await client.async_playback_info("box1", "t1")
+    assert err.value.status == 500
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(PLAYBACK_INFO, exc=aiohttp.ClientConnectionError("down"))
+    with pytest.raises(CloudConnectionError):
+        await client.async_playback_info("box1", "t1")
+
+
+@pytest.mark.parametrize("body", [[], "text", 5, None])
+async def test_playback_info_without_figure(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient, body: Any
+) -> None:
+    """An answer that is no object, or no body at all, is nothing."""
+    aioclient_mock.get(PLAYBACK_INFO, json=body)
+    assert await client.async_playback_info("box1", "t1") is None
 
 
 async def test_library(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
