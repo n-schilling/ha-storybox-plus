@@ -70,7 +70,7 @@ Every box is a device. Only what automations can use becomes an entity:
 
 | Entity | Boxes | Description |
 |---|---|---|
-| Connectivity (binary sensor) | all | Whether the box is connected to the cloud. The Toniebox 2 reports it; the classic box counts as connected while the cloud saw it in the last 30 minutes. Unknown stays unknown. |
+| Connectivity (binary sensor) | all | Whether the box is connected to the cloud. The Toniebox 2 reports it live. For the classic box the cloud offers no connection state (and, for the accounts seen so far, no "last seen" either), so the sensor stays unknown rather than guessing; if the cloud reports when the box was last seen, it counts as connected for 30 minutes after that. |
 | Battery (sensor) | Toniebox 2 | Battery level in percent. Unavailable while the box is switched off. |
 | Charging (binary sensor) | Toniebox 2 | Whether the box charges. |
 | Media player | Toniebox 2 | Playing, paused, idle (no figure) or off (box switched off). Shows the figure and chapter with the figure's picture, the position in the chapter and its length. |

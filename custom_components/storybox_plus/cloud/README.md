@@ -11,6 +11,7 @@ written from scratch and imports nothing from Home Assistant.
 - Keycloak at `login.tonies.com`, realm `tonies`, client `meine-tonies`, Resource Owner Password flow.
 - The access token lives **300 s**. The refresh token is rotated with every refresh; only it is stored. How long a refresh token survives unused is not documented; the login asks for `offline_access` first (a token that does not expire while unused) and falls back to a plain session if the client is not allowed offline tokens. `refresh_expires_in: 0` marks an offline token.
 - Wrong credentials: 401 `invalid_grant`. Expired refresh token: 400 `invalid_grant`. Both end in `CloudAuthError`, which the integration turns into a reauthentication flow.
+- Observed with a real account: the login returns an offline token (`refresh_expires_in: 0`, scope contains `offline_access`). **Every refresh returns a new refresh token; the previous one is accepted once more, then refused** (`invalid_grant`). So the newest token must be stored at once, and the stored token must never be used by anything but the integration: a second user of the same token breaks the integration's session.
 
 ## REST and GraphQL (`rest.py`)
 

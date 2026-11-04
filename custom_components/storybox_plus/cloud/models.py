@@ -220,6 +220,11 @@ def normalize_mac(value: str | None) -> str | None:
     return value.strip().upper()
 
 
+# What the push channel and the REST API call a box that is there or not;
+# the REST API answers "unsupported" for every box seen so far
+_ONLINE_STATES = {"connected": True, "online": True, "disconnected": False, "offline": False}
+
+
 def parse_household(data: dict[str, Any]) -> Household | None:
     """Parse one household of GET /households."""
     household_id = _text(data, "id")
@@ -240,8 +245,7 @@ def parse_box(data: dict[str, Any], household_id: str) -> Box | None:
         return None
     features = data.get("features")
     live = isinstance(features, list) and "tngSettings" in features
-    online_state = _text(data, "onlineState")
-    online = {"online": True, "offline": False}.get(online_state or "")
+    online = _ONLINE_STATES.get((_text(data, "onlineState") or "").lower())
     placement = data.get("placement")
     placed: str | None = None
     if isinstance(placement, dict):
@@ -264,12 +268,21 @@ def parse_box(data: dict[str, Any], household_id: str) -> Box | None:
         online=online,
         last_seen=parse_datetime(data.get("lastSeen", data.get("last_seen"))),
         firmware=firmware or None,
-        color_id=_text(data, "bleColorId"),
+        color_id=_color_id(data.get("bleColorId")),
         placed_tonie_id=placed,
         max_volume=_integer(data.get("maxVolume")),
         max_headphone_volume=_integer(data.get("maxHeadphoneVolume")),
         raw_generation=_text(data, "generation"),
     )
+
+
+def _color_id(value: Any) -> str | None:
+    """The colour of a box comes as a number or a word."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int | str):
+        return str(value) or None
+    return None
 
 
 def parse_chapter(data: dict[str, Any]) -> Chapter | None:
@@ -369,9 +382,9 @@ def parse_battery(data: dict[str, Any]) -> Battery:
 
 
 def parse_online(data: dict[str, Any]) -> bool | None:
-    """Parse online-state."""
+    """Parse online-state; anything but a known word stays unknown."""
     state = _text(data, "onlineState", "state")
-    return {"online": True, "offline": False}.get((state or "").lower())
+    return _ONLINE_STATES.get((state or "").lower())
 
 
 def parse_volume(data: dict[str, Any]) -> Volume:
