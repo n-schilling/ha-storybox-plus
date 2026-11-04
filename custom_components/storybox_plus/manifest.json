@@ -1,0 +1,24 @@
+{
+  "domain": "storybox_plus",
+  "name": "Storybox Plus",
+  "after_dependencies": [
+    "frontend",
+    "panel_custom"
+  ],
+  "codeowners": [
+    "@n-schilling"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/n-schilling/ha-storybox-plus",
+  "integration_type": "hub",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/n-schilling/ha-storybox-plus/issues",
+  "requirements": [
+    "aiomqtt==2.5.1"
+  ],
+  "version": "0.1.0"
+}

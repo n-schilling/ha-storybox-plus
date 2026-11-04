@@ -1,0 +1,109 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bei der Cloud der Boxen anmelden",
+        "description": "Melde dich mit dem Konto der App an. Home Assistant behält nur ein Token, nicht das Passwort.",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort"
+        },
+        "data_description": {
+          "email": "Die E-Mail-Adresse des Kontos.",
+          "password": "Wird einmal für die Anmeldung benutzt und nicht gespeichert."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut anmelden",
+        "description": "Die Cloud nimmt das gespeicherte Token nicht mehr an. Melde dich mit demselben Konto erneut an.",
+        "data": {
+          "email": "E-Mail",
+          "password": "Passwort"
+        },
+        "data_description": {
+          "email": "Die E-Mail-Adresse des Kontos.",
+          "password": "Wird einmal für die Anmeldung benutzt und nicht gespeichert."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Die Cloud ist nicht erreichbar.",
+      "invalid_auth": "E-Mail oder Passwort ist falsch.",
+      "unknown": "Die Cloud hat unerwartet geantwortet. Details stehen im Log."
+    },
+    "abort": {
+      "already_configured": "Dieses Konto ist schon eingerichtet.",
+      "reauth_successful": "Die Anmeldung wurde erneuert.",
+      "wrong_account": "Das ist ein anderes Konto als das eingerichtete."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "analytics": "Hörzeit zählen"
+        },
+        "data_description": {
+          "analytics": "Hält Tagessummen je Figur und Box für die Seite fest, sonst nichts. Ausschalten löscht die Summen."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Verbindung"
+      },
+      "charging": {
+        "name": "Lädt"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Akku"
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Figur",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Aufgelegt",
+              "removed": "Abgenommen"
+            }
+          },
+          "tonie": {
+            "name": "Figur"
+          },
+          "tonie_id": {
+            "name": "Figur-ID"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Die Cloud nimmt die Anmeldung nicht mehr an."
+    },
+    "cannot_connect": {
+      "message": "Die Cloud ist nicht erreichbar: {error}"
+    },
+    "update_failed": {
+      "message": "Die Cloud hat nicht geantwortet: {error}"
+    },
+    "command_failed": {
+      "message": "Der Befehl hat die Box nicht erreicht: {error}"
+    },
+    "box_unknown": {
+      "message": "Die Box gehört nicht mehr zum Konto."
+    },
+    "volume_unknown": {
+      "message": "Die Box hat ihre Lautstärke noch nicht gemeldet."
+    },
+    "nothing_plays": {
+      "message": "Auf der Box liegt keine Figur."
+    }
+  }
+}

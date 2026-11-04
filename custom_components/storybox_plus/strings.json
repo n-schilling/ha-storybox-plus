@@ -1,0 +1,109 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to the cloud of your boxes",
+        "description": "Sign in with the account of the app. Home Assistant keeps only a token, not the password.",
+        "data": {
+          "email": "E-mail",
+          "password": "Password"
+        },
+        "data_description": {
+          "email": "The e-mail address of the account.",
+          "password": "Used once for the sign-in; it is not stored."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "The cloud no longer accepts the stored token. Sign in again with the same account.",
+        "data": {
+          "email": "E-mail",
+          "password": "Password"
+        },
+        "data_description": {
+          "email": "The e-mail address of the account.",
+          "password": "Used once for the sign-in; it is not stored."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The cloud cannot be reached.",
+      "invalid_auth": "E-mail or password is wrong.",
+      "unknown": "The cloud answered unexpectedly. See the log for details."
+    },
+    "abort": {
+      "already_configured": "This account is already set up.",
+      "reauth_successful": "The sign-in was renewed.",
+      "wrong_account": "This is a different account than the one set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "analytics": "Count listening time"
+        },
+        "data_description": {
+          "analytics": "Keeps daily sums per figure and box for the page, nothing else. Switching it off deletes the sums."
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Connectivity"
+      },
+      "charging": {
+        "name": "Charging"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Figure",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Placed",
+              "removed": "Removed"
+            }
+          },
+          "tonie": {
+            "name": "Figure"
+          },
+          "tonie_id": {
+            "name": "Figure ID"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "The cloud no longer accepts the sign-in."
+    },
+    "cannot_connect": {
+      "message": "The cloud cannot be reached: {error}"
+    },
+    "update_failed": {
+      "message": "The cloud did not answer: {error}"
+    },
+    "command_failed": {
+      "message": "The box did not get the command: {error}"
+    },
+    "box_unknown": {
+      "message": "The box is no longer in the account."
+    },
+    "volume_unknown": {
+      "message": "The box has not reported its volume yet."
+    },
+    "nothing_plays": {
+      "message": "No figure is on the box."
+    }
+  }
+}

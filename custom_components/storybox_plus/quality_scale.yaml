@@ -1,0 +1,106 @@
+# Integration quality scale, checked against the rules of Home Assistant 2026.10.
+# hassfest only validates this file for core integrations; it documents the
+# state of this custom integration rule by rule. "todo" marks what the first
+# release still needs.
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: The integration registers no actions of its own.
+  appropriate-polling:
+    status: done
+    comment: >-
+      The REST API is read every 5 minutes for new figures, chapters and the
+      classic box; the live state of the Toniebox 2 comes through the push
+      channel. A failed poll is repeated after a minute, unavailable only after
+      three in a row.
+  brands:
+    status: done
+    comment: Brand images ship in brand/ (served locally since Home Assistant 2026.x).
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: todo
+  dependency-transparency:
+    status: done
+    comment: aiomqtt is open source and published on PyPI from its repository with CI.
+  docs-actions:
+    status: exempt
+    comment: No actions of its own; the README documents the media player actions it supports.
+  docs-conditions:
+    status: exempt
+    comment: No conditions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-triggers:
+    status: exempt
+    comment: No triggers of its own; the figure event is documented.
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry:
+    status: done
+    comment: An account can be added once (unique ID is the account's UUID).
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage: todo
+
+  # Gold
+  devices: done
+  diagnostics:
+    status: done
+    comment: Without tokens, account ID, names, MAC addresses or what was listened to.
+  discovery:
+    status: exempt
+    comment: The boxes are reached through their cloud, not on the network.
+  discovery-update-info:
+    status: exempt
+    comment: No discovery.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices: done
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: done
+    comment: Reviewed; every entity has a consumer, none is disabled by default.
+  entity-translations: done
+  exception-translations: done
+  icon-translations: done
+  reconfiguration-flow:
+    status: exempt
+    comment: There is nothing to reconfigure but the sign-in, which the reauthentication flow renews.
+  repair-issues:
+    status: exempt
+    comment: Nothing the user can repair yet; a refused token asks for a new sign-in.
+  stale-devices: done
+
+  # Platinum
+  async-dependency:
+    status: done
+    comment: aiomqtt is asyncio-based; the REST client uses aiohttp.
+  inject-websession:
+    status: done
+    comment: >-
+      The REST client receives Home Assistant's shared aiohttp session. The
+      push channel is an MQTT connection with Home Assistant's TLS context.
+  strict-typing:
+    status: done
+    comment: mypy --strict runs in CI (mypy.ini).
