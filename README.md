@@ -10,6 +10,26 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes are children's audio players; what a household wants from them in Home Assistant is small: is the box online, how full is the battery, what plays right now, and which figure was placed. Everything else, the library of figures, their chapters and the statistics, is something to look at, not to automate. So this integration keeps the entities few and puts the rest on a page.
 
+## What it looks like
+
+The screenshots show the page with invented data; the figures, names and times are not real products or recordings.
+
+**Boxes**: every box with its live state. The Toniebox 2 shows battery, volume, sleep timer and what plays; the classic box only when it was last seen.
+
+![The Boxes tab with a Toniebox 2 playing a figure and a classic box that is offline](docs/screenshots/boxes.png)
+
+**Figures**: the household's library with search, a filter by kind, chapters and lengths, and which figure stands on a box right now.
+
+![The Figures tab with the library, one Creative-Tonie expanded to its chapters](docs/screenshots/figures.png)
+
+**Listening**: the most played figures, the total listening time, listening per day and per box.
+
+![The Listening tab with the total of the last 30 days, the most played figures and the chart per day](docs/screenshots/listening.png)
+
+On a phone the tabs move to the bottom; dark themes are supported.
+
+<img src="docs/screenshots/boxes-phone-dark.png" alt="The Boxes tab on a phone in a dark theme" width="300">
+
 ## Supported devices
 
 | Device | Status |
