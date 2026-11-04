@@ -28,8 +28,8 @@ PANEL_PATH = f"{FRONTEND_URL_BASE}/{PANEL_FILENAME}"
 async def async_register_frontend(hass: HomeAssistant) -> None:
     """Serve the page once per run of Home Assistant and add it to the sidebar.
 
-    The page stays through a reload of an entry; removing the last account
-    removes it.
+    The page stays as long as any account is loaded; unloading the last one
+    takes it off the sidebar.
     """
     if DATA_STATIC not in hass.data:
         hass.data[DATA_STATIC] = True

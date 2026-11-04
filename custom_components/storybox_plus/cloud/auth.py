@@ -160,7 +160,9 @@ class Auth:
             expires_at=now + _seconds(body.get("expires_in"), 300),
             refresh_expires_at=(
                 None
-                if not isinstance(refresh_expires_in, int | float) or refresh_expires_in <= 0
+                if isinstance(refresh_expires_in, bool)
+                or not isinstance(refresh_expires_in, int | float)
+                or refresh_expires_in <= 0
                 else now + float(refresh_expires_in)
             ),
             scope=body.get("scope") if isinstance(body.get("scope"), str) else None,

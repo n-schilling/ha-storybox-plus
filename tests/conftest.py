@@ -1,0 +1,568 @@
+"""Fixtures: the cloud of the boxes simulated in memory.
+
+``FakeCloud`` answers the login server and the REST/GraphQL API through
+``aioclient_mock`` from a few dicts per account; ``FakePush`` stands in for
+the push channel, so tests inject messages and read the commands sent.
+Nothing here reaches the network.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Generator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+import re
+from typing import Any
+from unittest.mock import patch
+
+import aiohttp
+import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMocker,
+    AiohttpClientMockResponse,
+)
+from yarl import URL
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+from custom_components.storybox_plus.cloud import (
+    TOPIC_BATTERY,
+    TOPIC_ONLINE,
+    TOPIC_PLAYBACK,
+    TOPIC_SLEEP_TIMER,
+    TOPIC_VOLUME,
+    CloudConnectionError,
+    Playback,
+    PushClient,
+    PushEvent,
+    SleepTimer,
+    Volume,
+)
+from custom_components.storybox_plus.cloud.auth import TOKEN_URL
+from custom_components.storybox_plus.cloud.models import parse_battery
+from custom_components.storybox_plus.cloud.push import PushData
+from custom_components.storybox_plus.cloud.rest import API_BASE
+from custom_components.storybox_plus.const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN
+
+# The account, the household and what is in it
+USER_ID = "0f3c5f2a-1111-4d2e-9c3b-000000000001"
+EMAIL = "test@example.com"
+PASSWORD = "correct-horse"
+HOUSEHOLD_ID = "hh1"
+HOUSEHOLD_NAME = "Familie Muster"
+# A Toniebox 2 with the push channel
+BOX_ID = "box1"
+BOX_NAME = "Kinderzimmer"
+MAC = "A1B2C3D4E5F6"
+# A classic box: the cloud knows only when it was last seen
+CLASSIC_BOX_ID = "box2"
+CLASSIC_BOX_NAME = "Flur"
+# The figures
+TONIE_ID = "t1"
+TONIE_NAME = "Schlummerjaguar"
+TONIE_SERIES = "Schlummerbande"
+CREATIVE_ID = "c1"
+CREATIVE_NAME = "Kreativ"
+DISC_ID = "d1"
+DISC_NAME = "Disc Eins"
+
+JSON_HEADERS = {"Content-Type": "application/json"}
+
+
+# The mocked response lacks aiohttp's content_length, which the client reads
+def _content_length(self: AiohttpClientMockResponse) -> int:
+    return len(self._response)
+
+
+if not hasattr(AiohttpClientMockResponse, "content_length"):
+    AiohttpClientMockResponse.content_length = property(_content_length)  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------- payloads
+
+
+def tb2_box(
+    box_id: str = BOX_ID,
+    name: str = BOX_NAME,
+    mac: str | None = MAC,
+    online: str | None = "online",
+    placed: str | None = TONIE_ID,
+) -> dict[str, Any]:
+    """Return a Toniebox 2 as GET /households/{id}/tonieboxes describes it."""
+    box: dict[str, Any] = {
+        "id": box_id,
+        "name": name,
+        "generation": "tb2g2",
+        "features": ["tngSettings", "bedtime", "volumeLimit"],
+        "lastSeen": "2026-11-04T10:00:00Z",
+        "firmware": {"version": "1.2.3"},
+        "bleColorId": "red",
+        "maxVolume": 10,
+        "placement": {"tonie": {"id": placed}} if placed else None,
+    }
+    if mac is not None:
+        box["macAddress"] = mac
+    if online is not None:
+        box["onlineState"] = online
+    return box
+
+
+def classic_box(
+    box_id: str = CLASSIC_BOX_ID, name: str = CLASSIC_BOX_NAME, last_seen: str | None = ""
+) -> dict[str, Any]:
+    """Return a classic box; by default it was seen five minutes ago."""
+    if last_seen == "":
+        last_seen = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    box: dict[str, Any] = {
+        "id": box_id,
+        "name": name,
+        "generation": "classic",
+        "features": ["volumeLimit"],
+        "firmware": {"version": "3.1.0"},
+        "maxVolume": 8,
+    }
+    if last_seen is not None:
+        box["lastSeen"] = last_seen
+    return box
+
+
+def content_tonie(
+    tonie_id: str = TONIE_ID,
+    name: str = TONIE_NAME,
+    household_id: str = HOUSEHOLD_ID,
+    chapters: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Return a node of the GraphQL field myContentTonies."""
+    if chapters is None:
+        chapters = [
+            {"id": "k1", "title": "Kapitel 1", "seconds": 300, "transcoding": False},
+            {"id": "k2", "title": "Kapitel 2", "seconds": 200, "transcoding": False},
+        ]
+    return {
+        "id": tonie_id,
+        "householdId": household_id,
+        "title": name,
+        "imageUrl": f"https://img.example.com/{tonie_id}.png",
+        "coverUrl": None,
+        "lock": False,
+        "languageName": "Deutsch",
+        "salesId": "123",
+        "series": {"name": TONIE_SERIES},
+        "chapters": chapters,
+    }
+
+
+def creative_tonie(tonie_id: str = CREATIVE_ID, name: str = CREATIVE_NAME) -> dict[str, Any]:
+    """Return a figure of GET /households/{id}/creativetonies."""
+    return {
+        "id": tonie_id,
+        "name": name,
+        "imageUrl": f"https://img.example.com/{tonie_id}.png",
+        "lock": False,
+        "chapters": [
+            {"id": "ch1", "title": "Song", "file": "f1", "seconds": 120.5, "transcoding": False}
+        ],
+        "secondsRemaining": 5000,
+        "chaptersRemaining": 80,
+    }
+
+
+def disc(disc_id: str = DISC_ID, name: str = DISC_NAME) -> dict[str, Any]:
+    """Return a node of the GraphQL field myDiscs."""
+    return {
+        "id": disc_id,
+        "householdId": HOUSEHOLD_ID,
+        "title": name,
+        "coverImageUrl": f"https://img.example.com/{disc_id}.png",
+        "discImageUrl": None,
+        "lock": False,
+        "language": "de",
+        "salesId": "456",
+    }
+
+
+# ---------------------------------------------------------------- the cloud
+
+
+@dataclass
+class Account:
+    """One account of the cloud with its tokens and what it owns."""
+
+    name: str
+    user_id: str
+    email: str
+    password: str = PASSWORD
+    # Whether the login server grants offline tokens (scope offline_access)
+    offline_tokens: bool = True
+    # The stored refresh token is refused: the account needs a new login
+    refresh_refused: bool = False
+    # Every REST/GraphQL call answers this status
+    rest_status: int | None = None
+    # Every REST/GraphQL call fails with a connection error
+    rest_unreachable: bool = False
+    # The GraphQL field myDiscs answers with errors instead of data
+    discs_error: bool = False
+    page_size: int = 100
+    households: list[dict[str, Any]] = field(default_factory=list)
+    boxes: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    creative_tonies: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    content_tonies: list[dict[str, Any]] = field(default_factory=list)
+    discs: list[dict[str, Any]] = field(default_factory=list)
+    tokens_issued: int = 0
+    refresh_token: str = ""
+    access_tokens: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        self.refresh_token = f"refresh-{self.name}-0"
+
+    def issue(self) -> dict[str, Any]:
+        """Rotate the tokens, as the login server does, and return the answer."""
+        self.tokens_issued += 1
+        self.refresh_token = f"refresh-{self.name}-{self.tokens_issued}"
+        access = f"access-{self.name}-{self.tokens_issued}"
+        self.access_tokens.add(access)
+        return {
+            "access_token": access,
+            "expires_in": 300,
+            "refresh_expires_in": 0 if self.offline_tokens else 1800,
+            "refresh_token": self.refresh_token,
+            "token_type": "Bearer",
+            "scope": "openid offline_access" if self.offline_tokens else "openid",
+        }
+
+    def box(self, box_id: str) -> dict[str, Any]:
+        """Return the raw box, to change it in a test."""
+        return next(b for boxes in self.boxes.values() for b in boxes if b["id"] == box_id)
+
+    def remove_box(self, box_id: str) -> None:
+        """Take a box out of the account."""
+        for boxes in self.boxes.values():
+            boxes[:] = [b for b in boxes if b["id"] != box_id]
+
+
+def _json(method: str, url: URL, status: int, body: Any) -> AiohttpClientMockResponse:
+    return AiohttpClientMockResponse(
+        method=method, url=url, status=status, json=body, headers=JSON_HEADERS
+    )
+
+
+class FakeCloud:
+    """Answers the login server and the API from the accounts' dicts."""
+
+    def __init__(self, mocker: AiohttpClientMocker) -> None:
+        self.mocker = mocker
+        self.accounts: dict[str, Account] = {}
+        # Nothing answers at all: login server and API
+        self.unreachable = False
+        self.token_calls: list[dict[str, str]] = []
+        self.graphql_calls: list[tuple[str, str | None]] = []
+        mocker.post(TOKEN_URL, side_effect=self._token)
+        mocker.get(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
+        mocker.post(f"{API_BASE}/graphql", side_effect=self._graphql)
+
+    def add_account(self, name: str, **kwargs: Any) -> Account:
+        """Add an account; tokens are named after it."""
+        kwargs.setdefault("user_id", f"user-{name}")
+        kwargs.setdefault("email", f"{name}@example.com")
+        account = Account(name=name, **kwargs)
+        self.accounts[name] = account
+        return account
+
+    @property
+    def main(self) -> Account:
+        """Return the account of the default config entry."""
+        return self.accounts["main"]
+
+    def account_by_access_token(self, token: str | None) -> Account | None:
+        """Return the account an access token belongs to."""
+        return next((a for a in self.accounts.values() if token in a.access_tokens), None)
+
+    def expire_access_tokens(self) -> None:
+        """Make the API reject every access token given out so far."""
+        for account in self.accounts.values():
+            account.access_tokens.clear()
+
+    # -- the login server --
+
+    async def _token(
+        self, method: str, url: URL, form: dict[str, str]
+    ) -> AiohttpClientMockResponse:
+        self.token_calls.append(dict(form))
+        if self.unreachable:
+            raise aiohttp.ClientConnectionError("login server down")
+        grant = form.get("grant_type")
+        if grant == "password":
+            account = next(
+                (a for a in self.accounts.values() if a.email == form.get("username")), None
+            )
+            if account is None or account.password != form.get("password"):
+                return _json(
+                    method,
+                    url,
+                    401,
+                    {"error": "invalid_grant", "error_description": "Invalid user credentials"},
+                )
+            if "offline_access" in form.get("scope", "") and not account.offline_tokens:
+                return _json(method, url, 400, {"error": "invalid_scope"})
+            return _json(method, url, 200, account.issue())
+        if grant == "refresh_token":
+            account = next(
+                (a for a in self.accounts.values() if a.refresh_token == form.get("refresh_token")),
+                None,
+            )
+            if account is None or account.refresh_refused:
+                return _json(method, url, 400, {"error": "invalid_grant"})
+            return _json(method, url, 200, account.issue())
+        return _json(method, url, 400, {"error": "unsupported_grant_type"})
+
+    # -- the API --
+
+    def _authorize(self, method: str, url: URL) -> Account | AiohttpClientMockResponse:
+        if self.unreachable:
+            raise aiohttp.ClientConnectionError("api down")
+        headers = self.mocker.mock_calls[-1][3] or {}
+        token = str(headers.get("Authorization", "")).removeprefix("Bearer ")
+        account = self.account_by_access_token(token)
+        if account is None:
+            return _json(method, url, 401, {"message": "Unauthorized"})
+        if account.rest_unreachable:
+            raise aiohttp.ClientConnectionError("api down")
+        if account.rest_status is not None:
+            return _json(method, url, account.rest_status, {"message": "error"})
+        return account
+
+    async def _rest(self, method: str, url: URL, data: Any) -> AiohttpClientMockResponse:
+        account = self._authorize(method, url)
+        if isinstance(account, AiohttpClientMockResponse):
+            return account
+        path = url.path.removeprefix("/v2")
+        if path == "/me":
+            return _json(method, url, 200, {"uuid": account.user_id, "email": account.email})
+        if path == "/households":
+            return _json(method, url, 200, account.households)
+        if match := re.fullmatch(r"/households/([^/]+)/(tonieboxes|creativetonies)", path):
+            household, kind = match.groups()
+            items = account.boxes if kind == "tonieboxes" else account.creative_tonies
+            return _json(method, url, 200, items.get(household, []))
+        return _json(method, url, 404, {"message": "not found"})
+
+    async def _graphql(
+        self, method: str, url: URL, data: dict[str, Any]
+    ) -> AiohttpClientMockResponse:
+        account = self._authorize(method, url)
+        if isinstance(account, AiohttpClientMockResponse):
+            return account
+        query: str = data["query"]
+        cursor: str | None = data["variables"]["cursor"]
+        if "myContentTonies" in query:
+            fld, nodes = "myContentTonies", account.content_tonies
+        elif "myDiscs" in query:
+            fld, nodes = "myDiscs", account.discs
+        else:
+            return _json(method, url, 400, {"errors": [{"message": "unknown field"}]})
+        self.graphql_calls.append((fld, cursor))
+        if fld == "myDiscs" and account.discs_error:
+            return _json(
+                method, url, 200, {"errors": [{"message": "discs unavailable"}], "data": None}
+            )
+        start = int(cursor) if cursor else 0
+        page = nodes[start : start + account.page_size]
+        end = start + len(page)
+        has_next = end < len(nodes)
+        connection = {
+            "pageInfo": {"hasNextPage": has_next, "endCursor": str(end) if has_next else None},
+            "edges": [{"node": node} for node in page],
+        }
+        return _json(method, url, 200, {"data": {fld: connection}})
+
+
+# ---------------------------------------------------------------- the push channel
+
+
+class FakePush(PushClient):
+    """The push channel without a broker: messages are injected, commands recorded."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.commands: list[tuple[str, str, dict[str, Any]]] = []
+        self.command_error: Exception | None = None
+        self.runs = 0
+        self._stop = asyncio.Event()
+        self._error: Exception | None = None
+
+    @property
+    def macs(self) -> set[str]:
+        """Return the boxes the channel was told to listen to."""
+        return set(self._macs)
+
+    async def async_run(self) -> None:
+        """Wait until the test ends the loop, then return or raise as told."""
+        self.runs += 1
+        await self._stop.wait()
+        if self._error is not None:
+            raise self._error
+
+    def end(self, error: Exception | None = None) -> None:
+        """Let async_run return, or raise the error, as the real loop would."""
+        self._error = error
+        self._stop.set()
+
+    def connect(self, connected: bool = True) -> None:
+        """Tell the integration the channel came up or went down."""
+        self._set_connected(connected)
+
+    def send(self, topic: str, data: PushData, mac: str = MAC) -> None:
+        """Deliver one parsed message of a box."""
+        self._on_event(PushEvent(mac, topic, data))
+
+    def battery(
+        self, percent: int | None = 80, status: str | None = "charging", mac: str = MAC
+    ) -> None:
+        """Deliver metrics/battery."""
+        self.send(TOPIC_BATTERY, parse_battery({"percent": percent, "status": status}), mac)
+
+    def online(self, state: bool | None, mac: str = MAC) -> None:
+        """Deliver online-state."""
+        self.send(TOPIC_ONLINE, state, mac)
+
+    def playback(
+        self,
+        tonie_id: str | None = TONIE_ID,
+        chapter: int | None = 1,
+        paused: bool | None = False,
+        duration: float | None = 200.0,
+        position: float | None = 50.0,
+        ended: bool | None = False,
+        downloading: bool | None = False,
+        mac: str = MAC,
+    ) -> None:
+        """Deliver playback/state."""
+        self.send(
+            TOPIC_PLAYBACK,
+            Playback(
+                tonie_id=tonie_id,
+                chapter=chapter,
+                paused=paused,
+                ended=ended,
+                downloading=downloading,
+                duration=duration,
+                position=position,
+            ),
+            mac,
+        )
+
+    def removed(self, mac: str = MAC) -> None:
+        """Deliver the empty playback/state the box sends when the figure is taken off."""
+        self.send(TOPIC_PLAYBACK, Playback(tonie_id=None), mac)
+
+    def volume(self, level: int | None, mac: str = MAC) -> None:
+        """Deliver volume/state."""
+        self.send(TOPIC_VOLUME, Volume(level=level), mac)
+
+    def sleep_timer(
+        self, state: str | None = "on", until: datetime | None = None, mac: str = MAC
+    ) -> None:
+        """Deliver app-reply/bedtime-state."""
+        self.send(TOPIC_SLEEP_TIMER, SleepTimer(state=state, duration=600, until=until), mac)
+
+    async def async_command(self, mac: str, command: str, payload: dict[str, Any]) -> None:
+        """Record the command instead of publishing it."""
+        if not self._connected:
+            raise CloudConnectionError("The push channel is not connected")
+        if self.command_error is not None:
+            raise self.command_error
+        self.commands.append((mac, command, payload))
+
+
+class PushChannels:
+    """The push channels created by the integration, one per entry."""
+
+    def __init__(self) -> None:
+        self.instances: list[FakePush] = []
+
+    def create(self, *args: Any, **kwargs: Any) -> FakePush:
+        """Stand in for the PushClient constructor."""
+        push = FakePush(*args, **kwargs)
+        self.instances.append(push)
+        return push
+
+    @property
+    def last(self) -> FakePush:
+        """Return the channel created last."""
+        return self.instances[-1]
+
+
+# ---------------------------------------------------------------- fixtures
+
+
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
+    """Load the integration from custom_components."""
+
+
+@pytest.fixture
+def cloud(aioclient_mock: AiohttpClientMocker) -> FakeCloud:
+    """The cloud with one account: a household with two boxes and three figures."""
+    fake = FakeCloud(aioclient_mock)
+    fake.add_account(
+        "main",
+        user_id=USER_ID,
+        email=EMAIL,
+        households=[{"id": HOUSEHOLD_ID, "name": HOUSEHOLD_NAME}],
+        boxes={HOUSEHOLD_ID: [tb2_box(), classic_box()]},
+        creative_tonies={HOUSEHOLD_ID: [creative_tonie()]},
+        content_tonies=[content_tonie()],
+        discs=[disc()],
+    )
+    return fake
+
+
+@pytest.fixture
+def push() -> Generator[PushChannels]:
+    """Replace the push channel by the fake."""
+    channels = PushChannels()
+    with patch("custom_components.storybox_plus.PushClient", side_effect=channels.create):
+        yield channels
+
+
+def entry_for(account: Account, options: dict[str, Any] | None = None) -> MockConfigEntry:
+    """Return a config entry as the config flow would have created it."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title=HOUSEHOLD_NAME,
+        unique_id=account.user_id,
+        data={CONF_REFRESH_TOKEN: account.refresh_token, CONF_USER_ID: account.user_id},
+        options=options,
+    )
+
+
+@pytest.fixture
+def config_entry(cloud: FakeCloud) -> MockConfigEntry:
+    """The entry of the main account, not yet set up."""
+    return entry_for(cloud.main)
+
+
+@pytest.fixture
+async def setup_entry(
+    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
+) -> MockConfigEntry:
+    """Set up the integration with the simulated cloud."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    return config_entry
+
+
+def entity_id(hass: HomeAssistant, domain: str, unique_id: str) -> str:
+    """Return the entity ID of one of our entities."""
+    found = er.async_get(hass).async_get_entity_id(domain, DOMAIN, unique_id)
+    assert found, f"no {domain} entity with unique_id {unique_id}"
+    return found
+
+
+def device(hass: HomeAssistant, entry: MockConfigEntry, box_id: str) -> dr.DeviceEntry | None:
+    """Return the device of a box, if the entry has one."""
+    return dr.async_get(hass).async_get_device_by_identifier((DOMAIN, box_id), entry.entry_id)
