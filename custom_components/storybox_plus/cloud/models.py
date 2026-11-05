@@ -76,12 +76,17 @@ class Tonie:
 
 @dataclass(frozen=True, slots=True)
 class TonieDetails:
-    """What the cloud tells about a figure once it stands on a box (playback info)."""
+    """What the cloud tells about a figure once it stands on a box (playback info).
+
+    status: "available" with the chapters, "outdated" when the box's content
+    version is behind (chapters missing), "unavailable" when the cloud has none.
+    """
 
     title: str | None = None
     series: str | None = None
     image_url: str | None = None
     chapters: tuple[Chapter, ...] = ()
+    status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +159,8 @@ class Playback:
     downloading: bool | None = None
     duration: float | None = None
     position: float | None = None
+    # The version of the content on the box; the cloud wants it to tell the chapters
+    content_version: int | None = None
     received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
@@ -375,12 +382,26 @@ def parse_disc(data: dict[str, Any]) -> Tonie | None:
 
 
 def parse_playback_info(data: dict[str, Any]) -> TonieDetails:
-    """Parse GET /playback-info/{box}/{tonie}: the chapters of the figure on a box."""
+    """Parse GET /playback-info/{box}/{tonie}: the chapters of the figure on a box.
+
+    These chapters carry no IDs; their position is their identity.
+    """
+    raw = data.get("chapters")
+    chapters = tuple(
+        Chapter(
+            id=str(index),
+            title=_text(item, "title") or _text(item, "tuneTitle") or "",
+            seconds=_number(item.get("seconds")),
+        )
+        for index, item in enumerate(raw if isinstance(raw, list) else [])
+        if isinstance(item, dict)
+    )
     return TonieDetails(
         title=_text(data, "title"),
         series=_text(data, "series"),
         image_url=_text(data, "tonieImageUrl", "coverUrl", "imageUrl"),
-        chapters=_chapters(data),
+        chapters=chapters,
+        status=_text(data, "status"),
     )
 
 
@@ -440,9 +461,18 @@ def parse_playback(data: dict[str, Any], now: float | None = None) -> Playback:
         position = max(0.0, position)
         if duration is not None:
             position = min(duration, position)
+    version = next(
+        (
+            _integer(v)
+            for k, v in data.items()
+            if "version" in k.lower() and _integer(v) is not None
+        ),
+        None,
+    )
     return Playback(
         tonie_id=tonie_id,
         chapter=_integer(data.get("chapter")),
+        content_version=version,
         paused=_flag(data.get("paused")),
         ended=_flag(data.get("ended")),
         downloading=_flag(data.get("downloading")),

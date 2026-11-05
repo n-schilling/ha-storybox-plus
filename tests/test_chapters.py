@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+import logging
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
@@ -19,6 +20,7 @@ from custom_components.storybox_plus.const import DOMAIN
 
 from .conftest import (
     BOX_ID,
+    CONTENT_VERSION,
     CREATIVE_ID,
     HOUSEHOLD_ID,
     PLAYBACK_INFO_IMAGE,
@@ -86,6 +88,8 @@ async def test_chapters_are_learned_from_the_box_at_setup(
     _bought_without_chapters(cloud)
     await _setup(hass, config_entry)
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    # Without a playback message the content version of the box is unknown
+    assert cloud.playback_info_versions == [0]
     coordinator = config_entry.runtime_data.coordinator
     tonie = coordinator.data.tonies[TONIE_ID]
     assert [c.title for c in tonie.chapters] == BOX_CHAPTERS
@@ -102,7 +106,7 @@ async def test_chapters_are_learned_from_the_box_at_setup(
     await client.send_json_auto_id({"type": f"{DOMAIN}/library"})
     result = await client.receive_json()
     listed = next(t for t in result["result"]["tonies"] if t["id"] == TONIE_ID)
-    assert [c["id"] for c in listed["chapters"]] == ["p1", "p2", "p3"]
+    assert [c["id"] for c in listed["chapters"]] == ["0", "1", "2"]
     # The next poll asks nothing new and keeps the chapters
     await coordinator.async_refresh()
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
@@ -170,9 +174,9 @@ async def test_learned_chapters_survive_a_restart(
                 "series": PLAYBACK_INFO_SERIES,
                 "image_url": PLAYBACK_INFO_IMAGE,
                 "chapters": [
-                    {"id": "p1", "title": "Box-Kapitel 1", "seconds": 180, "transcoding": False},
-                    {"id": "p2", "title": "Box-Kapitel 2", "seconds": 240, "transcoding": False},
-                    {"id": "p3", "title": "Box-Kapitel 3", "seconds": 60, "transcoding": True},
+                    {"id": "0", "title": "Box-Kapitel 1", "seconds": 180, "transcoding": False},
+                    {"id": "1", "title": "Box-Kapitel 2", "seconds": 240, "transcoding": False},
+                    {"id": "2", "title": "Box-Kapitel 3", "seconds": 60, "transcoding": False},
                 ],
             }
         }
@@ -257,7 +261,11 @@ async def test_damaged_store_is_ignored(
     assert [c.title for c in tonie.chapters] == BOX_CHAPTERS
 
 
-@pytest.mark.parametrize("answer", [None, playback_info(chapters=[])])
+@pytest.mark.parametrize(
+    "answer",
+    [None, playback_info(chapters=[]), playback_info(chapters=[], status="unavailable")],
+    ids=["404", "no chapters", "unavailable"],
+)
 async def test_unknown_figure_is_asked_once_per_run(
     hass: HomeAssistant,
     cloud: FakeCloud,
@@ -318,6 +326,40 @@ async def test_cloud_error_during_fetch_is_tolerated(
     assert [c.title for c in coordinator.data.tonies[TONIE_ID].chapters] == BOX_CHAPTERS
 
 
+async def test_outdated_content_is_asked_again(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A box whose content is outdated gets no chapters yet; it is asked again, with its version."""
+    caplog.set_level(logging.DEBUG, logger="custom_components.storybox_plus.coordinator")
+    _bought_without_chapters(cloud, known=False)
+    cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info(chapters=[], status="outdated")
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+    assert cloud.playback_info_versions == [0]
+    assert "No chapters for a figure (status outdated, content version 0)" in caplog.text
+    assert coordinator.data.tonies[TONIE_ID].chapters == ()
+    # The box reports its content version; placing the figure again asks with it
+    push.last.removed()
+    push.last.playback(tonie_id=TONIE_ID, chapter=0, content_version=CONTENT_VERSION)
+    await _background_done(hass, push)
+    assert cloud.playback_info_versions == [0, CONTENT_VERSION]
+    # So does the next poll, as long as the answer stays outdated
+    await coordinator.async_refresh()
+    assert cloud.playback_info_versions == [0, CONTENT_VERSION, CONTENT_VERSION]
+    # Once the cloud has the chapters they are learned and the figure is left alone
+    cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info()
+    await coordinator.async_refresh()
+    assert len(cloud.playback_info_calls) == 4
+    assert [c.title for c in coordinator.data.tonies[TONIE_ID].chapters] == BOX_CHAPTERS
+    assert _media_title(hass) == "Box-Kapitel 1"
+    await coordinator.async_refresh()
+    assert len(cloud.playback_info_calls) == 4
+
+
 async def test_placing_a_figure_fetches_its_chapters(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
 ) -> None:
@@ -328,9 +370,11 @@ async def test_placing_a_figure_fetches_its_chapters(
     await _setup(hass, config_entry)
     assert cloud.playback_info_calls == []
 
-    push.last.playback(tonie_id=TONIE_ID, chapter=2)
-    # Asked at once; until the cloud answers the figure's name stands in for the chapter
+    push.last.playback(tonie_id=TONIE_ID, chapter=2, content_version=CONTENT_VERSION)
+    # Asked at once, with the content version the box reported; until the cloud
+    # answers the figure's name stands in for the chapter
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    assert cloud.playback_info_versions == [CONTENT_VERSION]
     assert _media_title(hass) == TONIE_NAME
     gate.set()
     await _background_done(hass, push)

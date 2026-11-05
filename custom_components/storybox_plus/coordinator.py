@@ -311,13 +311,23 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
 
     async def _async_fetch_details(self, box_id: str, tonie_id: str) -> bool:
         """Ask the cloud for the chapters of the figure on a box; True when learned."""
+        box_state = self.data.boxes.get(box_id) if self.data else None
+        playback = box_state.playback if box_state else None
+        version = playback.content_version if playback and playback.content_version else 0
         try:
-            details = await self.client.async_playback_info(box_id, tonie_id)
+            details = await self.client.async_playback_info(box_id, tonie_id, version)
         except CloudError as err:
             _LOGGER.debug("Chapters of a figure not read: %s", err)
             return False
         if details is None or not details.chapters:
-            self._details_missing.add(tonie_id)
+            _LOGGER.debug(
+                "No chapters for a figure (status %s, content version %s)",
+                details.status if details else None,
+                version,
+            )
+            # "outdated" means the box's version was not the latest: worth asking again
+            if details is None or details.status != "outdated":
+                self._details_missing.add(tonie_id)
             return False
         self._details[tonie_id] = details
         self._details_store.async_delay_save(self._details_to_save, 10)

@@ -320,17 +320,34 @@ async def test_graphql_debug_log_holds_only_the_shape(
     assert "'t1'" not in shapes[0]
 
 
+def _playback_info_calls(aioclient_mock: AiohttpClientMocker) -> list[tuple[Any, ...]]:
+    """Return the playback-info calls, whatever content version they carried."""
+    return [c for c in aioclient_mock.mock_calls if c[1].with_query(None) == URL(PLAYBACK_INFO)]
+
+
 async def test_playback_info(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
-    """The figure on a box is read with its chapters."""
+    """The figure on a box is read with its chapters; the content version is 0 while unknown."""
     aioclient_mock.get(PLAYBACK_INFO, json=playback_info())
     details = await client.async_playback_info("box1", "t1")
     assert details is not None
     assert details.title == TONIE_NAME
     assert details.series == PLAYBACK_INFO_SERIES
-    assert [c.id for c in details.chapters] == ["p1", "p2", "p3"]
-    (call,) = _calls(aioclient_mock, PLAYBACK_INFO)
+    assert details.status == "available"
+    assert [c.id for c in details.chapters] == ["0", "1", "2"]
+    (call,) = _playback_info_calls(aioclient_mock)
     assert call[0] == "GET"
+    assert call[1].query == {"contentVersion": "0"}
     assert call[3] == {"Authorization": "Bearer access-1"}
+
+
+async def test_playback_info_sends_the_content_version(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """The version of the content the box holds goes along, as the cloud insists on it."""
+    aioclient_mock.get(PLAYBACK_INFO, json=playback_info())
+    assert await client.async_playback_info("box1", "t1", 1730000000) is not None
+    (call,) = _playback_info_calls(aioclient_mock)
+    assert str(call[1]) == f"{PLAYBACK_INFO}?contentVersion=1730000000"
 
 
 @pytest.mark.parametrize("status", [400, 404])
@@ -340,7 +357,7 @@ async def test_playback_info_unknown_figure(
     """A figure the cloud knows nothing about is no error, just nothing."""
     aioclient_mock.get(PLAYBACK_INFO, status=status, json={"message": "no"})
     assert await client.async_playback_info("box1", "t1") is None
-    assert len(_calls(aioclient_mock, PLAYBACK_INFO)) == 1
+    assert len(_playback_info_calls(aioclient_mock)) == 1
 
 
 async def test_playback_info_errors(

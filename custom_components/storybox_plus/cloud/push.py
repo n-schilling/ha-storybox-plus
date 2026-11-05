@@ -226,6 +226,7 @@ class PushClient:
         if subtopic == TOPIC_ONLINE:
             return PushEvent(mac, subtopic, parse_online(data))
         if subtopic == TOPIC_PLAYBACK:
+            _LOGGER.debug("Playback message with the keys %s", sorted(data))
             return PushEvent(mac, subtopic, parse_playback(data))
         if subtopic == TOPIC_VOLUME:
             return PushEvent(mac, subtopic, parse_volume(data))

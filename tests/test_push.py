@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Callable, Generator
 import contextlib
 import itertools
 import json
+import logging
 import ssl
 import time
 from types import SimpleNamespace
@@ -346,6 +347,29 @@ async def test_playback_messages(broker: FakeBroker, channel: Channel) -> None:
     assert isinstance(removed.data, Playback)
     assert removed.data.tonie_id is None
     assert not removed.data.playing
+
+
+async def test_playback_messages_are_logged_by_their_keys(
+    broker: FakeBroker, channel: Channel, caplog: pytest.LogCaptureFixture
+) -> None:
+    """With debug logging on, a playback message leaves only its keys in the log, no values."""
+    caplog.set_level(logging.DEBUG, logger="custom_components.storybox_plus.cloud.push")
+    broker.current.feed(
+        f"{TOPIC_PREFIX}/{MAC}/{TOPIC_PLAYBACK}",
+        json.dumps(
+            {"tonie": "t1-secret", "chapter": 7, "contentVersion": 1730000000, "paused": False}
+        ).encode(),
+    )
+    await channel.until(lambda: bool(channel.events))
+    (event,) = channel.events
+    assert isinstance(event.data, Playback)
+    assert event.data.content_version == 1730000000
+    logged = [r.message for r in caplog.records if "Playback message" in r.message]
+    assert logged == [
+        "Playback message with the keys ['chapter', 'contentVersion', 'paused', 'tonie']"
+    ]
+    assert "t1-secret" not in caplog.text
+    assert "1730000000" not in caplog.text
 
 
 @pytest.mark.parametrize(

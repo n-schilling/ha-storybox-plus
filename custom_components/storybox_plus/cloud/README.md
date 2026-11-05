@@ -15,9 +15,13 @@ written from scratch and imports nothing from Home Assistant.
 
 ## REST and GraphQL (`rest.py`)
 
+- The OpenAPI description of the REST API is public: `https://api.tonie.cloud/v2/doc/?format=openapi` (Swagger UI at `/v2/doc/`). It documents 56 endpoints; the figure library (`myContentTonies`, `myDiscs`) is GraphQL and not in it.
+
 - Base URL `https://api.prod.tcs.toys/v2`. `api.tonie.cloud/v2` is a CDN in front of it that lacks some endpoints (`/contenttonies`, `/discs`).
 - `GET /me` → `uuid` (the user name of the push channel). `GET /households`, `GET /households/{id}/tonieboxes`, `GET /households/{id}/creativetonies`; some lists come wrapped (`results`, `households`, `creativetonies`).
 - Boxes: tell the generation by the feature flag **`tngSettings`**, not by the field `generation` (`classic`, `rosered`, `tng`, `tb2g2`, …): the flag says what the box can do. `lastSeen` is camelCase. A classic box reports no figure and no battery; it is online while `lastSeen` is recent.
+- `GET /playback-info/{toniebox_id}/{tonie_id}?contentVersion=<int>` tells the chapters of the figure on a box. `contentVersion` is **required**: the version of the content the box holds (0 while unknown). The answer has `status` (`available` with chapters, `outdated` when the version is behind, `unavailable`), `tonieType`, `title`, `series`, `tonieImageUrl`, `coverUrl`, `transcoding` and `chapters[{title, seconds, tuneTitle, coverUrl}]` **without ids**: a chapter is its position. The GraphQL library returns bought figures with an empty `chapters` list, so this is the only source of their chapters.
+- `Toniebox.onlineState` is documented as `connected`/`offline`, but answers `unsupported` for the boxes seen; there is no "last seen" field in the API. `generation` is one of `classic`, `rosered`, `tng`, `tb2g2`, `pgs`; `product` e.g. `tbl`, `tb2`, `pgs`. `bleColorId` is an integer, `firmwareVersion` a string.
 - Content figures and discs come from GraphQL (`POST /graphql`, fields `myContentTonies` and `myDiscs`, Relay pagination with `first`/`after` and `pageInfo`; without paging the lists stop at 100). Creative figures come from REST and carry `secondsRemaining`, `secondsPresent`, `chaptersRemaining`.
 - Chapters of a creative figure are replaced with `PATCH /households/{id}/creativetonies/{id}` and a full `chapters` list; a chapter needs `file` (the file ID).
 - Upload (not implemented yet): `POST /file` returns a file ID and a presigned S3 POST; the audio goes to S3 with the form fields before the file and without the bearer token.

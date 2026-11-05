@@ -184,14 +184,20 @@ class CloudClient:
         nodes = await self._graphql_nodes("myDiscs", _DISC_FIELDS)
         return [t for node in nodes if (t := parse_disc(node))]
 
-    async def async_playback_info(self, box_id: str, tonie_id: str) -> TonieDetails | None:
+    async def async_playback_info(
+        self, box_id: str, tonie_id: str, content_version: int = 0
+    ) -> TonieDetails | None:
         """Return the chapters of the figure that stands on a box.
 
         The cloud tells the chapters of a bought figure only this way, for the
-        figure a box has in front of it. None when the cloud knows nothing.
+        figure a box has in front of it, and wants the version of the content
+        the box holds (from the push channel; 0 while unknown). None when the
+        cloud knows nothing.
         """
         try:
-            data = await self._request("GET", f"/playback-info/{box_id}/{tonie_id}")
+            data = await self._request(
+                "GET", f"/playback-info/{box_id}/{tonie_id}?contentVersion={int(content_version)}"
+            )
         except CloudResponseError as err:
             if err.status in (400, 404):
                 _LOGGER.debug("Playback info: the cloud answered %s", err.status)

@@ -285,15 +285,17 @@ def test_parse_disc() -> None:
 
 
 def test_parse_playback_info() -> None:
-    """The box tells title, series, picture and the chapters of the figure on it."""
+    """The box tells title, series, picture, status and the chapters of the figure on it."""
     details = parse_playback_info(playback_info())
     assert details.title == TONIE_NAME
     assert details.series == PLAYBACK_INFO_SERIES
     assert details.image_url == PLAYBACK_INFO_IMAGE
+    assert details.status == "available"
+    # These chapters carry no IDs: their position is their identity
     assert [(c.id, c.title, c.seconds, c.transcoding) for c in details.chapters] == [
-        ("p1", "Box-Kapitel 1", 180.0, False),
-        ("p2", "Box-Kapitel 2", 240.0, False),
-        ("p3", "Box-Kapitel 3", 60.0, True),
+        ("0", "Box-Kapitel 1", 180.0, False),
+        ("1", "Box-Kapitel 2", 240.0, False),
+        ("2", "Box-Kapitel 3", 60.0, False),
     ]
     assert all(c.file is None for c in details.chapters)
 
@@ -302,16 +304,34 @@ def test_parse_playback_info_without_fields() -> None:
     """Missing or odd fields leave the details empty instead of failing."""
     assert parse_playback_info({}) == TonieDetails()
     sparse = parse_playback_info(
-        {"title": "", "series": 5, "tonieImageUrl": None, "chapters": "none"}
+        {"title": "", "series": 5, "tonieImageUrl": None, "chapters": "none", "status": 1}
     )
-    assert sparse == TonieDetails(title=None, series=None, image_url=None, chapters=())
+    assert sparse == TonieDetails(title=None, series=None, image_url=None, chapters=(), status=None)
+    # The title falls back to the tune's; items that are no objects are left out
     broken = parse_playback_info(
-        playback_info(chapters=[{"id": "a", "title": "A"}, "x", {"title": "no id"}, {"id": "b"}])
+        playback_info(
+            chapters=[
+                {"title": "A", "tuneTitle": "Tune A"},
+                {"tuneTitle": "Tune B", "seconds": "5"},
+                {"title": "", "tuneTitle": "Tune C", "seconds": 5},
+                {"coverUrl": "https://img/cover"},
+                "x",
+            ]
+        )
     )
     assert [(c.id, c.title, c.seconds) for c in broken.chapters] == [
-        ("a", "A", None),
-        ("b", "", None),
+        ("0", "A", None),
+        ("1", "Tune B", None),
+        ("2", "Tune C", 5.0),
+        ("3", "", None),
     ]
+
+
+@pytest.mark.parametrize("status", ["available", "outdated", "unavailable", None, 5, ""])
+def test_parse_playback_info_status(status: Any) -> None:
+    """The status comes as the cloud spells it; anything but a text is unknown."""
+    expected = status if isinstance(status, str) and status else None
+    assert parse_playback_info(playback_info(status=status)).status == expected
 
 
 @pytest.mark.parametrize(
@@ -474,6 +494,24 @@ def test_parse_playback_without_position() -> None:
     assert parse_playback({"id": "t3"}, now=now).tonie_id == "t3"
     assert parse_playback({"tonie": {"name": "no id"}}, now=now).tonie_id is None
     assert parse_playback({"tonie": "", "paused": "no"}, now=now).paused is None
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"contentVersion": 1730000000}, 1730000000),
+        ({"CONTENT_VERSION": 42.0}, 42),
+        ({}, None),
+        ({"contentVersion": "1730000000"}, None),
+        ({"contentVersion": True}, None),
+        ({"contentVersion": None, "version": 7}, 7),
+    ],
+)
+def test_parse_playback_content_version(fields: dict[str, Any], expected: int | None) -> None:
+    """The content version is any integer under a key that mentions a version; else unknown."""
+    playback = parse_playback({"tonie": "t1", **fields}, now=EPOCH.timestamp())
+    assert playback.content_version == expected
+    assert playback.tonie_id == "t1"
 
 
 def test_parse_playback_uses_the_clock() -> None:

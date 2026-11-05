@@ -184,14 +184,15 @@ def disc(disc_id: str = DISC_ID, name: str = DISC_NAME) -> dict[str, Any]:
     }
 
 
-# What the box tells about the figure on it; the library knows these chapters not
+# What the box tells about the figure on it; these chapters carry no IDs
 PLAYBACK_INFO_SERIES = "Box-Serie"
 PLAYBACK_INFO_IMAGE = "https://img.example.com/box-t1.png"
 PLAYBACK_INFO_CHAPTERS: list[dict[str, Any]] = [
-    {"id": "p1", "title": "Box-Kapitel 1", "seconds": 180, "transcoding": False},
-    {"id": "p2", "title": "Box-Kapitel 2", "seconds": 240, "transcoding": False},
-    {"id": "p3", "title": "Box-Kapitel 3", "seconds": 60, "transcoding": True},
+    {"title": "Box-Kapitel 1", "seconds": 180, "tuneTitle": "Lied 1", "coverUrl": None},
+    {"title": "Box-Kapitel 2", "seconds": 240, "tuneTitle": "Lied 2", "coverUrl": None},
+    {"title": "Box-Kapitel 3", "seconds": 60, "tuneTitle": "Lied 3", "coverUrl": None},
 ]
+CONTENT_VERSION = 1730000000
 
 
 def playback_info(
@@ -199,12 +200,14 @@ def playback_info(
     series: str | None = PLAYBACK_INFO_SERIES,
     image_url: str | None = PLAYBACK_INFO_IMAGE,
     chapters: list[dict[str, Any]] | None = None,
+    status: str | None = "available",
 ) -> dict[str, Any]:
     """Return GET /playback-info/{box}/{tonie}: the figure as the box sees it."""
     return {
         "title": name,
         "series": series,
         "tonieImageUrl": image_url,
+        "status": status,
         "chapters": PLAYBACK_INFO_CHAPTERS if chapters is None else chapters,
     }
 
@@ -291,6 +294,8 @@ class FakeCloud:
         self.token_calls: list[dict[str, str]] = []
         self.graphql_calls: list[tuple[str, str | None]] = []
         self.playback_info_calls: list[tuple[str, str]] = []
+        # The contentVersion each playback-info call carried
+        self.playback_info_versions: list[int] = []
         mocker.post(TOKEN_URL, side_effect=self._token)
         mocker.get(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
         mocker.post(f"{API_BASE}/graphql", side_effect=self._graphql)
@@ -382,6 +387,11 @@ class FakeCloud:
         if match := re.fullmatch(r"/playback-info/([^/]+)/([^/]+)", path):
             box_id, tonie_id = match.groups()
             self.playback_info_calls.append((box_id, tonie_id))
+            # The cloud insists on the version of the content the box holds
+            version = url.query.get("contentVersion")
+            if version is None or not version.isdigit():
+                return _json(method, url, 400, {"message": "contentVersion is required"})
+            self.playback_info_versions.append(int(version))
             if account.playback_info_gate is not None:
                 await account.playback_info_gate.wait()
             if account.playback_info_status is not None:
@@ -479,6 +489,7 @@ class FakePush(PushClient):
         position: float | None = 50.0,
         ended: bool | None = False,
         downloading: bool | None = False,
+        content_version: int | None = None,
         mac: str = MAC,
     ) -> None:
         """Deliver playback/state."""
@@ -492,6 +503,7 @@ class FakePush(PushClient):
                 downloading=downloading,
                 duration=duration,
                 position=position,
+                content_version=content_version,
             ),
             mac,
         )
