@@ -116,7 +116,7 @@ actions:
 
 - **Boxes**: every box with its live state. For a Toniebox 2 also how long a charge lasts: every discharge from leaving the charger to the next charge, with the hours the box was switched on, the percent used and the projection for a full charge; the average of the latest charges on top.
 - **Figures**: the household's library with search, a filter by kind, the chapters, and which figure stands on a box right now. The cloud names the chapters of bought figures but not their lengths; the lengths are learned from a Toniebox 2 the first time the figure plays on it, and kept.
-- **Listening**: the most played figures, the total listening time, listening per day and per box, for the last 7, 30 or 365 days or since the setup.
+- **Listening**: the most played figures, the total listening time, listening per day and per box, for the last 7, 30 or 365 days or since the setup. A note at the top says where the numbers come from: Home Assistant counts them itself, they are not read from the cloud.
 
 The statistics are daily sums per figure and box, nothing more: no single plays, no times of day. The charge history keeps per discharge the day it ended, its hours and its percentages, also without times of day. They are kept in the integration's own store, not in the recorder, and start with the setup; the cloud offers no history. Only a Toniebox 2 reports playback, so only its listening is counted, and the page says so.
 

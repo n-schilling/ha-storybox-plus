@@ -23,6 +23,7 @@ if (!customElements.get("storybox-plus-panel")) {
     flash: "M7,2V13H10V22L17,10H13L17,2H7Z",
     volume: "M5,9V15H9L14,20V4L9,9M18.5,12C18.5,10.23 17.5,8.71 16,7.97V16C17.5,15.29 18.5,13.76 18.5,12Z",
     sleep: "M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z",
+    info: "M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z",
   };
 
   // Tab id (also the URL hash), icon, text
@@ -62,7 +63,8 @@ if (!customElements.get("storybox-plus-panel")) {
       lastDays: "last {n} days", since: "since {d}", sinceSetup: "since the setup",
       total: "Listening time", top: "Most played", perDay: "Per day", perWeek: "Per week", perBox: "Per box",
       weekOf: "Week of {d}",
-      noteClassic: "Only a Toniebox 2 reports playback; the classic box is not counted.",
+      noteLocalTitle: "Counted locally",
+      noteLocal: "Home Assistant counts the listening time itself, from what a Toniebox 2 reports live. It does not come from the manufacturer's cloud and so cannot be complete: it starts with the setup, the classic Toniebox is missing, and so is anything played while Home Assistant was not running.",
       disabled: "Counting is switched off in the integration's options.", noStats: "Nothing was counted yet.",
     },
     de: {
@@ -91,7 +93,8 @@ if (!customElements.get("storybox-plus-panel")) {
       lastDays: "letzte {n} Tage", since: "seit {d}", sinceSetup: "seit der Einrichtung",
       total: "Hörzeit", top: "Meistgehört", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Pro Box",
       weekOf: "Woche vom {d}",
-      noteClassic: "Nur eine Toniebox 2 meldet Wiedergabe; die klassische Box wird nicht gezählt.",
+      noteLocalTitle: "Lokal mitgezählt",
+      noteLocal: "Home Assistant zählt die Hörzeit selbst mit, aus dem, was eine Toniebox 2 live meldet. Sie stammt nicht aus der Hersteller-Cloud und ist deshalb nicht vollständig: Sie beginnt mit der Einrichtung, die klassische Toniebox fehlt, und Zeiten, in denen Home Assistant nicht lief, fehlen ebenso.",
       disabled: "Das Zählen ist in den Optionen der Integration ausgeschaltet.", noStats: "Noch nichts gezählt.",
     },
   };
@@ -607,15 +610,16 @@ if (!customElements.get("storybox-plus-panel")) {
       const err = this._errors[`stats:${range}`];
       const chips = RANGES.map(([k]) =>
         `<button class="chip pick${range === k ? " on" : ""}" data-range="${k}">${esc(t[`range_${k}`])}</button>`).join("");
-      const note = `<div class="muted small note">${esc(t.noteClassic)}</div>`;
-      let html = `<div class="filters"><div class="chips">${chips}</div></div>`;
-      if (!s) return html + (err ? this._fail(err) : this._loading()) + note;
+      // Where the numbers come from, and so what they cannot contain: above everything else
+      const note = `<div class="alert notice">${icon("info")}<div><div class="notice-title">${esc(t.noteLocalTitle)}</div>${esc(t.noteLocal)}</div></div>`;
+      let html = note + `<div class="filters"><div class="chips">${chips}</div></div>`;
+      if (!s) return html + (err ? this._fail(err) : this._loading());
       if (err) html += this._fail(err);
       if (!s.enabled) html += this._alert(t.disabled);
       const label = s.days ? fill(t.lastDays, { n: s.days }) : s.first_day ? fill(t.since, { d: this._date(s.first_day, true) }) : t.sinceSetup;
       html += this._card("", `<div class="total"><span class="big">${esc(hm(s.total_seconds))}</span><span class="unit">h</span></div>` +
         `<div class="muted">${esc(t.total)} · ${esc(label)}</div>`);
-      if (!s.total_seconds && !s.top.length) return html + this._card("", `<div class="muted">${esc(t.noStats)}</div>`) + note;
+      if (!s.total_seconds && !s.top.length) return html + this._card("", `<div class="muted">${esc(t.noStats)}</div>`);
       const max = Math.max(...s.top.map((x) => x.seconds), 1);
       if (s.top.length) {
         html += this._card(esc(t.top), `<ol class="top">${s.top.map((x, i) =>
@@ -627,7 +631,7 @@ if (!customElements.get("storybox-plus-panel")) {
         html += this._card(esc(t.perBox), `<table class="kv">${s.per_box.map((b) =>
           `<tr><th>${esc(b.name || b.box_id)}</th><td>${esc(hm(b.seconds))} h</td></tr>`).join("")}</table>`);
       }
-      return html + note;
+      return html;
     }
 
     // One bar per day of the window, per week when there are many; empty days stay empty
@@ -789,6 +793,9 @@ if (!customElements.get("storybox-plus-panel")) {
     background: color-mix(in srgb, var(--info-color, #039be5) 12%, transparent); }
   .alert.warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 16%, transparent); }
   .alert.err { background: color-mix(in srgb, var(--error-color, #db4437) 14%, transparent); }
+  .alert.notice { display: flex; gap: 12px; align-items: flex-start; }
+  .alert.notice .mdi { flex: none; width: 24px; height: 24px; fill: var(--info-color, #039be5); }
+  .notice-title { font-weight: 500; }
   .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
   .search { display: flex; align-items: center; gap: 8px; flex: 1 1 240px; height: 40px; padding: 0 12px; border-radius: 20px;
     background: var(--card-background-color); border: 1px solid var(--divider-color); color: var(--secondary-text-color); }
@@ -843,7 +850,6 @@ if (!customElements.get("storybox-plus-panel")) {
   .chart .fill { fill: var(--primary-color); pointer-events: none; }
   .chart .hit { fill: transparent; }
   .chart .hit:hover { fill: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
-  .note { margin: 0 4px 16px; }
   `;
 
   customElements.define("storybox-plus-panel", StoryboxPlusPanel);
