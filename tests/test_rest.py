@@ -29,10 +29,13 @@ from custom_components.storybox_plus.cloud.auth import TOKEN_URL
 from custom_components.storybox_plus.cloud.rest import API_BASE, PAGE_SIZE, _shape
 
 from .conftest import (
+    DISC_NAME,
+    GRAPHQL_REFUSED,
     JSON_HEADERS,
     PLAYBACK_INFO_SERIES,
     TONIE_NAME,
     classic_box,
+    connection_node,
     content_tonie,
     creative_tonie,
     disc,
@@ -67,6 +70,13 @@ def _page(field: str, nodes: list[dict[str, Any]], cursor: str | None = None) ->
                 "edges": [{"node": node} for node in nodes],
             }
         }
+    }
+
+
+def _households(*households: tuple[Any, Any]) -> dict[str, Any]:
+    """Return the answer of the library query: figures under their households."""
+    return {
+        "data": {"households": [{"id": hid, "contentTonies": nodes} for hid, nodes in households]}
     }
 
 
@@ -215,24 +225,127 @@ async def test_boxes_and_creative_tonies(
 
 
 async def test_graphql_pagination(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
-    """Every page of the connection is read until hasNextPage is false."""
+    """Every page of a connection is read until hasNextPage is false."""
     pages = {
-        None: _page("myContentTonies", [content_tonie("t1"), content_tonie("t2")], cursor="c2"),
-        "c2": _page("myContentTonies", [content_tonie("t3")]),
+        None: _page("myDiscs", [disc("d1"), disc("d2")], cursor="c2"),
+        "c2": _page("myDiscs", [disc("d3")]),
     }
 
     async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
+        assert f"myDiscs(first: {PAGE_SIZE}, after: $cursor)" in data["query"]
+        return AiohttpClientMockResponse(
+            method=method, url=url, json=pages[data["variables"]["cursor"]]
+        )
+
+    aioclient_mock.post(GRAPHQL, side_effect=graphql)
+    discs = await client.async_discs()
+    assert [d.id for d in discs] == ["d1", "d2", "d3"]
+    assert all(d.kind is TonieKind.DISC for d in discs)
+    calls = _calls(aioclient_mock, GRAPHQL)
+    assert [c[2]["variables"] for c in calls] == [{"cursor": None}, {"cursor": "c2"}]
+
+
+async def test_content_tonies_library_query(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """One query lists the bought figures under their households, with their chapter names."""
+
+    async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
+        assert data["query"].startswith("query { households { id contentTonies {")
+        assert "chapters { name }" in data["query"]
+        assert data["variables"] == {}
+        body = _households(
+            ("hh1", [content_tonie("t1"), "junk", {"title": "no id"}]),
+            ("hh2", [content_tonie("t2", household_id="hh9")]),
+            (5, [content_tonie("t3")]),
+            ("hh3", None),
+        )
+        body["data"]["households"] += ["junk", {"contentTonies": [content_tonie("t4")]}]
+        return AiohttpClientMockResponse(method=method, url=url, json=body)
+
+    aioclient_mock.post(GRAPHQL, side_effect=graphql)
+    tonies = await client.async_content_tonies()
+    assert [(t.id, t.household_id, t.kind) for t in tonies] == [
+        ("t1", "hh1", TonieKind.CONTENT),
+        ("t2", "hh2", TonieKind.CONTENT),
+    ]
+    assert [(c.id, c.title) for c in tonies[0].chapters] == [("0", "Kapitel 1"), ("1", "Kapitel 2")]
+    assert tonies[0].seconds == 500
+    assert len(_calls(aioclient_mock, GRAPHQL)) == 1
+
+
+@pytest.mark.parametrize(
+    "answer", [GRAPHQL_REFUSED, {"data": {"households": "junk"}}, {"data": {}}]
+)
+async def test_content_tonies_fall_back_to_the_connection(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient, answer: dict[str, Any]
+) -> None:
+    """A refused library query is followed by the older connection query, without chapters."""
+    pages = {
+        None: _page("myContentTonies", [connection_node(content_tonie("t1"))], cursor="c2"),
+        "c2": _page("myContentTonies", [connection_node(content_tonie("t2"))]),
+    }
+
+    async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
+        if "myContentTonies" not in data["query"]:
+            return AiohttpClientMockResponse(method=method, url=url, json=answer)
         assert f"myContentTonies(first: {PAGE_SIZE}, after: $cursor)" in data["query"]
+        assert "chapters" not in data["query"]
         return AiohttpClientMockResponse(
             method=method, url=url, json=pages[data["variables"]["cursor"]]
         )
 
     aioclient_mock.post(GRAPHQL, side_effect=graphql)
     tonies = await client.async_content_tonies()
-    assert [t.id for t in tonies] == ["t1", "t2", "t3"]
-    assert all(t.kind is TonieKind.CONTENT for t in tonies)
+    assert [(t.id, t.household_id, t.chapters, t.seconds) for t in tonies] == [
+        ("t1", "hh1", (), 0),
+        ("t2", "hh1", (), 0),
+    ]
+    assert tonies[0].language == "Deutsch"
     calls = _calls(aioclient_mock, GRAPHQL)
-    assert [c[2]["variables"] for c in calls] == [{"cursor": None}, {"cursor": "c2"}]
+    assert [c[2]["variables"] for c in calls] == [{}, {"cursor": None}, {"cursor": "c2"}]
+
+
+async def test_content_tonie_detail(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """The app's detail query reads one figure of a household; anything else is not found."""
+    answers = iter(
+        [
+            _households(("hh1", [content_tonie("t1")])),
+            _households(),
+            _households(("hh1", [])),
+            {"data": {"households": ["junk", {"contentTonies": ["junk", {"title": "no id"}]}]}},
+        ]
+    )
+
+    async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
+        assert "households(id: $householdId)" in data["query"]
+        assert "contentTonies(id: $contentTonieId)" in data["query"]
+        assert data["variables"] == {"householdId": "hh1", "contentTonieId": "t1"}
+        return AiohttpClientMockResponse(method=method, url=url, json=next(answers))
+
+    aioclient_mock.post(GRAPHQL, side_effect=graphql)
+    tonie = await client.async_content_tonie("hh1", "t1")
+    assert tonie is not None
+    assert (tonie.id, tonie.household_id, tonie.kind) == ("t1", "hh1", TonieKind.CONTENT)
+    assert [c.title for c in tonie.chapters] == ["Kapitel 1", "Kapitel 2"]
+    for _ in range(3):
+        assert await client.async_content_tonie("hh1", "t1") is None
+    assert len(_calls(aioclient_mock, GRAPHQL)) == 4
+
+
+async def test_content_tonie_detail_errors(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """A refused detail query is a response error, a lost connection a connection error."""
+    aioclient_mock.post(GRAPHQL, json=GRAPHQL_REFUSED)
+    with pytest.raises(CloudResponseError, match="GraphQL answered no data"):
+        await client.async_content_tonie("hh1", "t1")
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(GRAPHQL, exc=aiohttp.ClientConnectionError("down"))
+    with pytest.raises(CloudConnectionError):
+        await client.async_content_tonie("hh1", "t1")
 
 
 async def test_graphql_tolerates_odd_pages(
@@ -278,13 +391,15 @@ def test_shape_names_types_and_sizes_only() -> None:
         "id": "str[2]",
         "householdId": "str[3]",
         "title": "str[15]",
+        "lock": False,
         "imageUrl": "str[30]",
         "coverUrl": None,
-        "lock": False,
         "languageName": "Deutsch",
+        "languageUnicode": "str[5]",
         "salesId": "str[3]",
         "series": "dict['name']",
         "chapters": "list[2]",
+        "secondsPresent": 500,
     }
     assert _shape({"count": 3, "ratio": 1.5, "language": "de", "lock": True, "b": {}}) == {
         "count": 3,
@@ -301,8 +416,8 @@ async def test_graphql_debug_log_holds_only_the_shape(
     """With debug logging on, the first node's shape is logged once per query, without names."""
     caplog.set_level(logging.DEBUG, logger="custom_components.storybox_plus.cloud.rest")
     pages = {
-        None: _page("myContentTonies", [content_tonie("t1"), content_tonie("t2")], cursor="c2"),
-        "c2": _page("myContentTonies", [content_tonie("t3")]),
+        None: _page("myDiscs", [disc("d1"), disc("d2")], cursor="c2"),
+        "c2": _page("myDiscs", [disc("d3")]),
     }
 
     async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
@@ -311,13 +426,13 @@ async def test_graphql_debug_log_holds_only_the_shape(
         )
 
     aioclient_mock.post(GRAPHQL, side_effect=graphql)
-    await client.async_content_tonies()
+    await client.async_discs()
     shapes = [r.message for r in caplog.records if "shape of the first node" in r.message]
     assert len(shapes) == 1
-    assert "'title': 'str[15]'" in shapes[0]
-    assert "'chapters': 'list[2]'" in shapes[0]
-    assert TONIE_NAME not in shapes[0]
-    assert "'t1'" not in shapes[0]
+    assert "'title': 'str[9]'" in shapes[0]
+    assert "'coverImageUrl': 'str[30]'" in shapes[0]
+    assert DISC_NAME not in shapes[0]
+    assert "'d1'" not in shapes[0]
 
 
 def _playback_info_calls(aioclient_mock: AiohttpClientMocker) -> list[tuple[Any, ...]]:
@@ -395,18 +510,19 @@ async def test_library(aioclient_mock: AiohttpClientMocker, client: CloudClient)
         if "myDiscs" in data["query"]:
             body = _page("myDiscs", [disc()])
         else:
-            body = _page("myContentTonies", [content_tonie()])
+            body = _households(("hh1", []), ("hh2", [content_tonie()]))
         return AiohttpClientMockResponse(method=method, url=url, json=body)
 
     aioclient_mock.post(GRAPHQL, side_effect=graphql)
     library = await client.async_library()
     assert [h.id for h in library.households] == ["hh1", "hh2"]
     assert [(b.id, b.household_id) for b in library.boxes] == [("box1", "hh1"), ("box2", "hh2")]
-    assert [(t.id, t.kind) for t in library.tonies] == [
-        ("c1", TonieKind.CREATIVE),
-        ("t1", TonieKind.CONTENT),
-        ("d1", TonieKind.DISC),
+    assert [(t.id, t.kind, t.household_id) for t in library.tonies] == [
+        ("c1", TonieKind.CREATIVE, "hh1"),
+        ("t1", TonieKind.CONTENT, "hh2"),
+        ("d1", TonieKind.DISC, "hh1"),
     ]
+    assert [c.title for c in library.tonies[1].chapters] == ["Kapitel 1", "Kapitel 2"]
 
 
 async def test_library_without_discs(
@@ -419,7 +535,7 @@ async def test_library_without_discs(
         if "myDiscs" in data["query"]:
             body: Any = {"errors": [{"message": "no discs"}]}
         else:
-            body = _page("myContentTonies", [content_tonie()])
+            body = _households(("hh1", [content_tonie()]))
         return AiohttpClientMockResponse(method=method, url=url, json=body)
 
     aioclient_mock.post(GRAPHQL, side_effect=graphql)
@@ -437,7 +553,7 @@ async def test_library_passes_on_connection_errors(
     async def graphql(method: str, url: URL, data: dict[str, Any]) -> AiohttpClientMockResponse:
         if "myDiscs" in data["query"]:
             raise aiohttp.ClientConnectionError("down")
-        return AiohttpClientMockResponse(method=method, url=url, json=_page("myContentTonies", []))
+        return AiohttpClientMockResponse(method=method, url=url, json=_households())
 
     aioclient_mock.post(GRAPHQL, side_effect=graphql)
     with pytest.raises(CloudConnectionError):

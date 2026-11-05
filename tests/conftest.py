@@ -134,25 +134,45 @@ def content_tonie(
     name: str = TONIE_NAME,
     household_id: str = HOUSEHOLD_ID,
     chapters: list[dict[str, Any]] | None = None,
+    seconds_present: float | None = 500,
 ) -> dict[str, Any]:
-    """Return a node of the GraphQL field myContentTonies."""
+    """Return a bought figure as the library query lists it under its household.
+
+    The chapters there carry names only. ``householdId`` is not part of that
+    answer: the fake groups by it, and the older connection query (the
+    fallback) carries it. Both language fields are present, as each of the two
+    queries asks for one of them.
+    """
     if chapters is None:
-        chapters = [
-            {"id": "k1", "title": "Kapitel 1", "seconds": 300, "transcoding": False},
-            {"id": "k2", "title": "Kapitel 2", "seconds": 200, "transcoding": False},
-        ]
+        chapters = [{"name": "Kapitel 1"}, {"name": "Kapitel 2"}]
     return {
         "id": tonie_id,
         "householdId": household_id,
         "title": name,
+        "lock": False,
         "imageUrl": f"https://img.example.com/{tonie_id}.png",
         "coverUrl": None,
-        "lock": False,
         "languageName": "Deutsch",
+        "languageUnicode": "de-de",
         "salesId": "123",
         "series": {"name": TONIE_SERIES},
         "chapters": chapters,
+        "secondsPresent": seconds_present,
     }
+
+
+def connection_node(node: dict[str, Any]) -> dict[str, Any]:
+    """Return a figure as the older connection query myContentTonies lists it: no chapters."""
+    return {
+        k: v for k, v in node.items() if k not in ("chapters", "secondsPresent", "languageUnicode")
+    }
+
+
+# What a refused GraphQL query answers: errors, no data
+GRAPHQL_REFUSED: dict[str, Any] = {
+    "errors": [{"message": 'Cannot query field "households" on type "Query"'}],
+    "data": None,
+}
 
 
 def creative_tonie(tonie_id: str = CREATIVE_ID, name: str = CREATIVE_NAME) -> dict[str, Any]:
@@ -237,6 +257,11 @@ class Account:
     playback_info_status: int | None = None
     # Every playback-info call waits for this event before it answers
     playback_info_gate: asyncio.Event | None = None
+    # The app's library query (households with their contentTonies) is refused:
+    # the client falls back to the older connection query, which has no chapters
+    library_query_refused: bool = False
+    # The app's detail query (one contentTonie of a household) is refused
+    detail_query_refused: bool = False
     page_size: int = 100
     households: list[dict[str, Any]] = field(default_factory=list)
     boxes: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -245,6 +270,9 @@ class Account:
     discs: list[dict[str, Any]] = field(default_factory=list)
     # What GET /playback-info/{box}/{tonie} answers; a pair not listed is a 404
     playback_info: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    # What the detail query answers per figure; a figure not listed answers with its
+    # node from content_tonies, None means the cloud does not find it
+    content_tonie_details: dict[str, dict[str, Any] | None] = field(default_factory=dict)
     tokens_issued: int = 0
     refresh_token: str = ""
     access_tokens: set[str] = field(default_factory=set)
@@ -296,6 +324,8 @@ class FakeCloud:
         self.playback_info_calls: list[tuple[str, str]] = []
         # The contentVersion each playback-info call carried
         self.playback_info_versions: list[int] = []
+        # The (household, figure) pairs the detail query was asked for
+        self.detail_calls: list[tuple[str | None, str | None]] = []
         mocker.post(TOKEN_URL, side_effect=self._token)
         mocker.get(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
         mocker.post(f"{API_BASE}/graphql", side_effect=self._graphql)
@@ -408,9 +438,45 @@ class FakeCloud:
         if isinstance(account, AiohttpClientMockResponse):
             return account
         query: str = data["query"]
-        cursor: str | None = data["variables"]["cursor"]
+        variables: dict[str, Any] = data.get("variables") or {}
+        if "contentTonies(id:" in query:
+            # The app's detail query: one figure of one household
+            household_id, tonie_id = variables.get("householdId"), variables.get("contentTonieId")
+            self.detail_calls.append((household_id, tonie_id))
+            if account.detail_query_refused:
+                return _json(method, url, 200, GRAPHQL_REFUSED)
+            if tonie_id in account.content_tonie_details:
+                node = account.content_tonie_details[tonie_id]
+            else:
+                node = next(
+                    (
+                        t
+                        for t in account.content_tonies
+                        if t["id"] == tonie_id and t["householdId"] == household_id
+                    ),
+                    None,
+                )
+            household = {"id": household_id, "contentTonies": [node] if node else []}
+            return _json(method, url, 200, {"data": {"households": [household]}})
+        if "households {" in query:
+            # The app's library query: every household with its figures and their chapter names
+            self.graphql_calls.append(("households", None))
+            if account.library_query_refused:
+                return _json(method, url, 200, GRAPHQL_REFUSED)
+            households = [
+                {
+                    "id": h["id"],
+                    "contentTonies": [
+                        t for t in account.content_tonies if t["householdId"] == h["id"]
+                    ],
+                }
+                for h in account.households
+            ]
+            return _json(method, url, 200, {"data": {"households": households}})
+        cursor: str | None = variables.get("cursor")
         if "myContentTonies" in query:
-            fld, nodes = "myContentTonies", account.content_tonies
+            fld = "myContentTonies"
+            nodes = [connection_node(t) for t in account.content_tonies]
         elif "myDiscs" in query:
             fld, nodes = "myDiscs", account.discs
         else:

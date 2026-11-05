@@ -67,10 +67,14 @@ class Tonie:
     seconds_remaining: float | None = None
     chapters_remaining: int | None = None
     transcoding: bool = False
+    # The length of the content as the library states it, where the chapters carry none
+    seconds_total: float | None = None
 
     @property
     def seconds(self) -> float:
-        """Return the total length of the chapters."""
+        """Return the total length of the content."""
+        if self.seconds_total is not None:
+            return self.seconds_total
         return sum(c.seconds or 0 for c in self.chapters)
 
 
@@ -342,10 +346,26 @@ def parse_creative_tonie(data: dict[str, Any], household_id: str) -> Tonie | Non
     )
 
 
-def parse_content_tonie(data: dict[str, Any]) -> Tonie | None:
-    """Parse one node of the GraphQL field myContentTonies."""
+def _content_chapters(data: dict[str, Any]) -> tuple[Chapter, ...]:
+    """The chapters of a bought figure: names in order, no IDs, no lengths."""
+    raw = data.get("chapters")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        Chapter(
+            id=str(index),
+            title=_text(item, "name", "title") or "",
+            seconds=_number(item.get("seconds")),
+        )
+        for index, item in enumerate(raw)
+        if isinstance(item, dict)
+    )
+
+
+def parse_content_tonie(data: dict[str, Any], household_id: str | None = None) -> Tonie | None:
+    """Parse one bought figure of the GraphQL library (households.contentTonies or myContentTonies)."""
     tonie_id = _text(data, "id")
-    household_id = _text(data, "householdId")
+    household_id = household_id or _text(data, "householdId")
     if tonie_id is None or household_id is None:
         return None
     series = data.get("series")
@@ -357,9 +377,10 @@ def parse_content_tonie(data: dict[str, Any]) -> Tonie | None:
         name=_text(data, "title") or series_name or "Tonie",
         series=series_name,
         image_url=_text(data, "imageUrl", "coverUrl"),
-        language=_text(data, "languageName"),
+        language=_text(data, "languageName", "languageUnicode"),
         locked=bool(data.get("lock")),
-        chapters=_chapters(data),
+        chapters=_content_chapters(data),
+        seconds_total=_number(data.get("secondsPresent")),
     )
 
 

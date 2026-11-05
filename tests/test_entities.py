@@ -251,7 +251,7 @@ async def test_player_title_fallbacks(
     assert _player(hass).attributes["media_title"] == TONIE_NAME
     assert "media_track" not in _player(hass).attributes
 
-    cloud.main.content_tonies[0]["chapters"][1]["title"] = ""
+    cloud.main.content_tonies[0]["chapters"][1]["name"] = ""
     await setup_entry.runtime_data.coordinator.async_refresh()
     push.last.playback(chapter=1)
     assert _player(hass).attributes["media_title"] == TONIE_NAME

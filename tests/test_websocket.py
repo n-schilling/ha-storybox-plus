@@ -218,8 +218,8 @@ async def test_library(
         "locked": False,
         "seconds": 500,
         "chapters": [
-            {"id": "k1", "title": "Kapitel 1", "seconds": 300, "transcoding": False},
-            {"id": "k2", "title": "Kapitel 2", "seconds": 200, "transcoding": False},
+            {"id": "0", "title": "Kapitel 1", "seconds": None, "transcoding": False},
+            {"id": "1", "title": "Kapitel 2", "seconds": None, "transcoding": False},
         ],
         "seconds_remaining": None,
         "chapters_remaining": None,

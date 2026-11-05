@@ -38,6 +38,7 @@ from .cloud import (
     SleepTimer,
     Tonie,
     TonieDetails,
+    TonieKind,
     Volume,
 )
 from .const import (
@@ -51,6 +52,9 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 type PlacementListener = Callable[[str | None, str | None], None]
+
+# Bought figures asked for their chapters per poll, when the library gave none
+DETAILS_PER_POLL = 5
 
 
 @dataclass(slots=True)
@@ -183,8 +187,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         )
         for box in library.boxes:
             placed = box.placed_tonie_id
-            if placed is not None and self._needs_details(state.tonies.get(placed)):
+            if placed is not None and self._needs_lengths(state.tonies.get(placed)):
                 await self._async_fetch_details(box.id, placed)
+        await self._async_ask_library_details(state.tonies)
         state.tonies = {t.id: self._with_details(t) for t in library.tonies}
         for box in library.boxes:
             before = previous.boxes.get(box.id) if previous else None
@@ -249,7 +254,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             for listener in self._placement_listeners.get(box_state.box.id, []):
                 listener(tonie_before, box_state.tonie_id)
             placed = box_state.tonie_id
-            if placed is not None and self._needs_details(self.data.tonies.get(placed)):
+            if placed is not None and self._needs_lengths(self.data.tonies.get(placed)):
                 self.config_entry.async_create_background_task(
                     self.hass,
                     self._async_details_for_placement(box_state.box.id, placed),
@@ -289,10 +294,23 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
     # ------------------------------------------------------------ chapters
 
     def _needs_details(self, tonie: Tonie | None) -> bool:
-        """Return whether the figure's chapters are unknown and worth asking for."""
+        """Return whether the figure's chapter names are unknown and worth asking for."""
         return (
             tonie is not None
             and not tonie.chapters
+            and tonie.id not in self._details
+            and tonie.id not in self._details_missing
+        )
+
+    def _needs_lengths(self, tonie: Tonie | None) -> bool:
+        """Return whether a box should be asked for the figure's chapters with lengths.
+
+        The library names the chapters of bought figures but does not time
+        them; the box the figure stands on tells both.
+        """
+        return (
+            tonie is not None
+            and not any(c.seconds for c in tonie.chapters)
             and tonie.id not in self._details
             and tonie.id not in self._details_missing
         )
@@ -304,7 +322,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             return tonie
         return replace(
             tonie,
-            chapters=tonie.chapters or details.chapters,
+            # Chapters learned from a box carry their lengths; the library's only names
+            chapters=details.chapters or tonie.chapters,
             series=tonie.series or details.series,
             image_url=tonie.image_url or details.image_url,
         )
@@ -332,6 +351,33 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._details[tonie_id] = details
         self._details_store.async_delay_save(self._details_to_save, 10)
         return True
+
+    async def _async_ask_library_details(self, tonies: dict[str, Tonie]) -> None:
+        """Ask the app's detail query for a few bought figures still without chapters.
+
+        Needed only when the library query came back without chapters; a
+        handful per poll keeps the cloud traffic small.
+        """
+        waiting = [
+            t for t in tonies.values() if t.kind is TonieKind.CONTENT and self._needs_details(t)
+        ][:DETAILS_PER_POLL]
+        for tonie in waiting:
+            try:
+                detail = await self.client.async_content_tonie(tonie.household_id, tonie.id)
+            except CloudError as err:
+                _LOGGER.debug("Detail of a figure not read: %s", err)
+                return
+            if detail is None or not detail.chapters:
+                self._details_missing.add(tonie.id)
+                continue
+            self._details[tonie.id] = TonieDetails(
+                title=detail.name,
+                series=detail.series,
+                image_url=detail.image_url,
+                chapters=detail.chapters,
+                status="available",
+            )
+            self._details_store.async_delay_save(self._details_to_save, 10)
 
     async def _async_details_for_placement(self, box_id: str, tonie_id: str) -> None:
         """A figure with unknown chapters was placed: learn them and tell the entities."""

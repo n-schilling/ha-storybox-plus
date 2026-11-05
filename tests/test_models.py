@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -234,8 +235,8 @@ def test_chapters_skip_broken_items() -> None:
 
 
 def test_parse_content_tonie() -> None:
-    """Bought figures come from GraphQL with series and chapters."""
-    tonie = parse_content_tonie(content_tonie())
+    """Bought figures come from the library query under their household, with chapter names."""
+    tonie = parse_content_tonie(content_tonie(), "hh1")
     assert tonie is not None
     assert tonie.kind is TonieKind.CONTENT
     assert tonie.household_id == "hh1"
@@ -243,11 +244,38 @@ def test_parse_content_tonie() -> None:
     assert tonie.series == "Schlummerbande"
     assert tonie.image_url == "https://img.example.com/t1.png"
     assert tonie.language == "Deutsch"
-    assert [c.title for c in tonie.chapters] == ["Kapitel 1", "Kapitel 2"]
+    # The chapters have names only: their position is their ID, their length is unknown
+    assert [(c.id, c.title, c.seconds) for c in tonie.chapters] == [
+        ("0", "Kapitel 1", None),
+        ("1", "Kapitel 2", None),
+    ]
+    # The library states the total length instead
+    assert tonie.seconds_total == 500
     assert tonie.seconds == 500
     assert tonie.seconds_remaining is None
+    # The household of the parent wins; the older connection query names it in the node
+    assert parse_content_tonie(content_tonie(household_id="hh9"), "hh1").household_id == "hh1"
+    assert parse_content_tonie(content_tonie(household_id="hh9")).household_id == "hh9"
     assert parse_content_tonie({"id": "t", "title": "no household"}) is None
-    assert parse_content_tonie({"householdId": "hh1"}) is None
+    assert parse_content_tonie({"householdId": "hh1"}, "hh1") is None
+
+
+def test_parse_content_tonie_variants() -> None:
+    """The library query spells the language as a locale and may lack lengths or chapters."""
+    data = content_tonie(
+        chapters=[{"name": "A"}, {"title": "B"}, {"name": ""}, "x"], seconds_present=None
+    )
+    del data["languageName"]
+    tonie = parse_content_tonie(data, "hh1")
+    assert tonie is not None
+    assert tonie.language == "de-de"
+    assert [(c.id, c.title) for c in tonie.chapters] == [("0", "A"), ("1", "B"), ("2", "")]
+    assert tonie.seconds_total is None
+    assert tonie.seconds == 0
+    odd = parse_content_tonie(content_tonie(chapters="none", seconds_present="500"), "hh1")
+    assert odd is not None
+    assert odd.chapters == ()
+    assert odd.seconds == 0
 
 
 def test_parse_content_tonie_fallbacks() -> None:
@@ -558,4 +586,7 @@ def test_tonie_seconds_ignores_unknown_lengths() -> None:
         chapters=(Chapter("a", "A", 10.5), Chapter("b", "B", None), Chapter("c", "C", 4)),
     )
     assert tonie.seconds == 14.5
+    # A total the library states wins over the sum of the chapters
+    assert replace(tonie, seconds_total=42).seconds == 42
+    assert replace(tonie, seconds_total=0).seconds == 0
     assert Box("b", "hh1", "B", None, Generation.CLASSIC).live is False

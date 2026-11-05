@@ -35,9 +35,11 @@ API_BASE = "https://api.prod.tcs.toys/v2"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 PAGE_SIZE = 100
 
-_CONTENT_TONIE_FIELDS = (
-    "id householdId title imageUrl coverUrl lock languageName salesId "
-    "series { name } chapters { id title seconds transcoding }"
+# The library of bought figures, with the chapter names the app shows
+_CONTENT_TONIE_FIELDS = "id title lock imageUrl coverUrl languageUnicode series { name } chapters { name } secondsPresent"
+# The older connection query, without chapters; used when the library query is refused
+_CONTENT_TONIE_NODE_FIELDS = (
+    "id householdId title imageUrl coverUrl lock languageName salesId series { name }"
 )
 _DISC_FIELDS = "id householdId title coverImageUrl discImageUrl lock language salesId"
 
@@ -119,6 +121,18 @@ class CloudClient:
             raise CloudResponseError(f"GET {path} answered no list", 200)
         return [item for item in data if isinstance(item, dict)]
 
+    async def _graphql(self, query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Run one GraphQL query and return its data; errors without data raise."""
+        response = await self._request(
+            "POST", "/graphql", {"query": query, "variables": variables or {}}
+        )
+        data = response.get("data") if isinstance(response, dict) else None
+        if not isinstance(data, dict):
+            errors = response.get("errors") if isinstance(response, dict) else None
+            _LOGGER.debug("GraphQL without data: %s", errors)
+            raise CloudResponseError("GraphQL answered no data", 200)
+        return data
+
     async def _graphql_nodes(self, field: str, selection: str) -> list[dict[str, Any]]:
         """Read every node of a paginated GraphQL connection."""
         nodes: list[dict[str, Any]] = []
@@ -175,9 +189,46 @@ class CloudClient:
         return [t for item in items if (t := parse_creative_tonie(item, household_id))]
 
     async def async_content_tonies(self) -> list[Tonie]:
-        """Return the bought figures of all households, with their chapters."""
-        nodes = await self._graphql_nodes("myContentTonies", _CONTENT_TONIE_FIELDS)
-        return [t for node in nodes if (t := parse_content_tonie(node))]
+        """Return the bought figures of all households, with their chapter names.
+
+        The app reads them per household; that query carries the chapters.
+        Should the cloud refuse it, the older connection query serves the
+        figures without chapters.
+        """
+        try:
+            data = await self._graphql(
+                f"query {{ households {{ id contentTonies {{ {_CONTENT_TONIE_FIELDS} }} }} }}"
+            )
+            households = data.get("households")
+            if not isinstance(households, list):
+                raise CloudResponseError("GraphQL households answered no list", 200)
+        except CloudResponseError as err:
+            _LOGGER.debug("Library with chapters not read (%s), asking without", err)
+            nodes = await self._graphql_nodes("myContentTonies", _CONTENT_TONIE_NODE_FIELDS)
+            return [t for node in nodes if (t := parse_content_tonie(node))]
+        tonies: list[Tonie] = []
+        for household in households:
+            if not isinstance(household, dict) or not isinstance(household.get("id"), str):
+                continue
+            for node in household.get("contentTonies") or []:
+                if isinstance(node, dict) and (t := parse_content_tonie(node, household["id"])):
+                    tonies.append(t)
+        return tonies
+
+    async def async_content_tonie(self, household_id: str, tonie_id: str) -> Tonie | None:
+        """Return one bought figure with its chapter names, as the app's detail page reads it."""
+        data = await self._graphql(
+            "query($householdId: String, $contentTonieId: String) { households(id: $householdId) "
+            f"{{ id contentTonies(id: $contentTonieId) {{ {_CONTENT_TONIE_FIELDS} }} }} }}",
+            {"householdId": household_id, "contentTonieId": tonie_id},
+        )
+        for household in data.get("households") or []:
+            if not isinstance(household, dict):
+                continue
+            for node in household.get("contentTonies") or []:
+                if isinstance(node, dict) and (t := parse_content_tonie(node, household_id)):
+                    return t
+        return None
 
     async def async_discs(self) -> list[Tonie]:
         """Return the discs of all households."""

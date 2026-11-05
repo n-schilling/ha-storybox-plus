@@ -17,6 +17,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from custom_components.storybox_plus.const import DOMAIN
+from custom_components.storybox_plus.coordinator import DETAILS_PER_POLL
 
 from .conftest import (
     BOX_ID,
@@ -46,8 +47,12 @@ def _chapters_key(entry: MockConfigEntry) -> str:
 
 
 def _bought_without_chapters(cloud: FakeCloud, known: bool = True) -> None:
-    """Make the bought figure one whose chapters the library lacks; the box knows them if asked."""
-    cloud.main.content_tonies = [content_tonie(chapters=[])]
+    """Let the cloud refuse the app's library queries: the bought figure comes without chapters.
+
+    Only the box it stands on can tell them then (playback info), if the cloud knows them.
+    """
+    cloud.main.library_query_refused = True
+    cloud.main.detail_query_refused = True
     if known:
         cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info()
 
@@ -90,6 +95,8 @@ async def test_chapters_are_learned_from_the_box_at_setup(
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
     # Without a playback message the content version of the box is unknown
     assert cloud.playback_info_versions == [0]
+    # What the box told spares the app's detail query
+    assert cloud.detail_calls == []
     coordinator = config_entry.runtime_data.coordinator
     tonie = coordinator.data.tonies[TONIE_ID]
     assert [c.title for c in tonie.chapters] == BOX_CHAPTERS
@@ -117,10 +124,8 @@ async def test_box_fills_only_what_the_library_lacks(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
 ) -> None:
     """Series and picture come from the box only when the library has none."""
-    node = content_tonie(chapters=[])
-    node.update({"series": None, "imageUrl": None})
-    cloud.main.content_tonies = [node]
-    cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info()
+    _bought_without_chapters(cloud)
+    cloud.main.content_tonies[0].update({"series": None, "imageUrl": None})
     await _setup(hass, config_entry)
     tonie = config_entry.runtime_data.coordinator.data.tonies[TONIE_ID]
     assert tonie.name == TONIE_NAME
@@ -140,15 +145,37 @@ async def test_figures_with_chapters_are_not_asked(
     setup_entry: MockConfigEntry,
     hass_storage: dict[str, Any],
     freezer: FrozenDateTimeFactory,
+    hass_ws_client: WebSocketGenerator,
 ) -> None:
-    """Figures whose chapters the library has, and figures it does not know, are left alone."""
-    assert cloud.playback_info_calls == []
+    """The library's chapter names serve the player and the page; only their lengths are asked from the box."""
+    assert cloud.graphql_calls[0] == ("households", None)
+    # The box with the figure is asked once for the lengths already at setup;
+    # it knows none here (404), so the library's names stay
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    assert cloud.detail_calls == []
+    push.last.playback(chapter=1)
+    await _background_done(hass, push)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    attributes = hass.states.get(entity_id(hass, MP_DOMAIN, BOX_ID)).attributes
+    assert attributes["media_title"] == "Kapitel 2"
+    assert attributes["media_track"] == 2
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": f"{DOMAIN}/library"})
+    result = await client.receive_json()
+    listed = next(t for t in result["result"]["tonies"] if t["id"] == TONIE_ID)
+    assert listed["chapters"] == [
+        {"id": "0", "title": "Kapitel 1", "seconds": None, "transcoding": False},
+        {"id": "1", "title": "Kapitel 2", "seconds": None, "transcoding": False},
+    ]
+    assert listed["seconds"] == 500
+    # Not again for that figure, nor for creative figures (timed already) or unknown ones
     push.last.playback(tonie_id=CREATIVE_ID)
     push.last.playback(tonie_id="unknown-figure")
     push.last.removed()
     push.last.playback(tonie_id=TONIE_ID)
     await _background_done(hass, push)
-    assert cloud.playback_info_calls == []
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    assert cloud.detail_calls == []
     await _save(hass, freezer)
     assert _chapters_key(setup_entry) not in hass_storage
 
@@ -200,8 +227,7 @@ async def test_stored_chapters_are_read_and_junk_is_skipped(
     config_entry: MockConfigEntry,
     hass_storage: dict[str, Any],
 ) -> None:
-    """A store of an earlier run is used as far as it makes sense; damaged parts are skipped."""
-    _bought_without_chapters(cloud)
+    """Stored chapters win over the library's names, as far as they make sense; junk is skipped."""
     key = _chapters_key(config_entry)
     hass_storage[key] = {
         "version": 1,
@@ -237,9 +263,32 @@ async def test_stored_chapters_are_read_and_junk_is_skipped(
         ("s1", "Stored 1", 90, False),
         ("2", "", None, True),
     ]
-    # The library's own series and picture win over the stored ones
+    # The library's own series, picture and total length win over the stored ones
     assert tonie.series == TONIE_SERIES
     assert tonie.image_url == f"https://img.example.com/{TONIE_ID}.png"
+    assert tonie.seconds == 500
+
+
+async def test_learned_lengths_win_when_the_library_returns(
+    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
+) -> None:
+    """Chapters learned from a box keep their lengths once the library lists names again."""
+    _bought_without_chapters(cloud)
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+    assert coordinator.data.tonies[TONIE_ID].seconds == 480
+    cloud.main.library_query_refused = False
+    await coordinator.async_refresh()
+    tonie = coordinator.data.tonies[TONIE_ID]
+    assert [(c.title, c.seconds) for c in tonie.chapters] == [
+        ("Box-Kapitel 1", 180.0),
+        ("Box-Kapitel 2", 240.0),
+        ("Box-Kapitel 3", 60.0),
+    ]
+    # The total length is the library's
+    assert tonie.seconds == 500
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    assert cloud.detail_calls == []
 
 
 @pytest.mark.parametrize("data", [{"tonies": "junk"}, {"tonies": None}, {}, []])
@@ -412,6 +461,80 @@ async def test_figure_gone_before_the_box_answered(
     await coordinator.async_refresh()
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
     assert [c.title for c in coordinator.data.tonies[TONIE_ID].chapters] == BOX_CHAPTERS
+
+
+async def test_details_are_asked_in_batches_when_the_library_has_no_chapters(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """With the older library a few figures per poll are asked for their chapters and kept."""
+    cloud.main.library_query_refused = True
+    cloud.main.boxes[HOUSEHOLD_ID] = [tb2_box(placed=None)]
+    count = DETAILS_PER_POLL + 2
+    cloud.main.content_tonies = [content_tonie(f"t{i}", f"Figur {i}") for i in range(1, count + 1)]
+    # The cloud has no chapters for t3 and does not find t4: both are left alone afterwards
+    cloud.main.content_tonie_details["t3"] = content_tonie("t3", chapters=[])
+    cloud.main.content_tonie_details["t4"] = None
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+    assert cloud.detail_calls == [(HOUSEHOLD_ID, f"t{i}") for i in range(1, DETAILS_PER_POLL + 1)]
+    assert cloud.playback_info_calls == []
+    tonies = coordinator.data.tonies
+    assert [(c.id, c.title) for c in tonies["t1"].chapters] == [
+        ("0", "Kapitel 1"),
+        ("1", "Kapitel 2"),
+    ]
+    assert [c.title for c in tonies["t5"].chapters] == ["Kapitel 1", "Kapitel 2"]
+    assert tonies["t3"].chapters == ()
+    assert tonies["t4"].chapters == ()
+    assert tonies["t6"].chapters == ()
+    # The store holds the learned ones only
+    await _save(hass, freezer)
+    stored = hass_storage[_chapters_key(config_entry)]["data"]["tonies"]
+    assert sorted(stored) == ["t1", "t2", "t5"]
+    assert stored["t1"] == {
+        "title": "Figur 1",
+        "series": TONIE_SERIES,
+        "image_url": "https://img.example.com/t1.png",
+        "chapters": [
+            {"id": "0", "title": "Kapitel 1", "seconds": None, "transcoding": False},
+            {"id": "1", "title": "Kapitel 2", "seconds": None, "transcoding": False},
+        ],
+    }
+    # The next poll asks the rest, the one after that nothing
+    await coordinator.async_refresh()
+    assert cloud.detail_calls[DETAILS_PER_POLL:] == [(HOUSEHOLD_ID, "t6"), (HOUSEHOLD_ID, "t7")]
+    assert [c.title for c in coordinator.data.tonies["t7"].chapters] == ["Kapitel 1", "Kapitel 2"]
+    await coordinator.async_refresh()
+    assert len(cloud.detail_calls) == count
+
+
+async def test_detail_error_stops_the_batch_but_not_the_poll(
+    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
+) -> None:
+    """A refused detail query ends the batch; the poll succeeds and the next one tries again."""
+    cloud.main.library_query_refused = True
+    cloud.main.detail_query_refused = True
+    cloud.main.boxes[HOUSEHOLD_ID] = [tb2_box(placed=None)]
+    cloud.main.content_tonies = [content_tonie("t1"), content_tonie("t2")]
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data.coordinator
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert coordinator.last_update_success
+    assert cloud.detail_calls == [(HOUSEHOLD_ID, "t1")]
+    assert coordinator.data.tonies["t1"].chapters == ()
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert cloud.detail_calls == [(HOUSEHOLD_ID, "t1")] * 2
+    # Once the cloud answers, the batch runs through
+    cloud.main.detail_query_refused = False
+    await coordinator.async_refresh()
+    assert cloud.detail_calls[2:] == [(HOUSEHOLD_ID, "t1"), (HOUSEHOLD_ID, "t2")]
+    assert [c.title for c in coordinator.data.tonies["t2"].chapters] == ["Kapitel 1", "Kapitel 2"]
 
 
 async def test_remove_entry_deletes_chapters(

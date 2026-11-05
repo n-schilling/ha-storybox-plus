@@ -117,6 +117,7 @@ if (!customElements.get("storybox-plus-panel")) {
   };
   // Battery hours from the backend, as "h:mm h"; nothing is made of a missing value
   const hours = (h) => (Number.isFinite(h) ? `${hm(h * 3600)} h` : "–");
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
   // Local calendar days as "YYYY-MM-DD", like the backend's per_day keys
   const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const parseDay = (key) => {
@@ -441,22 +442,19 @@ if (!customElements.get("storybox-plus-panel")) {
       const title = `<span class="box-name">${esc(b.name || b.id)}</span><span class="chips">${chips}</span>` +
         `<span class="status"><span class="dot ${state}"></span>${esc(label)}</span>`;
       const facts = [];
-      if (Number.isFinite(b.battery)) {
-        const low = b.battery < 20 && !b.charging;
-        facts.push(`<span class="fact"><span class="batt${low ? " low" : ""}"><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></span>` +
-          `${b.battery} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}</span>`);
-      }
       if (Number.isFinite(b.volume)) facts.push(`<span class="fact">${icon("volume")}${b.volume} / ${b.volume_max ?? 13}</span>`);
       const sleep = this._sleep(b.sleep_timer);
       if (sleep) facts.push(`<span class="fact">${icon("sleep")}${esc(sleep)}</span>`);
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
-      if (live) body += this._battery(b.battery_stats, b.id) + this._playback(b.playback);
+      if (live) body += this._playback(b.playback);
       else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
       if ((!live || b.online !== true) && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (b.firmware) notes.push(`${t.firmware} ${b.firmware}`);
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
-      return this._card(title, body);
+      // The battery hangs under the card as a tile of its own
+      const tile = live && b.battery_stats ? this._battery(b) : "";
+      return tile ? `<div class="box">${this._card(title, body)}${tile}</div>` : this._card(title, body);
     }
 
     // The timer counts as set unless its state says otherwise
@@ -467,22 +465,30 @@ if (!customElements.get("storybox-plus-panel")) {
       return fill(this._t.sleepUntil, { t: new Date(until).toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit" }) });
     }
 
-    // How long a charge lasts: a summary line and, behind a fold, the completed
-    // discharges. The numbers are the backend's; here they are only formatted.
-    _battery(s, boxId) {
+    // The battery tile: the level, how long a charge lasts and, behind a fold, the
+    // completed discharges. The numbers are the backend's; here they are only formatted.
+    _battery(b) {
       const t = this._t;
-      if (!s) return "";
+      const s = b.battery_stats;
+      // Nothing is known while the box is switched off
+      let level = "–";
+      if (Number.isFinite(b.battery)) {
+        const low = b.battery < 20 && !b.charging;
+        level = `<span class="batt${low ? " low" : ""}"><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></span>` +
+          `${b.battery} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;
+      }
       const cur = s.current;
       const parts = [];
       if (Number.isFinite(s.average_full_hours)) parts.push(fill(t.perFull, { h: this._num(s.average_full_hours) }));
       else if (Number.isFinite(cur?.per_full)) parts.push(fill(t.perFullProjected, { h: this._num(cur.per_full) }));
       if (s.count > 0) parts.push(fill(s.count === 1 ? t.charge1 : t.chargesN, { n: s.count }));
       if (Number.isFinite(cur?.hours) && Number.isFinite(cur?.from)) parts.push(fill(t.nowSince, { t: hours(cur.hours), p: cur.from }));
-      let html = `<div class="muted small">${esc(`${t.battery}: ${parts.length ? parts.join(" · ") : t.noCycles}`)}</div>`;
+      let html = `<div class="tile-head"><span class="tile-title">${esc(t.battery)}</span><span class="fact">${level}</span></div>` +
+        `<div class="muted small">${esc(cap(parts.length ? parts.join(" · ") : t.noCycles))}</div>`;
       const cycles = Array.isArray(s.cycles) ? s.cycles : [];
       if (cycles.length) {
         const max = Math.max(...cycles.map((c) => c.per_full).filter(Number.isFinite), 0);
-        const key = `batt:${boxId}`;
+        const key = `batt:${b.id}`;
         const open = this._open.has(key);
         const rows = cycles.map((c) => {
           const width = max > 0 && Number.isFinite(c.per_full) ? ((100 * c.per_full) / max).toFixed(1) : 0;
@@ -495,7 +501,7 @@ if (!customElements.get("storybox-plus-panel")) {
           `<th>${esc(t.colDay)}</th><th>${esc(t.colOn)}</th><th>${esc(t.colLevel)}</th><th>${esc(t.colPerFull)}</th></tr></thead>` +
           `<tbody>${rows}</tbody></table></div></div>`;
       }
-      return `<div class="battery">${html}</div>`;
+      return `<div class="tile">${html}</div>`;
     }
 
     _playback(p) {
@@ -720,6 +726,16 @@ if (!customElements.get("storybox-plus-panel")) {
   .card-content { padding: 0 16px 16px; }
   .card:not(:has(h2)) .card-content { padding-top: 16px; }
   .card.list .card-content { padding: 0; }
+  /* A box with a battery: the card and, attached under it, the battery tile */
+  .box { margin-bottom: 16px; border-radius: var(--ha-card-border-radius, 12px); box-shadow: var(--ha-card-box-shadow, none); }
+  .narrow .box { margin-bottom: 8px; }
+  .box .card { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-width: 0; box-shadow: none; }
+  .tile { padding: 12px 16px 14px; background: color-mix(in srgb, var(--primary-text-color) 4%, var(--card-background-color));
+    border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color)); border-top: 1px solid var(--divider-color);
+    border-radius: 0 0 var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px); }
+  .tile-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .tile-title { font-weight: 500; }
+  .tile .small { margin-top: 0; }
   .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0;
     border-radius: 50%; background: none; color: inherit; cursor: pointer; }
   .tab:hover, .icon-button:hover, .fig-head:hover { background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
@@ -792,9 +808,7 @@ if (!customElements.get("storybox-plus-panel")) {
   .narrow .detail { padding-left: 16px; }
   .open > .detail { display: block; }
   .detail .small { margin: 0 0 6px; }
-  /* The charge history of a box: a fold inside the card, a small table with a bar per cycle */
-  .battery { margin-bottom: 12px; }
-  .battery .small { margin-top: 0; }
+  /* The charge history in the battery tile: a fold with a small table and a bar per cycle */
   .fold .fig-head { justify-content: space-between; gap: 8px; width: calc(100% + 8px); margin: 4px -4px 0; padding: 4px; border-radius: 8px; }
   .fold .detail { padding: 2px 0 4px; }
   table.cycles th, table.cycles td { padding: 4px 10px 4px 0; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
