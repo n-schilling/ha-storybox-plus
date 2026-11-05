@@ -192,8 +192,10 @@ The statistics are daily sums per figure and box, nothing more: no single plays,
 ```bash
 uv venv --python 3.14 .venv
 uv pip install --python .venv/bin/python -r requirements_test.txt
-.venv/bin/ruff check . && .venv/bin/mypy custom_components && .venv/bin/pytest
+scripts/check.sh
 ```
+
+`scripts/check.sh` runs what CI runs: ruff, mypy, the tests with their coverage threshold, the changelog and translation checks, and hassfest in the container of the GitHub action. Hassfest needs Docker; `--no-hassfest` leaves it out.
 
 The cloud access lives in `custom_components/storybox_plus/cloud/` and imports nothing from Home Assistant, so it can be tested on its own. Endpoints and payloads were learned from the official app and from the community project [HA-Toniebox](https://github.com/git4sim/HA-Toniebox) (MIT); the code here is written from scratch.
 

@@ -1,4 +1,5 @@
 name: CI
+# scripts/check.sh runs the same checks locally; keep the two in step.
 
 on:
   push:
