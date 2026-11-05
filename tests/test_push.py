@@ -486,7 +486,7 @@ async def test_commands_need_the_connection(broker: FakeBroker, sleeps: list[flo
 
 
 async def test_commands_are_published(broker: FakeBroker, channel: Channel) -> None:
-    """Play, pause, position and volume go to the box's control topics as JSON."""
+    """Play, pause, position, volume and sleep go to the box's control topics as JSON."""
     client = broker.current
     await channel.push.async_play(MAC)
     await channel.push.async_pause(MAC)
@@ -495,8 +495,15 @@ async def test_commands_are_published(broker: FakeBroker, channel: Channel) -> N
     await channel.push.async_set_volume(MAC, 7)
     await channel.push.async_set_volume(MAC, 99)
     await channel.push.async_set_volume(MAC, -3)
+    await channel.push.async_set_sleep_timer(MAC, 1800)
+    await channel.push.async_set_sleep_timer(MAC, 99_999)
+    await channel.push.async_set_sleep_timer(MAC, 0)
+    await channel.push.async_clear_sleep_timer(MAC)
+    await channel.push.async_sleep(MAC)
     playback = f"{TOPIC_PREFIX}/{MAC}/app-control/playback"
     volume = f"{TOPIC_PREFIX}/{MAC}/app-control/volume"
+    stl = f"{TOPIC_PREFIX}/{MAC}/app-control/stl"
+    sleep = f"{TOPIC_PREFIX}/{MAC}/app-control/sleep"
     assert [(t, json.loads(p), q) for t, p, q in client.published] == [
         (playback, {"action": "start"}, 1),
         (playback, {"action": "pause"}, 1),
@@ -505,6 +512,14 @@ async def test_commands_are_published(broker: FakeBroker, channel: Channel) -> N
         (volume, {"level": 7}, 1),
         (volume, {"level": 13}, 1),
         (volume, {"level": 0}, 1),
+        (stl, {"state": "on", "duration": 1800}, 1),
+        # The box counts the timer in 16 bits; more would wrap around
+        (stl, {"state": "on", "duration": 65535}, 1),
+        (stl, {"state": "on", "duration": 1}, 1),
+        (stl, {"state": "off"}, 1),
+        # Sleeping now is a short timer and the sleep command, as the app sends it
+        (stl, {"state": "on", "duration": 300}, 1),
+        (sleep, {}, 1),
     ]
 
 

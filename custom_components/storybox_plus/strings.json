@@ -105,5 +105,21 @@
     "nothing_plays": {
       "message": "No figure is on the box."
     }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Set sleep timer",
+      "description": "Lets the box fall asleep on its own after the given number of minutes. A running timer is replaced.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "Minutes until the box falls asleep (at most 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Clear sleep timer",
+      "description": "Cancels the running sleep timer of the box."
+    }
   }
 }

@@ -5,8 +5,11 @@
 rules:
   # Bronze
   action-setup:
-    status: exempt
-    comment: The integration registers no actions of its own.
+    status: done
+    comment: >-
+      The two actions (set_sleep_timer, clear_sleep_timer) are entity actions
+      of the media player, registered with its platform; they need no config
+      entry lookup of their own.
   appropriate-polling:
     status: done
     comment: >-
@@ -24,8 +27,8 @@ rules:
     status: done
     comment: aiomqtt is open source and published on PyPI from its repository with CI.
   docs-actions:
-    status: exempt
-    comment: No actions of its own; the README documents the media player actions it supports.
+    status: done
+    comment: The README documents the sleep timer actions and the media player actions it supports.
   docs-conditions:
     status: exempt
     comment: No conditions.

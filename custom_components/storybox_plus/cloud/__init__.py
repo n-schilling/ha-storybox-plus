@@ -23,6 +23,7 @@ from .models import (
     Volume,
 )
 from .push import (
+    SLEEP_TIMER_MAX_MINUTES,
     TOPIC_BATTERY,
     TOPIC_ONLINE,
     TOPIC_PLAYBACK,
@@ -34,6 +35,7 @@ from .push import (
 from .rest import CloudClient
 
 __all__ = [
+    "SLEEP_TIMER_MAX_MINUTES",
     "TOPIC_BATTERY",
     "TOPIC_ONLINE",
     "TOPIC_PLAYBACK",

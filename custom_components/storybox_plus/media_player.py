@@ -1,9 +1,11 @@
-"""The Toniebox 2 as a media player: play, pause, volume, chapters and seeking."""
+"""The Toniebox 2 as a media player: play, pause, volume, chapters, seeking and sleep."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+
+import probatio
 
 from homeassistant.components.media_player import MediaPlayerEntity
 from homeassistant.components.media_player.const import (
@@ -14,11 +16,12 @@ from homeassistant.components.media_player.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .cloud import VOLUME_LEVELS, CloudError, Playback
-from .const import DOMAIN
+from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, CloudError, Playback
+from .const import ATTR_MINUTES, DOMAIN, SERVICE_CLEAR_SLEEP_TIMER, SERVICE_SET_SLEEP_TIMER
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
 from .entity import BoxEntity, async_follow_boxes
 
@@ -31,7 +34,7 @@ async def async_setup_entry(
     entry: StoryboxConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the media players of the boxes that have the push channel."""
+    """Set up the media players of the boxes that have the push channel, and their actions."""
 
     def _factory(coordinator: StoryboxCoordinator, box_state: BoxState) -> list[Entity]:
         if not box_state.box.live:
@@ -40,12 +43,27 @@ async def async_setup_entry(
 
     async_follow_boxes(entry, async_add_entities, _factory)
 
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SET_SLEEP_TIMER,
+        {
+            probatio.Required(ATTR_MINUTES): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=1, max=SLEEP_TIMER_MAX_MINUTES)
+            )
+        },
+        "async_set_sleep_timer",
+    )
+    platform.async_register_entity_service(
+        SERVICE_CLEAR_SLEEP_TIMER, None, "async_clear_sleep_timer"
+    )
+
 
 class BoxPlayer(BoxEntity, MediaPlayerEntity):
     """A Toniebox 2.
 
     The box plays whatever figure stands on it; Home Assistant cannot choose
-    the figure, only pause, continue, change the volume and jump within it.
+    the figure, only pause, continue, change the volume, jump within it and
+    put the box to sleep.
     """
 
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
@@ -60,6 +78,7 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.SEEK
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
+        | MediaPlayerEntityFeature.TURN_OFF
     )
 
     def __init__(self, coordinator: StoryboxCoordinator, box_id: str) -> None:
@@ -225,3 +244,15 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         if tonie is not None and tonie.chapters:
             chapter = min(chapter, len(tonie.chapters) - 1)
         await self._send(lambda mac: self.coordinator.push.async_set_position(mac, chapter, 0))
+
+    async def async_turn_off(self) -> None:
+        """Put the box to sleep; the cloud cannot wake it again."""
+        await self._send(self.coordinator.push.async_sleep)
+
+    async def async_set_sleep_timer(self, minutes: int) -> None:
+        """Let the box fall asleep after the given minutes."""
+        await self._send(lambda mac: self.coordinator.push.async_set_sleep_timer(mac, minutes * 60))
+
+    async def async_clear_sleep_timer(self) -> None:
+        """Cancel the sleep timer."""
+        await self._send(self.coordinator.push.async_clear_sleep_timer)

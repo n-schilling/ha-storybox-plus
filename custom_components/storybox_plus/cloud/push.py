@@ -53,6 +53,12 @@ SUBSCRIBED = (TOPIC_BATTERY, TOPIC_ONLINE, TOPIC_PLAYBACK, TOPIC_VOLUME, TOPIC_S
 COMMAND_PLAYBACK = "playback"
 COMMAND_VOLUME = "volume"
 COMMAND_SLEEP_TIMER = "stl"
+COMMAND_SLEEP = "sleep"
+# The box keeps the timer as an unsigned 16-bit number of seconds; more wraps around
+SLEEP_TIMER_MAX_SECONDS = 65_535
+SLEEP_TIMER_MAX_MINUTES = SLEEP_TIMER_MAX_SECONDS // 60
+# The app arms this timer right before it tells the box to sleep
+SLEEP_NOW_SECONDS = 300
 
 BACKOFF_FIRST = 5
 BACKOFF_MAX = 300
@@ -267,3 +273,23 @@ class PushClient:
     async def async_set_volume(self, mac: str, level: int) -> None:
         """Set the volume level (0..13)."""
         await self.async_command(mac, COMMAND_VOLUME, {"level": max(0, min(VOLUME_LEVELS, level))})
+
+    async def async_set_sleep_timer(self, mac: str, seconds: int) -> None:
+        """Let the box fall asleep after the given seconds; a running timer is replaced."""
+        await self.async_command(
+            mac,
+            COMMAND_SLEEP_TIMER,
+            {"state": "on", "duration": max(1, min(SLEEP_TIMER_MAX_SECONDS, seconds))},
+        )
+
+    async def async_clear_sleep_timer(self, mac: str) -> None:
+        """Cancel the sleep timer."""
+        await self.async_command(mac, COMMAND_SLEEP_TIMER, {"state": "off"})
+
+    async def async_sleep(self, mac: str) -> None:
+        """Put the box to sleep now, the way the app does: a short timer, then the sleep command.
+
+        The box goes offline; the cloud cannot wake it again.
+        """
+        await self.async_set_sleep_timer(mac, SLEEP_NOW_SECONDS)
+        await self.async_command(mac, COMMAND_SLEEP, {})

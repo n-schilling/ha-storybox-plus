@@ -105,5 +105,21 @@
     "nothing_plays": {
       "message": "Auf der Box liegt keine Figur."
     }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Schlaftimer stellen",
+      "description": "Lässt die Box nach der angegebenen Zahl Minuten von selbst einschlafen. Ein laufender Timer wird ersetzt.",
+      "fields": {
+        "minutes": {
+          "name": "Minuten",
+          "description": "Minuten, bis die Box einschläft (höchstens 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Schlaftimer abbrechen",
+      "description": "Bricht den laufenden Schlaftimer der Box ab."
+    }
   }
 }

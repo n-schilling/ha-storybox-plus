@@ -5,5 +5,13 @@
         "default": "mdi:teddy-bear"
       }
     }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "service": "mdi:sleep"
+    },
+    "clear_sleep_timer": {
+      "service": "mdi:sleep-off"
+    }
   }
 }

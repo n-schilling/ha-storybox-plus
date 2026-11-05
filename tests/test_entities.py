@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
+import probatio
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -20,6 +21,7 @@ from homeassistant.const import (
     SERVICE_MEDIA_PLAY,
     SERVICE_MEDIA_PREVIOUS_TRACK,
     SERVICE_MEDIA_SEEK,
+    SERVICE_TURN_OFF,
     SERVICE_VOLUME_DOWN,
     SERVICE_VOLUME_SET,
     SERVICE_VOLUME_UP,
@@ -32,6 +34,12 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.storybox_plus.cloud import CloudConnectionError
+from custom_components.storybox_plus.const import (
+    ATTR_MINUTES,
+    DOMAIN,
+    SERVICE_CLEAR_SLEEP_TIMER,
+    SERVICE_SET_SLEEP_TIMER,
+)
 
 from .conftest import (
     BOX_ID,
@@ -371,6 +379,38 @@ async def test_player_chapter_jumps(
     channel.playback(tonie_id="unknown-figure", chapter=1)
     await _call(hass, SERVICE_MEDIA_NEXT_TRACK)
     assert channel.commands == [jump(1), jump(0), jump(1), jump(0), jump(1), jump(2)]
+
+
+async def test_player_sleep_timer_and_sleep(
+    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
+) -> None:
+    """The sleep timer actions and turning the player off become the box's sleep commands."""
+    channel = push.last
+    channel.connect()
+    player = entity_id(hass, MP_DOMAIN, BOX_ID)
+    await hass.services.async_call(
+        DOMAIN, SERVICE_SET_SLEEP_TIMER, {ATTR_ENTITY_ID: player, ATTR_MINUTES: 45}, blocking=True
+    )
+    await hass.services.async_call(
+        DOMAIN, SERVICE_CLEAR_SLEEP_TIMER, {ATTR_ENTITY_ID: player}, blocking=True
+    )
+    await _call(hass, SERVICE_TURN_OFF)
+    assert channel.commands == [
+        (MAC, "stl", {"state": "on", "duration": 2700}),
+        (MAC, "stl", {"state": "off"}),
+        (MAC, "stl", {"state": "on", "duration": 300}),
+        (MAC, "sleep", {}),
+    ]
+    # The box counts the timer in 16 bits of seconds: 1092 minutes at most, and never 0
+    for minutes in (0, 1093, "soon"):
+        with pytest.raises(probatio.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SET_SLEEP_TIMER,
+                {ATTR_ENTITY_ID: player, ATTR_MINUTES: minutes},
+                blocking=True,
+            )
+    assert len(channel.commands) == 4
 
 
 async def test_player_command_errors(

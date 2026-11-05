@@ -32,6 +32,11 @@ EVENT_FIGURE_REMOVED = "removed"
 ATTR_TONIE_ID = "tonie_id"
 ATTR_TONIE = "tonie"
 
+# Actions of the media player
+SERVICE_SET_SLEEP_TIMER = "set_sleep_timer"
+SERVICE_CLEAR_SLEEP_TIMER = "clear_sleep_timer"
+ATTR_MINUTES = "minutes"
+
 # The page
 FRONTEND_URL_BASE = "/storybox_plus"
 PANEL_FILENAME = "storybox-plus-panel.js"

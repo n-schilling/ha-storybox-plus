@@ -1,0 +1,20 @@
+set_sleep_timer:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player
+  fields:
+    minutes:
+      required: true
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 1092
+          unit_of_measurement: min
+
+clear_sleep_timer:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player

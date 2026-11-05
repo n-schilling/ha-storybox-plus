@@ -73,7 +73,7 @@ Every box is a device. Only what automations can use becomes an entity:
 | Connectivity (binary sensor) | all | Whether the box is connected to the cloud. The Toniebox 2 reports it live. For the classic box the cloud offers no connection state (and, for the accounts seen so far, no "last seen" either), so the sensor stays unknown rather than guessing; if the cloud reports when the box was last seen, it counts as connected for 30 minutes after that. |
 | Battery (sensor) | Toniebox 2 | Battery level in percent. Unavailable while the box is switched off. |
 | Charging (binary sensor) | Toniebox 2 | Whether the box charges. |
-| Media player | Toniebox 2 | Playing, paused, idle (no figure) or off (box switched off). Shows the figure and chapter with the figure's picture, the position in the chapter and its length. |
+| Media player | Toniebox 2 | Playing, paused, idle (no figure) or off (box switched off). Shows the figure and chapter with the figure's picture, the position in the chapter and its length. Turning it off puts the box to sleep. |
 | Figure (event) | Toniebox 2 | Fires `placed` or `removed` with the figure's ID and name. |
 
 ### Media player actions
@@ -84,6 +84,7 @@ The box plays whatever figure stands on it; Home Assistant cannot choose a figur
 - `media_player.volume_set`, `media_player.volume_up`, `media_player.volume_down` (the box has 13 levels)
 - `media_player.media_next_track`, `media_player.media_previous_track` (chapters)
 - `media_player.media_seek` (a position within the current chapter, so the progress bar of a media card works)
+- `media_player.turn_off` (puts the box to sleep, as the app's sleep button does; the cloud cannot wake it again, only a hand on the box)
 
 Example: pause the box in the children's room when the bedtime scene is activated.
 
@@ -91,6 +92,41 @@ Example: pause the box in the children's room when the bedtime scene is activate
 action: media_player.media_pause
 target:
   entity_id: media_player.toniebox_kinderzimmer
+```
+
+### Sleep timer
+
+Two actions of the integration, for the media player of a Toniebox 2:
+
+| Action | Fields | Description |
+|---|---|---|
+| `storybox_plus.set_sleep_timer` | `minutes` (1 to 1092) | The box falls asleep on its own after that time; a running timer is replaced. |
+| `storybox_plus.clear_sleep_timer` | – | Cancels the running timer. |
+
+The box confirms a timer through the push channel; the page shows until when it runs.
+
+Example: a 45-minute timer when the bedtime figure is placed, cancelled when a figure is taken off.
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: event.toniebox_kinderzimmer_figure
+actions:
+  - choose:
+      - conditions:
+          - "{{ trigger.to_state.attributes.event_type == 'placed' and trigger.to_state.attributes.tonie_id == 'ID OF THE FIGURE' }}"
+        sequence:
+          - action: storybox_plus.set_sleep_timer
+            target:
+              entity_id: media_player.toniebox_kinderzimmer
+            data:
+              minutes: 45
+      - conditions:
+          - "{{ trigger.to_state.attributes.event_type == 'removed' }}"
+        sequence:
+          - action: storybox_plus.clear_sleep_timer
+            target:
+              entity_id: media_player.toniebox_kinderzimmer
 ```
 
 Example: a notification when a figure is placed, with its name.
