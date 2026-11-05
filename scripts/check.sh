@@ -6,18 +6,39 @@
 #
 # Usage: scripts/check.sh [--no-hassfest]
 #
+# The tools come from .venv when there is one, otherwise from PATH (a
+# devcontainer, another virtual environment, a system installation).
+#
 # Hassfest needs Docker. Its image exists for amd64 only; on Apple silicon
-# Docker runs it emulated, which takes about 20 seconds. The image is pulled
-# once and then reused; `docker pull ghcr.io/home-assistant/hassfest` refreshes
-# it, and the weekly CI run catches a Home Assistant change in the meantime.
+# Docker runs it emulated, which takes about 20 seconds, and on an ARM Linux
+# without emulation the step fails, so pass --no-hassfest there and let CI
+# run it. The image is pulled once and then reused; `docker pull
+# ghcr.io/home-assistant/hassfest` refreshes it, and the weekly CI run catches
+# a Home Assistant change in the meantime.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-VENV=.venv/bin
-if [[ ! -x "$VENV/ruff" || ! -x "$VENV/mypy" || ! -x "$VENV/pytest" ]]; then
-    echo "No test environment in .venv; see README, section Development." >&2
-    exit 2
-fi
+tool() { # tool <name> [<alternative>]: the one in .venv, else the one on PATH
+    local name
+    for name in "$@"; do
+        if [[ -x ".venv/bin/$name" ]]; then
+            echo ".venv/bin/$name"
+            return
+        fi
+    done
+    for name in "$@"; do
+        if command -v "$name"; then
+            return
+        fi
+    done
+    echo "$1 not found, neither in .venv nor on PATH; see README, section Development." >&2
+    return 1
+}
+
+RUFF=$(tool ruff) || exit 2
+MYPY=$(tool mypy) || exit 2
+PYTEST=$(tool pytest) || exit 2
+PYTHON=$(tool python python3) || exit 2
 
 failed=()
 skipped=()
@@ -35,14 +56,17 @@ run() { # run <name> <command...>
     echo
 }
 
-run "Ruff check" "$VENV/ruff" check .
-run "Ruff format" "$VENV/ruff" format --check .
-run "Changelog has the version" bash -c \
-    '.github/scripts/changelog-section.sh CHANGELOG.md "$(jq -r .version custom_components/storybox_plus/manifest.json)" > /dev/null'
+version=$("$PYTHON" -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' \
+    custom_components/storybox_plus/manifest.json)
+
+run "Ruff check" "$RUFF" check .
+run "Ruff format" "$RUFF" format --check .
+run "Changelog has the version $version" bash -c \
+    '.github/scripts/changelog-section.sh CHANGELOG.md "$1" > /dev/null' _ "$version"
 run "Translations match strings.json" \
     diff custom_components/storybox_plus/strings.json custom_components/storybox_plus/translations/en.json
-run "Strict typing" "$VENV/mypy" custom_components
-run "Tests" "$VENV/pytest" -q \
+run "Strict typing" "$MYPY" custom_components
+run "Tests" "$PYTEST" -q \
     --cov=custom_components.storybox_plus --cov-report=term-missing:skip-covered --cov-fail-under=95
 
 if [[ "${1:-}" == "--no-hassfest" ]]; then
@@ -50,8 +74,10 @@ if [[ "${1:-}" == "--no-hassfest" ]]; then
 elif ! docker info > /dev/null 2>&1; then
     skipped+=("Hassfest (Docker is not running)")
 else
+    # The double slash keeps Git Bash on Windows from rewriting the container path, as in
+    # the action itself; the z label lets the container read the folder under SELinux
     run "Hassfest" docker run --rm --platform linux/amd64 \
-        -v "$PWD":/github/workspace:ro ghcr.io/home-assistant/hassfest
+        -v "$PWD"://github/workspace:ro,z ghcr.io/home-assistant/hassfest
 fi
 
 echo "===================="
