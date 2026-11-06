@@ -554,3 +554,108 @@ async def test_remove_entry_deletes_chapters(
     await hass.config_entries.async_remove(config_entry.entry_id)
     await hass.async_block_till_done()
     assert key not in hass_storage
+
+
+def _store_names_only(hass_storage: dict[str, Any], entry: MockConfigEntry) -> str:
+    """Seed the store as the library's detail query left it: chapter names, no lengths."""
+    key = _chapters_key(entry)
+    hass_storage[key] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": key,
+        "data": {
+            "tonies": {
+                TONIE_ID: {
+                    "title": TONIE_NAME,
+                    "series": None,
+                    "image_url": None,
+                    "chapters": [
+                        {"id": "0", "title": "Kapitel 1", "seconds": None, "transcoding": False},
+                        {"id": "1", "title": "Kapitel 2", "seconds": None, "transcoding": False},
+                    ],
+                }
+            }
+        },
+    }
+    return key
+
+
+async def test_stored_names_do_not_stop_the_box_being_asked(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Names kept without lengths are no answer: the box is asked, and its timed chapters replace them."""
+    key = _store_names_only(hass_storage, config_entry)
+    cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info()
+    await _setup(hass, config_entry)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    coordinator = config_entry.runtime_data.coordinator
+    tonie = coordinator.data.tonies[TONIE_ID]
+    assert [(c.title, c.seconds) for c in tonie.chapters] == [
+        ("Box-Kapitel 1", 180.0),
+        ("Box-Kapitel 2", 240.0),
+        ("Box-Kapitel 3", 60.0),
+    ]
+    await _save(hass, freezer)
+    stored = hass_storage[key]["data"]["tonies"][TONIE_ID]["chapters"]
+    assert [c["seconds"] for c in stored] == [180, 240, 60]
+    # Timed now: neither the next poll nor placing it again asks anything new
+    await coordinator.async_refresh()
+    push.last.removed()
+    push.last.playback(tonie_id=TONIE_ID, chapter=0)
+    await _background_done(hass, push)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+
+
+async def test_box_that_names_but_does_not_time_is_asked_once_per_run(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A box answer without lengths serves where nothing names the chapters, and is not asked for again this run."""
+    _bought_without_chapters(cloud, known=False)
+    cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info(chapters=[{"title": "Nur Name"}])
+    await _setup(hass, config_entry)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    coordinator = config_entry.runtime_data.coordinator
+    assert [(c.title, c.seconds) for c in coordinator.data.tonies[TONIE_ID].chapters] == [
+        ("Nur Name", None)
+    ]
+    await coordinator.async_refresh()
+    push.last.removed()
+    push.last.playback(tonie_id=TONIE_ID, chapter=0)
+    await _background_done(hass, push)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    await _save(hass, freezer)
+    stored = hass_storage[_chapters_key(config_entry)]["data"]["tonies"][TONIE_ID]["chapters"]
+    assert [c["title"] for c in stored] == ["Nur Name"]
+
+
+async def test_box_names_without_lengths_do_not_replace_the_library(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Where the library names the chapters, a box answer without lengths changes nothing."""
+    cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info(chapters=[{"title": "Box-Name"}])
+    await _setup(hass, config_entry)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    coordinator = config_entry.runtime_data.coordinator
+    assert [c.title for c in coordinator.data.tonies[TONIE_ID].chapters] == [
+        "Kapitel 1",
+        "Kapitel 2",
+    ]
+    await coordinator.async_refresh()
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    await _save(hass, freezer)
+    assert _chapters_key(config_entry) not in hass_storage

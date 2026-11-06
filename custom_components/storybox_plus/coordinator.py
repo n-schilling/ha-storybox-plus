@@ -200,8 +200,11 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         )
         for box in library.boxes:
             placed = box.placed_tonie_id
-            if placed is not None and self._needs_lengths(state.tonies.get(placed)):
-                await self._async_fetch_details(box.id, placed)
+            tonie = state.tonies.get(placed) if placed is not None else None
+            if placed is not None and self._needs_lengths(tonie):
+                await self._async_fetch_details(
+                    box.id, placed, named=bool(tonie and tonie.chapters)
+                )
         await self._async_ask_library_details(state.tonies)
         state.tonies = {t.id: self._with_details(t) for t in library.tonies}
         for box in library.boxes:
@@ -319,14 +322,16 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         """Return whether a box should be asked for the figure's chapters with lengths.
 
         The library names the chapters of bought figures but does not time
-        them; the box the figure stands on tells both.
+        them; the box the figure stands on tells both. Names already kept,
+        from the library or from a box that knew no lengths either, do not
+        answer the question and so do not stop the asking.
         """
-        return (
-            tonie is not None
-            and not any(c.seconds for c in tonie.chapters)
-            and tonie.id not in self._details
-            and tonie.id not in self._details_missing
-        )
+        if tonie is None or tonie.id in self._details_missing:
+            return False
+        if any(c.seconds for c in tonie.chapters):
+            return False
+        details = self._details.get(tonie.id)
+        return details is None or not any(c.seconds for c in details.chapters)
 
     def _with_details(self, tonie: Tonie) -> Tonie:
         """Fill in what the box told about the figure, where the library is silent."""
@@ -341,8 +346,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             image_url=tonie.image_url or details.image_url,
         )
 
-    async def _async_fetch_details(self, box_id: str, tonie_id: str) -> bool:
-        """Ask the cloud for the chapters of the figure on a box; True when learned."""
+    async def _async_fetch_details(self, box_id: str, tonie_id: str, named: bool) -> bool:
+        """Ask the cloud for the chapters of the figure on a box; True when learned.
+
+        ``named`` says whether the library already names the chapters: then
+        only lengths are worth keeping.
+        """
         box_state = self.data.boxes.get(box_id) if self.data else None
         playback = box_state.playback if box_state else None
         version = playback.content_version if playback and playback.content_version else 0
@@ -361,6 +370,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             if details is None or details.status != "outdated":
                 self._details_missing.add(tonie_id)
             return False
+        if not any(c.seconds for c in details.chapters):
+            # Names without lengths: kept only where nothing names them yet, asked again next run
+            _LOGGER.debug("The box named the chapters of a figure but did not time them")
+            self._details_missing.add(tonie_id)
+            if named or tonie_id in self._details:
+                return False
         self._details[tonie_id] = details
         self._details_store.async_delay_save(self._details_to_save, 10)
         return True
@@ -394,7 +409,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
 
     async def _async_details_for_placement(self, box_id: str, tonie_id: str) -> None:
         """A figure with unknown chapters was placed: learn them and tell the entities."""
-        if await self._async_fetch_details(box_id, tonie_id) and tonie_id in self.data.tonies:
+        tonie = self.data.tonies.get(tonie_id)
+        named = bool(tonie and tonie.chapters)
+        if (
+            await self._async_fetch_details(box_id, tonie_id, named)
+            and tonie_id in self.data.tonies
+        ):
             self.data.tonies[tonie_id] = self._with_details(self.data.tonies[tonie_id])
             self.async_update_listeners()
 
