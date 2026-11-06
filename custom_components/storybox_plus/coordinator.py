@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from functools import partial
 import logging
-from pathlib import Path
-import shutil
-import tempfile
-import threading
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -21,7 +17,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from . import youtube
+from . import fetcher
 from .analytics import Analytics
 from .battery import BatteryStats
 from .cloud import (
@@ -67,8 +63,9 @@ class ChapterError(HomeAssistantError):
     """A change to the chapters of a figure that is refused before the cloud is asked.
 
     The code names why: "unknown_figure", "not_creative" (only creative
-    figures take chapters), "unknown_chapter", "not_youtube" or "too_long".
-    A text says more where the code alone does not.
+    figures take chapters), "unknown_chapter", "fetcher_missing" (no app to
+    fetch a link with) or "too_long". A text says more where the code alone
+    does not.
     """
 
     def __init__(self, code: str, text: str | None = None) -> None:
@@ -469,49 +466,49 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         tonie_id: str,
         url: str,
         progress: Callable[[dict[str, Any]], None],
-        cancelled: threading.Event,
+        cancelled: asyncio.Event,
     ) -> Tonie:
-        """Fetch the audio of a YouTube video and append it as a chapter of a creative figure.
+        """Fetch the audio of a video through the Media Fetcher app and append it as a chapter.
 
-        The progress callback hears, in the event loop, what happens: the
-        video being read ("probe"), the download with its bytes, the upload.
+        The progress callback hears what happens: the video being read
+        ("probe"), the download with its bytes, the conversion, the upload.
         A video that does not fit into the figure's free time is refused
-        before anything is fetched. Setting the event stops a running
-        download; an upload that has begun completes.
+        before anything is fetched. Setting the event gives up a running
+        job; an upload that has begun completes.
         """
         tonie = self._creative(tonie_id)
-        if not youtube.is_youtube(url):
-            raise ChapterError("not_youtube")
+        app = await fetcher.async_find(self.hass)
+        if app is None:
+            raise ChapterError("fetcher_missing")
+        client = fetcher.FetcherClient(self.hass, app)
         progress({"stage": "probe"})
-        video = await self.hass.async_add_executor_job(youtube.probe, url)
+        video = await client.async_info(url)
         free = tonie.seconds_remaining
-        if free is not None and video.seconds > free:
+        if free is not None and video.seconds is not None and video.seconds > free:
             raise ChapterError(
                 "too_long",
                 f"The video lasts {_clock(video.seconds)}, the figure has {_clock(free)} left",
             )
         about = {"title": video.title, "seconds": video.seconds}
-        loop = self.hass.loop
 
-        def report(done: int, total: int | None) -> None:
-            loop.call_soon_threadsafe(
-                progress, {"stage": "download", **about, "done": done, "total": total}
-            )
+        def report(job: fetcher.Job) -> None:
+            stage = "convert" if job.state == "converting" else "download"
+            progress({"stage": stage, **about, "done": job.done, "total": job.total})
 
         progress({"stage": "download", **about, "done": 0, "total": None})
-        folder = Path(
-            await self.hass.async_add_executor_job(partial(tempfile.mkdtemp, prefix=f"{DOMAIN}_"))
-        )
+        job_id = await client.async_start(url, round(free) if free is not None else None)
         try:
-            path = await self.hass.async_add_executor_job(
-                youtube.download, url, folder, report, cancelled
-            )
-            data = await self.hass.async_add_executor_job(path.read_bytes)
+            job = await client.async_wait(job_id, report, cancelled)
+            data = await client.async_file(job_id)
         finally:
-            await self.hass.async_add_executor_job(shutil.rmtree, folder, True)
+            await client.async_forget(job_id)
         progress({"stage": "upload", **about, "done": 0, "total": len(data)})
         return await self.async_add_chapter(
-            tonie_id, video.title, data, f"{video.id}.{youtube.AUDIO_EXTENSION}", "audio/mp4"
+            tonie_id,
+            video.title,
+            data,
+            f"{video.id}.{fetcher.FORMAT}",
+            job.content_type or fetcher.CONTENT_TYPE,
         )
 
     async def async_refresh_creative(self, tonie_id: str) -> Tonie:

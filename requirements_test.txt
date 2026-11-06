@@ -2,8 +2,6 @@
 pytest-homeassistant-custom-component==0.13.375
 # The requirement of the integration (manifest.json)
 aiomqtt==2.5.1
-# yt-dlp as Home Assistant's media_extractor pins it; the integration depends on that integration
-yt-dlp[default]==2026.07.04
 ruff==0.17.3
 mypy==2.4.1
 pytest-cov==7.1.0

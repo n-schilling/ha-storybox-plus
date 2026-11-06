@@ -19,7 +19,7 @@ First version, for the private test phase.
 - How long a charge of the Toniebox 2 lasts: discharge cycles with hours switched on, percent used and the projection per full charge.
 - A page for administrators with the boxes, the figures with their chapters and the listening statistics.
 - The chapters of Creative-Tonies are managed on the page: audio files are uploaded as chapters, chapters are moved and removed in an edit mode and saved in one go, and chapters the cloud dropped while converting are named.
-- A chapter from a YouTube link: Home Assistant fetches the audio with the yt-dlp its Media extractor integration ships and uploads it named after the video; the page shows the progress.
+- A chapter from a YouTube link: the Media Fetcher app fetches the audio, the integration uploads it named after the video, and the page shows the progress. Without the app the button stays grey and says so.
 - Diagnostics without tokens, names, addresses or listening data.
 
 [0.1.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.1.0

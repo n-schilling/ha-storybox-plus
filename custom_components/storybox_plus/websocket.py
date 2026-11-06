@@ -6,11 +6,11 @@ the listening statistics, and changes the chapters of creative figures.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Coroutine
 import logging
 import mimetypes
 from pathlib import Path
-import threading
 from typing import Any
 
 import probatio
@@ -27,6 +27,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util.hass_dict import HassKey
 
+from . import fetcher
 from .cloud import VOLUME_LEVELS, CloudError, Tonie
 from .const import DOMAIN
 from .coordinator import (
@@ -36,7 +37,7 @@ from .coordinator import (
     StoryboxConfigEntry,
     StoryboxCoordinator,
 )
-from .youtube import YouTubeCancelled, YouTubeError
+from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ _CHAPTER_MESSAGES = {
     "unknown_chapter": "The chapter list names chapters the figure does not have",
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
-    "not_youtube": "Only links to YouTube videos are taken",
+    "fetcher_missing": "The Media Fetcher app is not installed or not running",
 }
 
 
@@ -226,11 +227,11 @@ def websocket_overview(
 
 @require_admin
 @websocket_command({probatio.Required("type"): f"{DOMAIN}/library"})
-@callback
-def websocket_library(
+@async_response
+async def websocket_library(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return the households and figures of all accounts."""
+    """Return the households and figures of all accounts, and whether links can be fetched."""
     households: list[dict[str, Any]] = []
     tonies: list[dict[str, Any]] = []
     for entry in _loaded_entries(hass):
@@ -241,7 +242,15 @@ def websocket_library(
         )
         tonies.extend(_tonie_dict(t, _on_box(data, t.id)) for t in data.tonies.values())
     tonies.sort(key=lambda t: str(t["name"]).lower())
-    connection.send_result(msg["id"], {"households": households, "tonies": tonies})
+    connection.send_result(
+        msg["id"],
+        {
+            "households": households,
+            "tonies": tonies,
+            # The page offers links only while the Media Fetcher app is there
+            "fetcher": await fetcher.async_find(hass) is not None,
+        },
+    )
 
 
 # ---------------------------------------------------------------- chapters
@@ -358,13 +367,13 @@ async def websocket_add_chapter(
 async def websocket_add_link(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Fetch the audio of a YouTube video as a chapter; the page hears the progress as events.
+    """Fetch the audio of a video as a chapter; the page hears the progress as events.
 
     The command subscribes: the result confirms the subscription, the events
-    name the stage ("probe", "download" with the bytes, "upload") and end
-    with "done" and the figure, or "error" with a code and a message. The
-    page unsubscribes then; unsubscribing earlier, or losing the connection,
-    stops a running download.
+    name the stage ("probe", "download" with the bytes, "convert", "upload")
+    and end with "done" and the figure, or "error" with a code and a
+    message. The page unsubscribes then; unsubscribing earlier, or losing
+    the connection, gives up a running download.
     """
     entry = _entry_for_tonie(hass, msg["tonie_id"])
     if entry is None:
@@ -372,7 +381,7 @@ async def websocket_add_link(
         return
     coordinator = entry.runtime_data.coordinator
     msg_id: int = msg["id"]
-    cancelled = threading.Event()
+    cancelled = asyncio.Event()
 
     @callback
     def tell(event: dict[str, Any]) -> None:
@@ -388,12 +397,14 @@ async def websocket_add_link(
             tell({"stage": "error", "code": err.code, "message": _chapter_message(err)})
         except CloudError as err:
             tell({"stage": "error", "code": "cloud_error", "message": str(err)})
-        except YouTubeCancelled:
-            _LOGGER.debug("A download from YouTube was cancelled")
-        except YouTubeError as err:
-            tell({"stage": "error", "code": "video_error", "message": str(err)})
+        except FetchCancelled:
+            _LOGGER.debug("A fetch of a link was given up")
+        except FetcherUnavailable as err:
+            tell({"stage": "error", "code": "fetcher_unavailable", "message": err.message})
+        except FetcherError as err:
+            tell({"stage": "error", "code": err.code, "message": err.message})
         except Exception as err:  # The page must hear the end either way
-            _LOGGER.exception("Adding a chapter from YouTube failed")
+            _LOGGER.exception("Adding a chapter from a link failed")
             tell({"stage": "error", "code": "unknown_error", "message": str(err)})
         else:
             tell(

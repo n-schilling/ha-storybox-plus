@@ -79,7 +79,8 @@ if (!customElements.get("storybox-plus-panel")) {
       fromLink: "From YouTube", add: "Add", linkPlaceholder: "Link to a YouTube video",
       linkHint: "The audio of the video becomes a chapter, named after the video. It is fetched through Home Assistant.",
       linkProbe: "Reading the video …", linkFetch: "Fetching {name} …", linkFetchPct: "Fetching {name} ({p} %) …",
-      linkUpload: "Uploading {name} to the cloud …", linkFailed: "Adding from YouTube failed: {e}",
+      linkConvert: "Converting {name} …", linkUpload: "Uploading {name} to the cloud …", linkFailed: "Adding from YouTube failed: {e}",
+      fetcherMissing: "Needs the Media Fetcher app: install it in Home Assistant under Settings → Apps.",
       convErrors: "The last conversion dropped chapters: {r}",
       reason_wrongFormat: "unsupported format", reason_tooLong: "more than 90 minutes in total", reason_unknownError: "unknown error",
       range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All",
@@ -119,7 +120,8 @@ if (!customElements.get("storybox-plus-panel")) {
       fromLink: "Von YouTube", add: "Hinzufügen", linkPlaceholder: "Link zu einem YouTube-Video",
       linkHint: "Der Ton des Videos wird ein Kapitel, benannt nach dem Video. Er wird über Home Assistant geholt.",
       linkProbe: "Liest das Video …", linkFetch: "Holt {name} …", linkFetchPct: "Holt {name} ({p} %) …",
-      linkUpload: "Lädt {name} in die Cloud hoch …", linkFailed: "Hinzufügen von YouTube fehlgeschlagen: {e}",
+      linkConvert: "Wandelt {name} um …", linkUpload: "Lädt {name} in die Cloud hoch …", linkFailed: "Hinzufügen von YouTube fehlgeschlagen: {e}",
+      fetcherMissing: "Dafür wird die App „Media Fetcher“ gebraucht: in Home Assistant unter Einstellungen → Apps installieren.",
       convErrors: "Die letzte Umwandlung hat Kapitel verworfen: {r}",
       reason_wrongFormat: "nicht unterstütztes Format", reason_tooLong: "insgesamt mehr als 90 Minuten", reason_unknownError: "unbekannter Fehler",
       range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles",
@@ -700,9 +702,12 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       const busy = !!up && !up.error;
       const link = !busy && this._link?.id === f.id ? this._link : null;
+      // Links need the Media Fetcher app; without it the button stays grey and says so on hover
+      const app = this._library?.fetcher !== false;
+      const linkBtn = `<button class="btn" data-act="link:${esc(f.id)}" ${busy || link || !app ? "disabled" : ""}>${icon("link")}${esc(t.fromLink)}</button>`;
       html += `<div class="ch-bar">` +
         `<button class="btn" data-act="upload:${esc(f.id)}" ${busy ? "disabled" : ""}>${icon("upload")}${esc(t.upload)}</button>` +
-        `<button class="btn" data-act="link:${esc(f.id)}" ${busy || link ? "disabled" : ""}>${icon("link")}${esc(t.fromLink)}</button>` +
+        (app ? linkBtn : `<span class="tip" title="${esc(t.fetcherMissing)}">${linkBtn}</span>`) +
         `<button class="btn" data-act="edit:${esc(f.id)}" ${busy || !f.chapters.length ? "disabled" : ""}>${icon("pencil")}${esc(t.edit)}</button></div>`;
       if (link) {
         html += `<form class="link-form" id="link-form">` +
@@ -725,6 +730,7 @@ if (!customElements.get("storybox-plus-panel")) {
       const t = this._t;
       if (!up.link) return fill(t.uploading, { name: up.name, n: up.done + 1, m: up.total });
       if (up.stage === "upload") return fill(t.linkUpload, { name: up.name });
+      if (up.stage === "convert") return fill(t.linkConvert, { name: up.name });
       if (up.stage === "download") return fill(up.pct == null ? t.linkFetch : t.linkFetchPct, { name: up.name, p: up.pct });
       return t.linkProbe;
     }
@@ -1128,6 +1134,7 @@ if (!customElements.get("storybox-plus-panel")) {
   .ch-bar .hint, .link-form .hint { flex: 1 1 240px; margin: 0; }
   .link-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
   .link-form .search { height: 36px; border-radius: 18px; }
+  .tip { display: inline-flex; }
   .btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px;
     border: 1px solid var(--divider-color); background: none; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }
   .btn .mdi { width: 20px; height: 20px; }

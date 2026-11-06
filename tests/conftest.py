@@ -14,8 +14,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
+from aiohasupervisor.models import Discovery
 import aiohttp
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -46,6 +48,7 @@ from custom_components.storybox_plus.cloud.models import parse_battery
 from custom_components.storybox_plus.cloud.push import PushData
 from custom_components.storybox_plus.cloud.rest import API_BASE
 from custom_components.storybox_plus.const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN
+from custom_components.storybox_plus.fetcher import SERVICE as FETCHER_SERVICE
 
 # The account, the household and what is in it
 USER_ID = "0f3c5f2a-1111-4d2e-9c3b-000000000001"
@@ -706,6 +709,117 @@ class PushChannels:
         return self.instances[-1]
 
 
+# ---------------------------------------------------------------- the Media Fetcher app
+
+FETCHER_HOST = "local-media-fetcher"
+FETCHER_PORT = 8099
+FETCHER_TOKEN = "fetch-secret"
+FETCHER_URL = f"http://{FETCHER_HOST}:{FETCHER_PORT}/api/v1"
+VIDEO_ID = "jNQXAC9IVRw"
+VIDEO_URL = f"https://youtu.be/{VIDEO_ID}"
+
+
+class FakeFetcher:
+    """The Media Fetcher app: answers its API from canned data and keeps what it was asked."""
+
+    def __init__(self, mocker: AiohttpClientMocker) -> None:
+        self.mocker = mocker
+        # The app announced itself to the Supervisor
+        self.announced = True
+        # Every request fails with a connection error
+        self.unreachable = False
+        self.info: dict[str, Any] = {
+            "id": VIDEO_ID,
+            "title": "Me at the zoo",
+            "duration": 19,
+            "uploader": "jawed",
+            "extractor": "youtube",
+            "webpage_url": f"https://www.youtube.com/watch?v={VIDEO_ID}",
+            "thumbnail": None,
+            "is_live": False,
+        }
+        # (status, code, message) answered instead of the info or the job
+        self.info_error: tuple[int, str, str] | None = None
+        self.start_error: tuple[int, str, str] | None = None
+        # What a job answers poll by poll; the last answer stays
+        self.states: list[dict[str, Any]] = [
+            {"state": "downloading", "done_bytes": 10, "total_bytes": 20},
+            {"state": "converting", "done_bytes": 20, "total_bytes": 20},
+            {"state": "done", "done_bytes": 20, "total_bytes": 20, "size": 3},
+        ]
+        # The job stays "downloading" until it is deleted
+        self.hold = False
+        self.file = b"aac"
+        self.content_type = "audio/mp4"
+        self.calls: list[tuple[str, str, Any]] = []
+        self.jobs: dict[str, dict[str, Any]] = {}
+        pattern = re.compile(rf"^{re.escape(FETCHER_URL)}/")
+        mocker.get(pattern, side_effect=self._handle)
+        mocker.post(pattern, side_effect=self._handle)
+        mocker.delete(pattern, side_effect=self._handle)
+
+    def discoveries(self) -> list[Discovery]:
+        """What the Supervisor lists."""
+        if not self.announced:
+            return []
+        return [
+            Discovery(
+                addon="local_media_fetcher",
+                service=FETCHER_SERVICE,
+                uuid=uuid4(),
+                config={"host": FETCHER_HOST, "port": FETCHER_PORT, "token": FETCHER_TOKEN},
+            )
+        ]
+
+    async def _handle(self, method: str, url: URL, data: Any) -> AiohttpClientMockResponse:
+        if self.unreachable:
+            raise aiohttp.ClientConnectionError("the app is down")
+        path = url.path.removeprefix("/api/v1")
+        self.calls.append((method.upper(), path, data))
+        if method.upper() == "POST" and path == "/info":
+            if self.info_error is not None:
+                return self._error(method, url, *self.info_error)
+            return _json(method, url, 200, self.info)
+        if method.upper() == "POST" and path == "/jobs":
+            if self.start_error is not None:
+                return self._error(method, url, *self.start_error)
+            job_id = f"job-{len(self.jobs) + 1}"
+            self.jobs[job_id] = {"polls": 0, "deleted": False, "url": data["url"]}
+            return _json(method, url, 201, {"id": job_id, "state": "queued"})
+        parts = path.split("/")
+        job = self.jobs.get(parts[2]) if len(parts) >= 3 and parts[1] == "jobs" else None
+        if job is None:
+            return self._error(method, url, 404, "not_found", "No such job")
+        if method.upper() == "DELETE":
+            job["deleted"] = True
+            return AiohttpClientMockResponse(method=method, url=url, status=204)
+        if len(parts) == 4 and parts[3] == "file":
+            if self._state(job)["state"] != "done":
+                return self._error(method, url, 409, "not_ready", "The job is not done")
+            return AiohttpClientMockResponse(
+                method=method,
+                url=url,
+                status=200,
+                response=self.file,
+                headers={"Content-Type": self.content_type},
+            )
+        job["polls"] += 1
+        return _json(method, url, 200, {"id": parts[2], "url": job["url"], **self._state(job)})
+
+    def _state(self, job: dict[str, Any]) -> dict[str, Any]:
+        if job["deleted"]:
+            return {"state": "cancelled"}
+        if self.hold:
+            return {"state": "downloading", "done_bytes": 5, "total_bytes": None}
+        return self.states[min(max(job["polls"], 1), len(self.states)) - 1]
+
+    @staticmethod
+    def _error(
+        method: str, url: URL, status: int, code: str, message: str
+    ) -> AiohttpClientMockResponse:
+        return _json(method, url, status, {"error": {"code": code, "message": message}})
+
+
 # ---------------------------------------------------------------- fixtures
 
 
@@ -729,6 +843,19 @@ def cloud(aioclient_mock: AiohttpClientMocker) -> FakeCloud:
         discs=[disc()],
     )
     return fake
+
+
+@pytest.fixture
+def fetcher_app(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> Generator[FakeFetcher]:
+    """The Media Fetcher app, announced to the Supervisor and answering its API."""
+    fake = FakeFetcher(aioclient_mock)
+    hass.config.components.add("hassio")
+    supervisor = MagicMock()
+    supervisor.discovery.list = AsyncMock(side_effect=lambda: fake.discoveries())
+    with patch(
+        "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
+    ):
+        yield fake
 
 
 @pytest.fixture

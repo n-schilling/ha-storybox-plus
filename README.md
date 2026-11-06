@@ -39,7 +39,7 @@ On a phone the tabs move to the bottom; dark themes are supported.
 
 Both generations can be mixed in one account. Figures (content Tonies, Creative-Tonies, discs) belong to the household, not to a box; the page shows them that way.
 
-Requirements: Home Assistant 2026.10 or newer and an account of the manufacturer's app. The integration loads Home Assistant's own Media extractor integration, whose yt-dlp it uses for chapters from YouTube.
+Requirements: Home Assistant 2026.10 or newer and an account of the manufacturer's app. Chapters from YouTube links need the **Media Fetcher** app (a Home Assistant app of its own, see below); without it the page offers no links.
 
 ## Installation
 
@@ -151,10 +151,14 @@ actions:
 **Storybox Plus** in the sidebar, for administrators:
 
 - **Boxes**: every box with its live state. For a Toniebox 2 also how long a charge lasts: every discharge from leaving the charger to the next charge, with the hours the box was switched on, the percent used and the projection for a full charge; the average of the latest charges on top.
-- **Figures**: the household's library with search, a filter by kind, the chapters, and which figure stands on a box right now. The cloud names the chapters of bought figures but not their lengths; the lengths are learned from a Toniebox 2 the first time the figure plays on it, and kept. The chapters of a Creative-Tonie can be changed here: audio files are uploaded as new chapters, and in the edit mode chapters are moved and removed, with all changes sent to the cloud together when saved, because every change makes the cloud convert the figure anew and a box download it again. While the cloud converts, the page reads the figure again every few seconds; chapters the cloud dropped (unsupported format, more than 90 minutes in total) are named. A chapter can also come from a YouTube video: the page takes a link, Home Assistant fetches the audio with yt-dlp (the library its Media extractor integration ships, so the version follows Home Assistant) and uploads it as a chapter named after the video, while the page shows the progress. A video that does not fit into the figure's free time is refused before anything is fetched; playlists are not taken, one video at a time.
+- **Figures**: the household's library with search, a filter by kind, the chapters, and which figure stands on a box right now. The cloud names the chapters of bought figures but not their lengths; the lengths are learned from a Toniebox 2 the first time the figure plays on it, and kept. The chapters of a Creative-Tonie can be changed here: audio files are uploaded as new chapters, and in the edit mode chapters are moved and removed, with all changes sent to the cloud together when saved, because every change makes the cloud convert the figure anew and a box download it again. While the cloud converts, the page reads the figure again every few seconds; chapters the cloud dropped (unsupported format, more than 90 minutes in total) are named. A chapter can also come from a YouTube video: the page takes a link, the Media Fetcher app fetches the audio, and the integration uploads it as a chapter named after the video, while the page shows the progress. A video that does not fit into the figure's free time is refused before anything is fetched; playlists are not taken, one video at a time. The button for links stays grey while the app is not installed or not running, and says so when hovered.
 - **Listening**: the most played figures, the total listening time, listening per day and per box, for the last 7, 30 or 365 days or since the setup. A note at the top says where the numbers come from: Home Assistant counts them itself, they are not read from the cloud.
 
 The statistics are daily sums per figure and box, nothing more: no single plays, no times of day. The charge history keeps per discharge the day it ended, its hours and its percentages, also without times of day. They are kept in the integration's own store, not in the recorder, and start with the setup; the cloud offers no history. Only a Toniebox 2 reports playback, so only its listening is counted, and the page says so.
+
+### The Media Fetcher app
+
+Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for YouTube; without one, YouTube refuses most videos. So the fetching lives in the **Media Fetcher** app, a Home Assistant app of its own with yt-dlp, a runtime and ffmpeg. Install it from its repository, start it, and the page's link button comes alive: the app announces itself to the Supervisor, and the integration asks the Supervisor for it whenever the page needs it. Nothing is configured in the integration for that.
 
 ## How the data is updated
 
@@ -168,7 +172,7 @@ The statistics are daily sums per figure and box, nothing more: no single plays,
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The listening statistics count from the setup on; there is no history before that.
 - Uploads go through Home Assistant's own file upload and take at most 100 MB per file. The cloud converts what it accepts; which formats that are is its decision, not the page's.
-- Chapters from YouTube depend on yt-dlp as Home Assistant pins it, and on YouTube. yt-dlp asks for a JavaScript runtime that Home Assistant's container does not have; the audio is still served without one, but yt-dlp calls that path deprecated. When a fetch fails, the page shows what yt-dlp said; a newer Home Assistant release usually brings a newer yt-dlp. The audio is taken as AAC in an M4A file; anything else is converted by ffmpeg, which Home Assistant's container ships.
+- Chapters from links need the Media Fetcher app, which runs only on Home Assistant OS and Supervised installations. The app fetches with yt-dlp and a JavaScript runtime and converts with ffmpeg; the integration asks it for AAC in an M4A file. When a fetch fails, the page shows what the app said.
 - The cloud's API is not documented for third parties. If the manufacturer changes it, this integration needs an update.
 
 ## Troubleshooting
@@ -188,7 +192,7 @@ The statistics are daily sums per figure and box, nothing more: no single plays,
 - Only a refresh token is stored, never the password. It is rotated with every refresh.
 - No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data.
 - Changes to the account (uploading, moving and removing chapters) are not offered as entities, only on the page, which is for administrators only. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
-- A link is fetched by Home Assistant itself, only from YouTube's addresses, and the file is deleted once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and YouTube's terms; the integration does not check that.
+- A link is fetched by the Media Fetcher app inside your Home Assistant, which the integration finds through the Supervisor; the file is deleted from the app once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and the platform's terms; the integration does not check that.
 
 ## Development
 
