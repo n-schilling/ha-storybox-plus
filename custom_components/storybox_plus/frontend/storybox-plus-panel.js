@@ -32,6 +32,7 @@ if (!customElements.get("storybox-plus-panel")) {
     up: "M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z",
     down: "M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z",
     remove: "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z",
+    link: "M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z",
   };
   // How often a creative figure is read again while the cloud converts its chapters (ms)
   const CONVERT_REFRESH = 15000;
@@ -75,6 +76,10 @@ if (!customElements.get("storybox-plus-panel")) {
       moveUp: "Move up", moveDown: "Move down", remove: "Remove",
       editHint: "The changes are sent together when you save. The cloud then converts the figure anew, and a box downloads it again.",
       uploading: "Uploading {name} ({n} of {m}) …", uploadFailed: "Upload failed: {e}", saveFailed: "Saving failed: {e}",
+      fromLink: "From YouTube", add: "Add", linkPlaceholder: "Link to a YouTube video",
+      linkHint: "The audio of the video becomes a chapter, named after the video. It is fetched through Home Assistant.",
+      linkProbe: "Reading the video …", linkFetch: "Fetching {name} …", linkFetchPct: "Fetching {name} ({p} %) …",
+      linkUpload: "Uploading {name} to the cloud …", linkFailed: "Adding from YouTube failed: {e}",
       convErrors: "The last conversion dropped chapters: {r}",
       reason_wrongFormat: "unsupported format", reason_tooLong: "more than 90 minutes in total", reason_unknownError: "unknown error",
       range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All",
@@ -111,6 +116,10 @@ if (!customElements.get("storybox-plus-panel")) {
       moveUp: "Nach oben", moveDown: "Nach unten", remove: "Entfernen",
       editHint: "Die Änderungen gehen beim Speichern gesammelt in die Cloud. Sie wandelt die Figur danach neu um, und eine Box lädt sie neu.",
       uploading: "Lädt {name} hoch ({n} von {m}) …", uploadFailed: "Hochladen fehlgeschlagen: {e}", saveFailed: "Speichern fehlgeschlagen: {e}",
+      fromLink: "Von YouTube", add: "Hinzufügen", linkPlaceholder: "Link zu einem YouTube-Video",
+      linkHint: "Der Ton des Videos wird ein Kapitel, benannt nach dem Video. Er wird über Home Assistant geholt.",
+      linkProbe: "Liest das Video …", linkFetch: "Holt {name} …", linkFetchPct: "Holt {name} ({p} %) …",
+      linkUpload: "Lädt {name} in die Cloud hoch …", linkFailed: "Hinzufügen von YouTube fehlgeschlagen: {e}",
       convErrors: "Die letzte Umwandlung hat Kapitel verworfen: {r}",
       reason_wrongFormat: "nicht unterstütztes Format", reason_tooLong: "insgesamt mehr als 90 Minuten", reason_unknownError: "unbekannter Fehler",
       range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles",
@@ -175,6 +184,8 @@ if (!customElements.get("storybox-plus-panel")) {
       this._edit = null;
       // Uploads per creative figure: { total, done, name, error }
       this._uploads = {};
+      // The open link field of a creative figure: { id, url }
+      this._link = null;
       this._uploadTarget = null;
       this._bindOnce();
     }
@@ -342,9 +353,15 @@ if (!customElements.get("storybox-plus-panel")) {
         }
       });
       root.addEventListener("input", (e) => {
+        if (e.target.id === "link-url" && this._link) this._link.url = e.target.value;
         if (e.target.id !== "search") return;
         this._query = e.target.value;
         this._refreshList();
+      });
+      root.addEventListener("submit", (e) => {
+        if (e.target.id !== "link-form") return;
+        e.preventDefault();
+        this._fetchLink();
       });
       // The hidden file field of the frame serves every creative figure in turn
       root.addEventListener("change", (e) => {
@@ -682,16 +699,34 @@ if (!customElements.get("storybox-plus-panel")) {
         return html + this._chapterList(edit.chapters, true);
       }
       const busy = !!up && !up.error;
+      const link = !busy && this._link?.id === f.id ? this._link : null;
       html += `<div class="ch-bar">` +
         `<button class="btn" data-act="upload:${esc(f.id)}" ${busy ? "disabled" : ""}>${icon("upload")}${esc(t.upload)}</button>` +
+        `<button class="btn" data-act="link:${esc(f.id)}" ${busy || link ? "disabled" : ""}>${icon("link")}${esc(t.fromLink)}</button>` +
         `<button class="btn" data-act="edit:${esc(f.id)}" ${busy || !f.chapters.length ? "disabled" : ""}>${icon("pencil")}${esc(t.edit)}</button></div>`;
+      if (link) {
+        html += `<form class="link-form" id="link-form">` +
+          `<label class="search">${icon("link")}<input id="link-url" type="url" placeholder="${esc(t.linkPlaceholder)}" value="${esc(link.url)}" autocomplete="off" spellcheck="false" required></label>` +
+          `<button class="btn primary" type="submit">${icon("check")}${esc(t.add)}</button>` +
+          `<button class="btn" type="button" data-act="linkcancel">${icon("close")}${esc(t.cancel)}</button>` +
+          `<span class="muted small hint">${esc(t.linkHint)}</span></form>`;
+      }
       if (up) {
         html += up.error
-          ? `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.uploadFailed, { e: up.error }))}</span>` +
+          ? `<div class="alert err inline">${icon("alert")}<span>${esc(fill(up.link ? t.linkFailed : t.uploadFailed, { e: up.error }))}</span>` +
             `<button class="text-button" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</button></div>`
-          : `<div class="muted small busy">${esc(fill(t.uploading, { name: up.name, n: up.done + 1, m: up.total }))}</div>`;
+          : `<div class="muted small busy">${esc(this._progressText(up))}</div>`;
       }
       return html + this._chapterList(f.chapters);
+    }
+
+    // What a running upload, or a chapter fetched from a link, is doing right now
+    _progressText(up) {
+      const t = this._t;
+      if (!up.link) return fill(t.uploading, { name: up.name, n: up.done + 1, m: up.total });
+      if (up.stage === "upload") return fill(t.linkUpload, { name: up.name });
+      if (up.stage === "download") return fill(up.pct == null ? t.linkFetch : t.linkFetchPct, { name: up.name, p: up.pct });
+      return t.linkProbe;
     }
 
     // Buttons of the figures: "verb:argument"
@@ -731,6 +766,16 @@ if (!customElements.get("storybox-plus-panel")) {
           this._uploadTarget = arg;
           this.shadowRoot.getElementById("upload")?.click();
           return;
+        case "link":
+          if (this._uploads[arg] && !this._uploads[arg].error) return;
+          delete this._uploads[arg];
+          this._link = { id: arg, url: "" };
+          this._refreshList();
+          this.shadowRoot.getElementById("link-url")?.focus();
+          return;
+        case "linkcancel":
+          this._link = null;
+          break;
         case "dismiss":
           delete this._uploads[arg];
           break;
@@ -792,6 +837,43 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       if (!up.error && this._uploads[id] === up) delete this._uploads[id];
       this._refreshList();
+    }
+
+    // The link goes to the integration, which fetches the audio through yt-dlp and
+    // appends the chapter; it reports the stages as events until done or failed
+    async _fetchLink() {
+      const link = this._link;
+      const url = (link?.url || "").trim();
+      if (!link || !url || !this._hass) return;
+      const id = link.id;
+      const up = { total: 1, done: 0, name: "", error: null, link: true, stage: "probe", pct: null, unsub: null };
+      this._uploads[id] = up;
+      this._link = null;
+      this._refreshList();
+      const end = () => {
+        if (up.unsub) up.unsub();
+        up.unsub = null;
+      };
+      try {
+        up.unsub = await this._hass.connection.subscribeMessage((ev) => {
+          if (ev.stage === "done") {
+            this._replaceTonie(ev.figure);
+            end();
+            if (this._uploads[id] === up) delete this._uploads[id];
+          } else if (ev.stage === "error") {
+            up.error = ev.message || ev.code;
+            end();
+          } else {
+            up.stage = ev.stage;
+            if (ev.title) up.name = ev.title;
+            up.pct = ev.total ? Math.floor((ev.done / ev.total) * 100) : null;
+          }
+          this._refreshList();
+        }, { type: "storybox_plus/chapters/add_link", tonie_id: id, url }, { resubscribe: false });
+      } catch (err) {
+        up.error = err?.message || String(err);
+        this._refreshList();
+      }
     }
 
     // While the cloud converts a creative figure, it is read again now and then
@@ -1043,7 +1125,9 @@ if (!customElements.get("storybox-plus-panel")) {
   .len { flex: none; }
   /* The tools of a creative figure: upload and edit, or save and cancel while editing */
   .ch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
-  .ch-bar .hint { flex: 1 1 240px; margin: 0; }
+  .ch-bar .hint, .link-form .hint { flex: 1 1 240px; margin: 0; }
+  .link-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
+  .link-form .search { height: 36px; border-radius: 18px; }
   .btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px;
     border: 1px solid var(--divider-color); background: none; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }
   .btn .mdi { width: 20px; height: 20px; }

@@ -7,8 +7,10 @@ the listening statistics, and changes the chapters of creative figures.
 from __future__ import annotations
 
 from collections.abc import Coroutine
+import logging
 import mimetypes
 from pathlib import Path
+import threading
 from typing import Any
 
 import probatio
@@ -34,6 +36,9 @@ from .coordinator import (
     StoryboxConfigEntry,
     StoryboxCoordinator,
 )
+from .youtube import YouTubeCancelled, YouTubeError
+
+_LOGGER = logging.getLogger(__name__)
 
 DATA_WEBSOCKET: HassKey[bool] = HassKey(f"{DOMAIN}_websocket")
 
@@ -59,6 +64,7 @@ _CHAPTER_MESSAGES = {
     "unknown_chapter": "The chapter list names chapters the figure does not have",
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
+    "not_youtube": "Only links to YouTube videos are taken",
 }
 
 
@@ -73,6 +79,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_analytics)
     async_register_command(hass, websocket_arrange_chapters)
     async_register_command(hass, websocket_add_chapter)
+    async_register_command(hass, websocket_add_link)
     async_register_command(hass, websocket_refresh_figure)
 
 
@@ -240,6 +247,10 @@ def websocket_library(
 # ---------------------------------------------------------------- chapters
 
 
+def _chapter_message(err: ChapterError) -> str:
+    return err.text or _CHAPTER_MESSAGES.get(err.code, err.code)
+
+
 async def _answer_with_figure(
     connection: ActiveConnection,
     msg: dict[str, Any],
@@ -250,7 +261,7 @@ async def _answer_with_figure(
     try:
         tonie = await change
     except ChapterError as err:
-        connection.send_error(msg["id"], err.code, _CHAPTER_MESSAGES.get(err.code, err.code))
+        connection.send_error(msg["id"], err.code, _chapter_message(err))
     except CloudError as err:
         connection.send_error(msg["id"], "cloud_error", str(err))
     else:
@@ -333,6 +344,69 @@ async def websocket_add_chapter(
         coordinator,
         coordinator.async_add_chapter(msg["tonie_id"], title, data, filename, content_type),
     )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/chapters/add_link",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("url"): str,
+    }
+)
+@async_response
+async def websocket_add_link(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Fetch the audio of a YouTube video as a chapter; the page hears the progress as events.
+
+    The command subscribes: the result confirms the subscription, the events
+    name the stage ("probe", "download" with the bytes, "upload") and end
+    with "done" and the figure, or "error" with a code and a message. The
+    page unsubscribes then; unsubscribing earlier, or losing the connection,
+    stops a running download.
+    """
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    msg_id: int = msg["id"]
+    cancelled = threading.Event()
+
+    @callback
+    def tell(event: dict[str, Any]) -> None:
+        if msg_id in connection.subscriptions:
+            connection.send_event(msg_id, event)
+
+    async def run() -> None:
+        try:
+            tonie = await coordinator.async_add_chapter_from_link(
+                msg["tonie_id"], msg["url"], tell, cancelled
+            )
+        except ChapterError as err:
+            tell({"stage": "error", "code": err.code, "message": _chapter_message(err)})
+        except CloudError as err:
+            tell({"stage": "error", "code": "cloud_error", "message": str(err)})
+        except YouTubeCancelled:
+            _LOGGER.debug("A download from YouTube was cancelled")
+        except YouTubeError as err:
+            tell({"stage": "error", "code": "video_error", "message": str(err)})
+        except Exception as err:  # The page must hear the end either way
+            _LOGGER.exception("Adding a chapter from YouTube failed")
+            tell({"stage": "error", "code": "unknown_error", "message": str(err)})
+        else:
+            tell(
+                {"stage": "done", "figure": _tonie_dict(tonie, _on_box(coordinator.data, tonie.id))}
+            )
+
+    @callback
+    def stop() -> None:
+        cancelled.set()
+
+    connection.subscriptions[msg_id] = stop
+    connection.send_result(msg_id)
+    hass.async_create_background_task(run(), f"{DOMAIN} chapter from link")
 
 
 @require_admin

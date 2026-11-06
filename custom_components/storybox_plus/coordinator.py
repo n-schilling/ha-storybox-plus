@@ -6,7 +6,12 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from functools import partial
 import logging
+from pathlib import Path
+import shutil
+import tempfile
+import threading
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -16,6 +21,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
+from . import youtube
 from .analytics import Analytics
 from .battery import BatteryStats
 from .cloud import (
@@ -61,13 +67,15 @@ class ChapterError(HomeAssistantError):
     """A change to the chapters of a figure that is refused before the cloud is asked.
 
     The code names why: "unknown_figure", "not_creative" (only creative
-    figures take chapters) or "unknown_chapter".
+    figures take chapters), "unknown_chapter", "not_youtube" or "too_long".
+    A text says more where the code alone does not.
     """
 
-    def __init__(self, code: str) -> None:
-        """Keep the code; it is the message as well."""
-        super().__init__(code)
+    def __init__(self, code: str, text: str | None = None) -> None:
+        """Keep the code; without a text it is the message as well."""
+        super().__init__(text or code)
         self.code = code
+        self.text = text
 
 
 @dataclass(slots=True)
@@ -456,6 +464,56 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         answer = await self.client.async_add_chapter(tonie.household_id, tonie_id, title, file_id)
         return await self._async_take_creative(tonie, answer)
 
+    async def async_add_chapter_from_link(
+        self,
+        tonie_id: str,
+        url: str,
+        progress: Callable[[dict[str, Any]], None],
+        cancelled: threading.Event,
+    ) -> Tonie:
+        """Fetch the audio of a YouTube video and append it as a chapter of a creative figure.
+
+        The progress callback hears, in the event loop, what happens: the
+        video being read ("probe"), the download with its bytes, the upload.
+        A video that does not fit into the figure's free time is refused
+        before anything is fetched. Setting the event stops a running
+        download; an upload that has begun completes.
+        """
+        tonie = self._creative(tonie_id)
+        if not youtube.is_youtube(url):
+            raise ChapterError("not_youtube")
+        progress({"stage": "probe"})
+        video = await self.hass.async_add_executor_job(youtube.probe, url)
+        free = tonie.seconds_remaining
+        if free is not None and video.seconds > free:
+            raise ChapterError(
+                "too_long",
+                f"The video lasts {_clock(video.seconds)}, the figure has {_clock(free)} left",
+            )
+        about = {"title": video.title, "seconds": video.seconds}
+        loop = self.hass.loop
+
+        def report(done: int, total: int | None) -> None:
+            loop.call_soon_threadsafe(
+                progress, {"stage": "download", **about, "done": done, "total": total}
+            )
+
+        progress({"stage": "download", **about, "done": 0, "total": None})
+        folder = Path(
+            await self.hass.async_add_executor_job(partial(tempfile.mkdtemp, prefix=f"{DOMAIN}_"))
+        )
+        try:
+            path = await self.hass.async_add_executor_job(
+                youtube.download, url, folder, report, cancelled
+            )
+            data = await self.hass.async_add_executor_job(path.read_bytes)
+        finally:
+            await self.hass.async_add_executor_job(shutil.rmtree, folder, True)
+        progress({"stage": "upload", **about, "done": 0, "total": len(data)})
+        return await self.async_add_chapter(
+            tonie_id, video.title, data, f"{video.id}.{youtube.AUDIO_EXTENSION}", "audio/mp4"
+        )
+
     async def async_refresh_creative(self, tonie_id: str) -> Tonie:
         """Read one creative figure again, while the cloud converts its chapters."""
         tonie = self._creative(tonie_id)
@@ -478,6 +536,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if tonie_id is None:
             return None
         return self.data.tonies.get(tonie_id)
+
+
+def _clock(seconds: float) -> str:
+    """Seconds as h:mm:ss, for a message."""
+    whole = round(seconds)
+    return f"{whole // 3600}:{whole % 3600 // 60:02d}:{whole % 60:02d}"
 
 
 def _online_from_rest(box: Box) -> bool | None:

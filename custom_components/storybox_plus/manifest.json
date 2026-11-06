@@ -12,12 +12,16 @@
   "dependencies": [
     "file_upload",
     "http",
+    "media_extractor",
     "websocket_api"
   ],
   "documentation": "https://github.com/n-schilling/ha-storybox-plus",
   "integration_type": "hub",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/n-schilling/ha-storybox-plus/issues",
+  "loggers": [
+    "yt_dlp"
+  ],
   "requirements": [
     "aiomqtt==2.5.1"
   ],

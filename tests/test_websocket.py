@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
+import logging
+from pathlib import Path
+import threading
 from typing import Any
 
 import aiohttp
@@ -15,6 +19,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from custom_components.storybox_plus import youtube
 from custom_components.storybox_plus.const import CONF_ANALYTICS, DOMAIN
 from custom_components.storybox_plus.websocket import _content_type
 
@@ -688,11 +693,230 @@ async def test_refresh_figure(
     assert gone["error"]["code"] == "unknown_figure"
 
 
+VIDEO_ID = "jNQXAC9IVRw"
+VIDEO_URL = f"https://youtu.be/{VIDEO_ID}"
+VIDEO = youtube.Video(id=VIDEO_ID, title="Me at the zoo", seconds=19)
+
+
+def _fake_youtube(
+    monkeypatch: pytest.MonkeyPatch,
+    video: youtube.Video = VIDEO,
+    probe_error: Exception | None = None,
+    hold: threading.Event | None = None,
+) -> dict[str, Any]:
+    """Stand in for the yt-dlp wrapper: a canned video, a written file, the calls kept.
+
+    With `hold`, the download waits for the cancel event (or the hold) instead
+    of finishing, as a long download would.
+    """
+    seen: dict[str, Any] = {"calls": [], "folder": None}
+
+    def probe(url: str) -> youtube.Video:
+        seen["calls"].append(("probe", url))
+        if probe_error is not None:
+            raise probe_error
+        return video
+
+    def download(
+        url: str, folder: Path, progress: youtube.Progress, cancelled: threading.Event
+    ) -> Path:
+        seen["calls"].append(("download", url))
+        seen["folder"] = folder
+        assert folder.is_dir()
+        assert folder.name.startswith(f"{DOMAIN}_")
+        if hold is not None:
+            hold.set()
+            assert cancelled.wait(5)
+            raise youtube.YouTubeCancelled("The download was cancelled")
+        progress(10, 20)
+        path = folder / f"{video.id}.m4a"
+        path.write_bytes(b"aac")
+        return path
+
+    monkeypatch.setattr(youtube, "probe", probe)
+    monkeypatch.setattr(youtube, "download", download)
+    return seen
+
+
+async def _events_until_end(client: Any) -> list[dict[str, Any]]:
+    """Collect the events of a subscription up to "done" or "error"."""
+    events: list[dict[str, Any]] = []
+    while True:
+        message = await client.receive_json()
+        assert message["type"] == "event", message
+        events.append(message["event"])
+        if message["event"]["stage"] in ("done", "error"):
+            return events
+
+
+async def test_add_link(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A YouTube link is read, fetched and uploaded as a chapter; the page hears every stage."""
+    seen = _fake_youtube(monkeypatch)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": CREATIVE_ID, "url": VIDEO_URL}
+    )
+    result = await client.receive_json()
+    assert result["success"], result
+    events = await _events_until_end(client)
+    about = {"title": "Me at the zoo", "seconds": 19}
+    assert events[:4] == [
+        {"stage": "probe"},
+        {"stage": "download", **about, "done": 0, "total": None},
+        {"stage": "download", **about, "done": 10, "total": 20},
+        {"stage": "upload", **about, "done": 0, "total": 3},
+    ]
+    assert events[4]["stage"] == "done"
+    figure = events[4]["figure"]
+    assert [c["title"] for c in figure["chapters"]] == ["Song", "Me at the zoo"]
+    assert figure["transcoding"] is True
+    assert seen["calls"] == [("probe", VIDEO_URL), ("download", VIDEO_URL)]
+    # The file went to the cloud as M4A and the folder is gone
+    (upload,) = cloud.s3_uploads
+    assert upload["fields"][-1] == ("file", f"{VIDEO_ID}.m4a", "audio/mp4", 3)
+    (added,) = cloud.chapter_adds
+    assert added[2] == {"title": "Me at the zoo", "file": "file-1", "type": "file"}
+    assert not seen["folder"].exists()
+    # The subscription ends when the page unsubscribes
+    await client.send_json_auto_id({"type": "unsubscribe_events", "subscription": result["id"]})
+    assert (await client.receive_json())["success"]
+
+
+@pytest.mark.parametrize(
+    ("tonie_id", "url", "video", "probe_error", "code", "message"),
+    [
+        (TONIE_ID, VIDEO_URL, VIDEO, None, "not_creative", "Only creative figures take chapters"),
+        (
+            CREATIVE_ID,
+            "https://example.com/watch?v=x",
+            VIDEO,
+            None,
+            "not_youtube",
+            "Only links to YouTube videos are taken",
+        ),
+        (
+            CREATIVE_ID,
+            VIDEO_URL,
+            youtube.Video(id=VIDEO_ID, title="Long", seconds=6000),
+            None,
+            "too_long",
+            "The video lasts 1:40:00, the figure has 1:23:20 left",
+        ),
+        (
+            CREATIVE_ID,
+            VIDEO_URL,
+            VIDEO,
+            youtube.YouTubeError("Video unavailable"),
+            "video_error",
+            "Video unavailable",
+        ),
+        (CREATIVE_ID, VIDEO_URL, VIDEO, RuntimeError("boom"), "unknown_error", "boom"),
+    ],
+)
+async def test_add_link_refused(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tonie_id: str,
+    url: str,
+    video: youtube.Video,
+    probe_error: Exception | None,
+    code: str,
+    message: str,
+) -> None:
+    """What is refused, or fails, ends the subscription with an error event; nothing is fetched."""
+    seen = _fake_youtube(monkeypatch, video=video, probe_error=probe_error)
+    client = await hass_ws_client(hass)
+    with caplog.at_level(logging.ERROR):
+        await client.send_json_auto_id(
+            {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": tonie_id, "url": url}
+        )
+        assert (await client.receive_json())["success"]
+        events = await _events_until_end(client)
+    assert events[-1] == {"stage": "error", "code": code, "message": message}
+    assert ("download", url) not in seen["calls"]
+    assert not cloud.chapter_adds
+    assert ("Adding a chapter from YouTube failed" in caplog.text) is (code == "unknown_error")
+
+
+async def test_add_link_unknown_figure_and_cloud_error(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A figure of no account is refused at once; a refusal of the cloud ends with its words."""
+    _fake_youtube(monkeypatch)
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": "nope", "url": VIDEO_URL}
+    )
+    assert not result["success"]
+    assert result["error"]["code"] == "unknown_figure"
+    cloud.main.chapters_error = (429, {"retryInSeconds": 30})
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": CREATIVE_ID, "url": VIDEO_URL}
+    )
+    assert (await client.receive_json())["success"]
+    events = await _events_until_end(client)
+    assert events[-1]["stage"] == "error"
+    assert events[-1]["code"] == "cloud_error"
+    assert "429" in events[-1]["message"]
+    assert "retry in 30 s" in events[-1]["message"]
+
+
+async def test_add_link_stops_when_the_page_unsubscribes(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unsubscribing while the download runs cancels it; no chapter is added and nothing more is sent."""
+    hold = threading.Event()
+    seen = _fake_youtube(monkeypatch, hold=hold)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": CREATIVE_ID, "url": VIDEO_URL}
+    )
+    result = await client.receive_json()
+    assert result["success"]
+    assert (await client.receive_json())["event"] == {"stage": "probe"}
+    assert (await client.receive_json())["event"]["stage"] == "download"
+    # The download thread is waiting for the cancel event now
+    await hass.async_add_executor_job(hold.wait, 5)
+    await client.send_json_auto_id({"type": "unsubscribe_events", "subscription": result["id"]})
+    assert (await client.receive_json())["success"]
+    # The task ends quietly: the next answer is the one to the next command
+    await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    overview = await _ask(client, {"type": f"{DOMAIN}/overview"})
+    assert overview["success"]
+    assert overview["type"] == "result"
+    assert not cloud.chapter_adds
+    assert not seen["folder"].exists()
+
+
 @pytest.mark.parametrize(
     "msg",
     [
         {"type": f"{DOMAIN}/chapters/arrange", "tonie_id": CREATIVE_ID, "chapters": []},
         {"type": f"{DOMAIN}/chapters/add", "tonie_id": CREATIVE_ID, "file_id": "x"},
+        {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": CREATIVE_ID, "url": VIDEO_URL},
         {"type": f"{DOMAIN}/figure/refresh", "tonie_id": CREATIVE_ID},
     ],
 )
