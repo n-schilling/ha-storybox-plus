@@ -591,6 +591,145 @@ async def test_set_chapters_without_body(
     assert await client.async_set_chapters("hh1", "c1", []) is None
 
 
+CREATIVE = f"{HOUSEHOLDS}/hh1/creativetonies/c1"
+FILE = f"{API_BASE}/file"
+STORAGE = "https://uploads.example.com/bucket"
+TICKET = {"fileId": "f-9", "request": {"url": STORAGE, "fields": {"key": "k", "policy": "p"}}}
+
+
+async def test_creative_tonie(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
+    """One creative figure is read on its own; a figure the cloud does not know yields None."""
+    aioclient_mock.get(CREATIVE, json=creative_tonie())
+    aioclient_mock.get(f"{HOUSEHOLDS}/hh1/creativetonies/c2", status=404, json={})
+    aioclient_mock.get(f"{HOUSEHOLDS}/hh1/creativetonies/c3", status=500, json={})
+    aioclient_mock.get(f"{HOUSEHOLDS}/hh1/creativetonies/c4", json=["no object"])
+    tonie = await client.async_creative_tonie("hh1", "c1")
+    assert tonie is not None
+    assert tonie.id == "c1"
+    assert [c.id for c in tonie.chapters] == ["ch1"]
+    assert await client.async_creative_tonie("hh1", "c2") is None
+    with pytest.raises(CloudResponseError):
+        await client.async_creative_tonie("hh1", "c3")
+    assert await client.async_creative_tonie("hh1", "c4") is None
+
+
+async def test_upload_file(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
+    """The ticket's fields go first, the file last, without the bearer token; the file ID comes back."""
+    aioclient_mock.post(FILE, json=TICKET)
+    aioclient_mock.post(STORAGE, status=204)
+    assert await client.async_upload_file(b"ID3 audio", "song.mp3", "audio/mpeg") == "f-9"
+    (ticket,) = _calls(aioclient_mock, FILE)
+    assert ticket[0] == "POST"
+    assert ticket[2] == {}
+    assert ticket[3]["Authorization"].startswith("Bearer ")
+    (upload,) = _calls(aioclient_mock, STORAGE)
+    assert not upload[3]
+    form = upload[2]
+    assert isinstance(form, aiohttp.FormData)
+    parts = [(o["name"], o.get("filename"), h.get("Content-Type"), v) for o, h, v in form._fields]
+    assert parts == [
+        ("key", None, None, "k"),
+        ("policy", None, None, "p"),
+        ("file", "song.mp3", "audio/mpeg", b"ID3 audio"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "ticket",
+    [{}, {"fileId": "f"}, {"request": {"url": STORAGE}}, {"fileId": "", "request": {}}, "no"],
+)
+async def test_upload_file_without_ticket(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient, ticket: Any
+) -> None:
+    """Without a file ID and a storage URL nothing is uploaded."""
+    aioclient_mock.post(FILE, json=ticket)
+    with pytest.raises(CloudResponseError):
+        await client.async_upload_file(b"x", "a.mp3", "audio/mpeg")
+    assert not _calls(aioclient_mock, STORAGE)
+
+
+async def test_upload_file_refused_by_storage(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """A refusal of the storage is a response error with its status."""
+    aioclient_mock.post(FILE, json=TICKET)
+    aioclient_mock.post(STORAGE, status=403, text="<Error/>")
+    with pytest.raises(CloudResponseError) as err:
+        await client.async_upload_file(b"x", "a.mp3", "audio/mpeg")
+    assert err.value.status == 403
+
+
+@pytest.mark.parametrize("exc", [TimeoutError(), aiohttp.ClientConnectionError("down")])
+async def test_upload_file_storage_unreachable(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient, exc: Exception
+) -> None:
+    """Timeouts and network errors on the way to the storage are connection errors."""
+    aioclient_mock.post(FILE, json=TICKET)
+    aioclient_mock.post(STORAGE, exc=exc)
+    with pytest.raises(CloudConnectionError):
+        await client.async_upload_file(b"x", "a.mp3", "audio/mpeg")
+
+
+async def test_add_chapter(aioclient_mock: AiohttpClientMocker, client: CloudClient) -> None:
+    """A chapter is appended by file ID; the title is cut to what the cloud takes."""
+    url = f"{CREATIVE}/chapters"
+    aioclient_mock.post(url, json=creative_tonie())
+    tonie = await client.async_add_chapter("hh1", "c1", "x" * 200, "f-9")
+    assert tonie is not None
+    assert tonie.id == "c1"
+    (call,) = _calls(aioclient_mock, url)
+    assert call[0] == "POST"
+    assert call[2] == {"title": "x" * 128, "file": "f-9", "type": "file"}
+
+
+async def test_add_chapter_without_body(
+    aioclient_mock: AiohttpClientMocker, client: CloudClient
+) -> None:
+    """An empty answer yields no figure, without an error."""
+    aioclient_mock.post(f"{CREATIVE}/chapters", status=204)
+    assert await client.async_add_chapter("hh1", "c1", "Song", "f-9") is None
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "detail"),
+    [
+        (
+            400,
+            {"errors": [{"code": "invalidChapters", "errorCode": "tooManyChapters"}]},
+            " (invalidChapters/tooManyChapters)",
+        ),
+        (
+            400,
+            {"errors": [{"code": "tooLong", "key": "chapters", "message": "free text"}]},
+            " (tooLong)",
+        ),
+        (400, {"errors": [{"message": "no code"}]}, ""),
+        (400, {"errors": []}, ""),
+        (400, {"errors": "x"}, ""),
+        (429, {"retryInSeconds": 30}, " (retry in 30 s)"),
+        (429, {"retryInSeconds": "soon"}, ""),
+        (500, "not json", ""),
+        (503, ["list"], ""),
+    ],
+)
+async def test_error_detail(
+    aioclient_mock: AiohttpClientMocker,
+    client: CloudClient,
+    status: int,
+    body: Any,
+    detail: str,
+) -> None:
+    """The error names the cloud's codes and nothing else of the body."""
+    if isinstance(body, str):
+        aioclient_mock.patch(CREATIVE, status=status, text=body)
+    else:
+        aioclient_mock.patch(CREATIVE, status=status, json=body)
+    with pytest.raises(CloudResponseError) as err:
+        await client.async_set_chapters("hh1", "c1", [])
+    assert str(err.value) == f"PATCH /households/hh1/creativetonies/c1 answered {status}{detail}"
+    assert err.value.status == status
+
+
 async def test_base_url_without_trailing_slash(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, client: CloudClient
 ) -> None:

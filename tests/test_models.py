@@ -590,3 +590,19 @@ def test_tonie_seconds_ignores_unknown_lengths() -> None:
     assert replace(tonie, seconds_total=42).seconds == 42
     assert replace(tonie, seconds_total=0).seconds == 0
     assert Box("b", "hh1", "B", None, Generation.CLASSIC).live is False
+
+
+def test_creative_tonie_transcoding_errors() -> None:
+    """The reasons of a failed conversion are kept, as the cloud names them; the rest is dropped."""
+    data = creative_tonie()
+    data["transcodingErrors"] = [
+        {"reason": "wrongFormat", "deletedChapters": [{"title": "x"}]},
+        {"reason": "tooLong", "deletedChapters": [{"title": "y", "seconds": 10}]},
+        {"deletedChapters": []},
+        "x",
+    ]
+    tonie = parse_creative_tonie(data, "hh1")
+    assert tonie is not None
+    assert tonie.transcoding_errors == ("wrongFormat", "tooLong")
+    data["transcodingErrors"] = "none"
+    assert parse_creative_tonie(data, "hh1").transcoding_errors == ()

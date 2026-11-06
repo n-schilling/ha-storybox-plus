@@ -67,6 +67,9 @@ class Tonie:
     seconds_remaining: float | None = None
     chapters_remaining: int | None = None
     transcoding: bool = False
+    # Why the last conversion of a creative figure dropped chapters: "wrongFormat",
+    # "tooLong" or "unknownError", as the cloud names them
+    transcoding_errors: tuple[str, ...] = ()
     # The length of the content as the library states it, where the chapters carry none
     seconds_total: float | None = None
 
@@ -343,6 +346,18 @@ def parse_creative_tonie(data: dict[str, Any], household_id: str) -> Tonie | Non
         seconds_remaining=_number(data.get("secondsRemaining")),
         chapters_remaining=_integer(data.get("chaptersRemaining")),
         transcoding=bool(data.get("transcoding")),
+        transcoding_errors=_transcoding_errors(data.get("transcodingErrors")),
+    )
+
+
+def _transcoding_errors(raw: Any) -> tuple[str, ...]:
+    """The reasons of the conversion errors, as the cloud names them."""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        reason
+        for item in raw
+        if isinstance(item, dict) and (reason := _text(item, "reason")) is not None
     )
 
 

@@ -24,7 +24,19 @@ if (!customElements.get("storybox-plus-panel")) {
     volume: "M5,9V15H9L14,20V4L9,9M18.5,12C18.5,10.23 17.5,8.71 16,7.97V16C17.5,15.29 18.5,13.76 18.5,12Z",
     sleep: "M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z",
     info: "M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z",
+    alert: "M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z",
+    pencil: "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z",
+    check: "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z",
+    close: "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",
+    upload: "M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z",
+    up: "M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z",
+    down: "M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z",
+    remove: "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z",
   };
+  // How often a creative figure is read again while the cloud converts its chapters (ms)
+  const CONVERT_REFRESH = 15000;
+  // Audio the cloud converts; the list only helps the file picker, the cloud decides
+  const AUDIO_TYPES = "audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.oga,.opus,.wav,.flac,.wma";
 
   // Tab id (also the URL hash), icon, text
   const TABS = [
@@ -59,6 +71,12 @@ if (!customElements.get("storybox-plus-panel")) {
       noFigures: "No figure in the household yet.", noMatch: "No figure matches.",
       chapter1: "1 chapter", chaptersN: "{n} chapters", noChapters: "No chapters yet.",
       onBox: "on {box}", locked: "Locked", transcoding: "converting", free: "Free: {t} h",
+      edit: "Edit", save: "Save", cancel: "Cancel", upload: "Upload", dismiss: "Dismiss",
+      moveUp: "Move up", moveDown: "Move down", remove: "Remove",
+      editHint: "The changes are sent together when you save. The cloud then converts the figure anew, and a box downloads it again.",
+      uploading: "Uploading {name} ({n} of {m}) …", uploadFailed: "Upload failed: {e}", saveFailed: "Saving failed: {e}",
+      convErrors: "The last conversion dropped chapters: {r}",
+      reason_wrongFormat: "unsupported format", reason_tooLong: "more than 90 minutes in total", reason_unknownError: "unknown error",
       range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All",
       lastDays: "last {n} days", since: "since {d}", sinceSetup: "since the setup",
       total: "Listening time", top: "Most played", perDay: "Per day", perWeek: "Per week", perBox: "Per box",
@@ -89,6 +107,12 @@ if (!customElements.get("storybox-plus-panel")) {
       noFigures: "Noch keine Figur im Haushalt.", noMatch: "Keine Figur passt.",
       chapter1: "1 Kapitel", chaptersN: "{n} Kapitel", noChapters: "Noch keine Kapitel.",
       onBox: "auf {box}", locked: "Gesperrt", transcoding: "wird umgewandelt", free: "Frei: {t} h",
+      edit: "Bearbeiten", save: "Speichern", cancel: "Abbrechen", upload: "Hochladen", dismiss: "Schließen",
+      moveUp: "Nach oben", moveDown: "Nach unten", remove: "Entfernen",
+      editHint: "Die Änderungen gehen beim Speichern gesammelt in die Cloud. Sie wandelt die Figur danach neu um, und eine Box lädt sie neu.",
+      uploading: "Lädt {name} hoch ({n} von {m}) …", uploadFailed: "Hochladen fehlgeschlagen: {e}", saveFailed: "Speichern fehlgeschlagen: {e}",
+      convErrors: "Die letzte Umwandlung hat Kapitel verworfen: {r}",
+      reason_wrongFormat: "nicht unterstütztes Format", reason_tooLong: "insgesamt mehr als 90 Minuten", reason_unknownError: "unbekannter Fehler",
       range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles",
       lastDays: "letzte {n} Tage", since: "seit {d}", sinceSetup: "seit der Einrichtung",
       total: "Hörzeit", top: "Meistgehört", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Pro Box",
@@ -147,6 +171,11 @@ if (!customElements.get("storybox-plus-panel")) {
       this._open = new Set();
       this._range = "30";
       this._frameKey = null;
+      // The chapters of one creative figure being rearranged: { id, chapters, saving, error }
+      this._edit = null;
+      // Uploads per creative figure: { total, done, name, error }
+      this._uploads = {};
+      this._uploadTarget = null;
       this._bindOnce();
     }
 
@@ -216,9 +245,11 @@ if (!customElements.get("storybox-plus-panel")) {
       } else this._loadStats(this._range);
     }
 
-    // The boxes are polled and their progress ticks only while their tab shows
+    // The boxes are polled and their progress ticks only while their tab shows; the
+    // figures are watched for a conversion only while theirs does
     _syncTimers() {
-      const live = this.isConnected && this._tab === "boxes" && document.visibilityState === "visible";
+      const visible = this.isConnected && document.visibilityState === "visible";
+      const live = visible && this._tab === "boxes";
       if (live && !this._poll) {
         this._poll = window.setInterval(() => this._loadOverview(), REFRESH);
         this._ticker = window.setInterval(() => this._tick(), 1000);
@@ -226,6 +257,13 @@ if (!customElements.get("storybox-plus-panel")) {
         window.clearInterval(this._poll);
         window.clearInterval(this._ticker);
         this._poll = this._ticker = null;
+      }
+      const figures = visible && this._tab === "figures";
+      if (figures && !this._convPoll) {
+        this._convPoll = window.setInterval(() => this._refreshConverting(), CONVERT_REFRESH);
+      } else if (!figures && this._convPoll) {
+        window.clearInterval(this._convPoll);
+        this._convPoll = null;
       }
     }
 
@@ -279,6 +317,7 @@ if (!customElements.get("storybox-plus-panel")) {
         const act = el.closest?.("[data-act]")?.dataset.act;
         if (act === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
         if (act === "refresh" || act === "retry") this._ensure();
+        if (act) this._chapterAction(act);
         const range = el.closest?.("[data-range]");
         if (range) {
           this._range = range.dataset.range;
@@ -306,6 +345,13 @@ if (!customElements.get("storybox-plus-panel")) {
         if (e.target.id !== "search") return;
         this._query = e.target.value;
         this._refreshList();
+      });
+      // The hidden file field of the frame serves every creative figure in turn
+      root.addEventListener("change", (e) => {
+        if (e.target.id !== "upload") return;
+        const files = [...e.target.files];
+        e.target.value = "";
+        if (this._uploadTarget && files.length) this._uploadFiles(this._uploadTarget, files);
       });
       // A picture that does not load leaves the placeholder behind it visible
       root.addEventListener("error", (e) => {
@@ -350,7 +396,8 @@ if (!customElements.get("storybox-plus-panel")) {
       this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="app${this._narrow ? " narrow" : ""}">` +
         `<div class="toolbar">${menu}<div class="main-title">Storybox Plus</div>${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}` +
         `<div class="tools"><button class="icon-button" data-act="refresh" title="${esc(t.refresh)}">${icon("refresh")}</button></div></div>` +
-        `<div class="content"><div class="sheet" id="sheet"></div></div>${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}</div>`;
+        `<div class="content"><div class="sheet" id="sheet"></div></div>${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}` +
+        `<input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden></div>`;
       this._sheetHtml = null;
     }
 
@@ -590,15 +637,178 @@ if (!customElements.get("storybox-plus-panel")) {
         if (Number.isFinite(f.chapters_remaining)) free.push(fill(f.chapters_remaining === 1 ? t.chapter1 : t.chaptersN, { n: f.chapters_remaining }));
         detail += `<div class="muted small">${esc(free.join(" · "))}</div>`;
       }
-      detail += chapters.length
-        ? `<ol class="chapters">${chapters.map((c, i) =>
-          `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
-          `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span></li>`).join("")}</ol>`
-        : `<div class="muted small">${esc(t.noChapters)}</div>`;
+      // Only a creative figure takes chapters; the detail is drawn open when it is edited
+      detail += f.kind === "creative" ? this._creativeDetail(f) : this._chapterList(chapters);
       return `<div class="figure${open ? " open" : ""}"><button class="fig-head" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
         `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
         `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
         `<span class="badges">${badges}</span>${icon("chevron")}</button><div class="detail">${detail}</div></div>`;
+    }
+
+    _chapterList(chapters, editing = false) {
+      const t = this._t;
+      if (!chapters.length) return `<div class="muted small">${esc(t.noChapters)}</div>`;
+      const last = chapters.length - 1;
+      return `<ol class="chapters${editing ? " editing" : ""}">${chapters.map((c, i) => {
+        const tools = editing
+          ? `<span class="ch-tools">` +
+            `<button class="icon-button" data-act="up:${i}" title="${esc(t.moveUp)}"${i === 0 ? " disabled" : ""}>${icon("up")}</button>` +
+            `<button class="icon-button" data-act="down:${i}" title="${esc(t.moveDown)}"${i === last ? " disabled" : ""}>${icon("down")}</button>` +
+            `<button class="icon-button danger" data-act="remove:${i}" title="${esc(t.remove)}">${icon("remove")}</button></span>`
+          : "";
+        return `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
+          `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span>${tools}</li>`;
+      }).join("")}</ol>`;
+    }
+
+    // The chapters of a creative figure with the tools to upload, rearrange and remove them.
+    // Rearranging happens on a copy and goes to the cloud in one go when saved.
+    _creativeDetail(f) {
+      const t = this._t;
+      const edit = this._edit?.id === f.id ? this._edit : null;
+      const up = this._uploads[f.id];
+      let html = "";
+      if (f.transcoding_errors?.length) {
+        const reasons = [...new Set(f.transcoding_errors)].map((r) => t[`reason_${r}`] || r).join(", ");
+        html += `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.convErrors, { r: reasons }))}</span></div>`;
+      }
+      if (edit) {
+        const busy = edit.saving;
+        html += `<div class="ch-bar">` +
+          `<button class="btn primary" data-act="save" ${busy ? "disabled" : ""}>${icon("check")}${esc(t.save)}</button>` +
+          `<button class="btn" data-act="cancel" ${busy ? "disabled" : ""}>${icon("close")}${esc(t.cancel)}</button>` +
+          `<span class="muted small hint">${esc(t.editHint)}</span></div>`;
+        if (edit.error) html += `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.saveFailed, { e: edit.error }))}</span></div>`;
+        return html + this._chapterList(edit.chapters, true);
+      }
+      const busy = !!up && !up.error;
+      html += `<div class="ch-bar">` +
+        `<button class="btn" data-act="upload:${esc(f.id)}" ${busy ? "disabled" : ""}>${icon("upload")}${esc(t.upload)}</button>` +
+        `<button class="btn" data-act="edit:${esc(f.id)}" ${busy || !f.chapters.length ? "disabled" : ""}>${icon("pencil")}${esc(t.edit)}</button></div>`;
+      if (up) {
+        html += up.error
+          ? `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.uploadFailed, { e: up.error }))}</span>` +
+            `<button class="text-button" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</button></div>`
+          : `<div class="muted small busy">${esc(fill(t.uploading, { name: up.name, n: up.done + 1, m: up.total }))}</div>`;
+      }
+      return html + this._chapterList(f.chapters);
+    }
+
+    // Buttons of the figures: "verb:argument"
+    _chapterAction(act) {
+      const [verb, arg] = act.split(/:(.*)/s);
+      const edit = this._edit;
+      const tonie = (id) => this._library?.tonies.find((x) => x.id === id);
+      switch (verb) {
+        case "edit": {
+          const f = tonie(arg);
+          if (f) this._edit = { id: f.id, chapters: f.chapters.map((c) => ({ ...c })), saving: false, error: null };
+          break;
+        }
+        case "cancel":
+          if (edit?.saving) return;
+          this._edit = null;
+          break;
+        case "save":
+          this._saveChapters();
+          return;
+        case "up":
+        case "down": {
+          if (!edit || edit.saving) return;
+          const i = Number(arg);
+          const j = verb === "up" ? i - 1 : i + 1;
+          if (i < 0 || j < 0 || i >= edit.chapters.length || j >= edit.chapters.length) return;
+          [edit.chapters[i], edit.chapters[j]] = [edit.chapters[j], edit.chapters[i]];
+          break;
+        }
+        case "remove":
+          if (!edit || edit.saving) return;
+          edit.chapters.splice(Number(arg), 1);
+          break;
+        case "upload":
+          if (this._uploads[arg] && !this._uploads[arg].error) return;
+          delete this._uploads[arg];
+          this._uploadTarget = arg;
+          this.shadowRoot.getElementById("upload")?.click();
+          return;
+        case "dismiss":
+          delete this._uploads[arg];
+          break;
+        default:
+          return;
+      }
+      this._refreshList();
+    }
+
+    // A figure as the cloud answered it replaces the one in the library
+    _replaceTonie(tonie) {
+      if (!tonie?.id || !this._library) return;
+      const i = this._library.tonies.findIndex((x) => x.id === tonie.id);
+      if (i >= 0) this._library.tonies[i] = tonie;
+      else this._library.tonies.push(tonie);
+    }
+
+    async _saveChapters() {
+      const edit = this._edit;
+      if (!edit || edit.saving || !this._hass) return;
+      edit.saving = true;
+      edit.error = null;
+      this._refreshList();
+      try {
+        const tonie = await this._hass.callWS({ type: "storybox_plus/chapters/arrange", tonie_id: edit.id, chapters: edit.chapters.map((c) => c.id) });
+        this._replaceTonie(tonie);
+        if (this._edit === edit) this._edit = null;
+      } catch (err) {
+        edit.saving = false;
+        edit.error = err?.message || String(err);
+      }
+      this._refreshList();
+    }
+
+    // The files go to Home Assistant first (its own upload endpoint keeps them until
+    // taken), then the integration moves each into the cloud and appends the chapter
+    async _uploadFiles(id, files) {
+      if (!this._hass) return;
+      const up = { total: files.length, done: 0, name: files[0].name, error: null };
+      this._uploads[id] = up;
+      this._refreshList();
+      for (const file of files) {
+        up.name = file.name;
+        this._refreshList();
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const resp = await this._hass.fetchWithAuth("/api/file_upload", { method: "POST", body: form });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const { file_id } = await resp.json();
+          const title = file.name.replace(/\.[^.]+$/, "");
+          const tonie = await this._hass.callWS({ type: "storybox_plus/chapters/add", tonie_id: id, file_id, title });
+          this._replaceTonie(tonie);
+          up.done += 1;
+        } catch (err) {
+          up.error = err?.message || String(err);
+          break;
+        }
+      }
+      if (!up.error && this._uploads[id] === up) delete this._uploads[id];
+      this._refreshList();
+    }
+
+    // While the cloud converts a creative figure, it is read again now and then
+    async _refreshConverting() {
+      if (!this._hass || !this._library || this._busy.has("convert")) return;
+      const converting = this._library.tonies.filter((f) => f.kind === "creative" && f.transcoding);
+      if (!converting.length) return;
+      this._busy.add("convert");
+      try {
+        for (const f of converting) {
+          this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/figure/refresh", tonie_id: f.id }));
+        }
+      } catch {
+        // The next poll of the integration catches up
+      }
+      this._busy.delete("convert");
+      this._refreshList();
     }
 
     // ------------------------------------------------------------ listening
@@ -831,6 +1041,27 @@ if (!customElements.get("storybox-plus-panel")) {
   .chapters .no { flex: none; min-width: 24px; text-align: right; }
   .ch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .len { flex: none; }
+  /* The tools of a creative figure: upload and edit, or save and cancel while editing */
+  .ch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
+  .ch-bar .hint { flex: 1 1 240px; margin: 0; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px;
+    border: 1px solid var(--divider-color); background: none; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }
+  .btn .mdi { width: 20px; height: 20px; }
+  .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
+  .btn.primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: transparent; }
+  .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 88%, #000); }
+  .btn:disabled, .icon-button:disabled { opacity: 0.4; cursor: default; }
+  .icon-button:disabled:hover { background: none; }
+  .chapters.editing li { padding: 2px 0; }
+  .ch-tools { display: inline-flex; flex: none; gap: 0; margin-right: -8px; }
+  .ch-tools .icon-button { width: 36px; height: 36px; color: var(--secondary-text-color); }
+  .ch-tools .icon-button .mdi { width: 20px; height: 20px; }
+  .ch-tools .danger:hover:not(:disabled) { color: var(--error-color, #db4437); }
+  .alert.inline { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin: 0 0 8px; font-size: 13px; }
+  .alert.inline .mdi { flex: none; width: 20px; height: 20px; }
+  .alert.err.inline .mdi { fill: var(--error-color, #db4437); }
+  .alert.inline span { flex: 1; }
+  .busy { margin: 0 0 8px; }
   .total { display: flex; align-items: baseline; gap: 6px; }
   .total .big { font-size: 44px; line-height: 52px; font-weight: 300; font-variant-numeric: tabular-nums; }
   .total .unit { font-size: 18px; color: var(--secondary-text-color); }

@@ -68,6 +68,8 @@ CREATIVE_ID = "c1"
 CREATIVE_NAME = "Kreativ"
 DISC_ID = "d1"
 DISC_NAME = "Disc Eins"
+# The storage the cloud hands out upload tickets for
+S3_URL = "https://uploads.example.com/bucket"
 
 JSON_HEADERS = {"Content-Type": "application/json"}
 
@@ -262,6 +264,10 @@ class Account:
     library_query_refused: bool = False
     # The app's detail query (one contentTonie of a household) is refused
     detail_query_refused: bool = False
+    # Changing chapters (PATCH of a figure, POST of a chapter) answers this status and body
+    chapters_error: tuple[int, dict[str, Any]] | None = None
+    # Changing chapters answers without a body
+    chapters_no_body: bool = False
     page_size: int = 100
     households: list[dict[str, Any]] = field(default_factory=list)
     boxes: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -326,9 +332,21 @@ class FakeCloud:
         self.playback_info_versions: list[int] = []
         # The (household, figure) pairs the detail query was asked for
         self.detail_calls: list[tuple[str | None, str | None]] = []
+        # Chapter changes: (household, figure, payload) of every PATCH and every added chapter
+        self.chapter_patches: list[tuple[str, str, Any]] = []
+        self.chapter_adds: list[tuple[str, str, Any]] = []
+        # Upload tickets handed out, and what reached the storage: per upload the form's
+        # fields as (name, filename, content type, size) and whether a bearer token came along
+        self.upload_tickets = 0
+        self.s3_uploads: list[dict[str, Any]] = []
+        # The storage refuses uploads with this status
+        self.s3_status: int | None = None
         mocker.post(TOKEN_URL, side_effect=self._token)
         mocker.get(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
         mocker.post(f"{API_BASE}/graphql", side_effect=self._graphql)
+        mocker.post(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
+        mocker.patch(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
+        mocker.post(S3_URL, side_effect=self._s3)
 
     def add_account(self, name: str, **kwargs: Any) -> Account:
         """Add an account; tokens are named after it."""
@@ -414,6 +432,13 @@ class FakeCloud:
             household, kind = match.groups()
             items = account.boxes if kind == "tonieboxes" else account.creative_tonies
             return _json(method, url, 200, items.get(household, []))
+        if path == "/file" and method.upper() == "POST":
+            self.upload_tickets += 1
+            file_id = f"file-{self.upload_tickets}"
+            ticket = {"url": S3_URL, "fields": {"key": f"uploads/{file_id}", "policy": "signed"}}
+            return _json(method, url, 200, {"fileId": file_id, "request": ticket})
+        if match := re.fullmatch(r"/households/([^/]+)/creativetonies/([^/]+)(/chapters)?", path):
+            return self._creative(account, method, url, data, *match.groups())
         if match := re.fullmatch(r"/playback-info/([^/]+)/([^/]+)", path):
             box_id, tonie_id = match.groups()
             self.playback_info_calls.append((box_id, tonie_id))
@@ -430,6 +455,72 @@ class FakeCloud:
                 return _json(method, url, 404, {"message": "not found"})
             return _json(method, url, 200, info)
         return _json(method, url, 404, {"message": "not found"})
+
+    def _creative(
+        self,
+        account: Account,
+        method: str,
+        url: URL,
+        data: Any,
+        household: str,
+        tonie_id: str,
+        chapters_path: str | None,
+    ) -> AiohttpClientMockResponse:
+        """One creative figure: read, its chapters replaced (PATCH) or one appended (POST).
+
+        A change marks the figure as converting, as the cloud does.
+        """
+        tonie = next(
+            (t for t in account.creative_tonies.get(household, []) if t["id"] == tonie_id), None
+        )
+        if tonie is None:
+            return _json(method, url, 404, {"message": "not found"})
+        if method.upper() == "GET" and not chapters_path:
+            return _json(method, url, 200, tonie)
+        if account.chapters_error is not None:
+            status, body = account.chapters_error
+            return _json(method, url, status, body)
+        if chapters_path and method.upper() == "POST":
+            self.chapter_adds.append((household, tonie_id, data))
+            tonie["chapters"].append(
+                {
+                    "id": f"ch-{data['file']}",
+                    "title": data["title"],
+                    "file": data["file"],
+                    "seconds": 0,
+                    "transcoding": True,
+                }
+            )
+        elif not chapters_path and method.upper() == "PATCH":
+            self.chapter_patches.append((household, tonie_id, data))
+            tonie["chapters"] = [dict(c) for c in data["chapters"]]
+        else:
+            return _json(method, url, 405, {"message": "method not allowed"})
+        tonie["transcoding"] = True
+        if account.chapters_no_body:
+            return AiohttpClientMockResponse(method=method, url=url, status=204)
+        return _json(method, url, 200, tonie)
+
+    async def _s3(self, method: str, url: URL, data: Any) -> AiohttpClientMockResponse:
+        """The storage: records the form and refuses nothing unless told."""
+        headers = self.mocker.mock_calls[-1][3] or {}
+        fields = []
+        for options, part_headers, value in getattr(data, "_fields", []):
+            size = len(value) if isinstance(value, bytes | bytearray) else len(str(value))
+            fields.append(
+                (
+                    options.get("name"),
+                    options.get("filename"),
+                    part_headers.get("Content-Type"),
+                    size,
+                )
+            )
+        self.s3_uploads.append({"fields": fields, "bearer": "Authorization" in headers})
+        if self.s3_status is not None:
+            return AiohttpClientMockResponse(
+                method=method, url=url, status=self.s3_status, text="<Error/>"
+            )
+        return AiohttpClientMockResponse(method=method, url=url, status=204)
 
     async def _graphql(
         self, method: str, url: URL, data: dict[str, Any]

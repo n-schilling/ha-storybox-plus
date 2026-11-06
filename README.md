@@ -151,7 +151,7 @@ actions:
 **Storybox Plus** in the sidebar, for administrators:
 
 - **Boxes**: every box with its live state. For a Toniebox 2 also how long a charge lasts: every discharge from leaving the charger to the next charge, with the hours the box was switched on, the percent used and the projection for a full charge; the average of the latest charges on top.
-- **Figures**: the household's library with search, a filter by kind, the chapters, and which figure stands on a box right now. The cloud names the chapters of bought figures but not their lengths; the lengths are learned from a Toniebox 2 the first time the figure plays on it, and kept.
+- **Figures**: the household's library with search, a filter by kind, the chapters, and which figure stands on a box right now. The cloud names the chapters of bought figures but not their lengths; the lengths are learned from a Toniebox 2 the first time the figure plays on it, and kept. The chapters of a Creative-Tonie can be changed here: audio files are uploaded as new chapters, and in the edit mode chapters are moved and removed, with all changes sent to the cloud together when saved, because every change makes the cloud convert the figure anew and a box download it again. While the cloud converts, the page reads the figure again every few seconds; chapters the cloud dropped (unsupported format, more than 90 minutes in total) are named.
 - **Listening**: the most played figures, the total listening time, listening per day and per box, for the last 7, 30 or 365 days or since the setup. A note at the top says where the numbers come from: Home Assistant counts them itself, they are not read from the cloud.
 
 The statistics are daily sums per figure and box, nothing more: no single plays, no times of day. The charge history keeps per discharge the day it ended, its hours and its percentages, also without times of day. They are kept in the integration's own store, not in the recorder, and start with the setup; the cloud offers no history. Only a Toniebox 2 reports playback, so only its listening is counted, and the page says so.
@@ -167,6 +167,7 @@ The statistics are daily sums per figure and box, nothing more: no single plays,
 - The classic box has no live data: no battery, no playback, no figure. Only its online state is shown.
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The listening statistics count from the setup on; there is no history before that.
+- Uploads go through Home Assistant's own file upload and take at most 100 MB per file. The cloud converts what it accepts; which formats that are is its decision, not the page's.
 - The cloud's API is not documented for third parties. If the manufacturer changes it, this integration needs an update.
 
 ## Troubleshooting
@@ -185,7 +186,7 @@ The statistics are daily sums per figure and box, nothing more: no single plays,
 
 - Only a refresh token is stored, never the password. It is rotated with every refresh.
 - No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data.
-- Changes to the account (deleting chapters, resetting a box) are not offered as entities; where the page offers them, they are for administrators only.
+- Changes to the account (uploading, moving and removing chapters) are not offered as entities, only on the page, which is for administrators only. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
 
 ## Development
 

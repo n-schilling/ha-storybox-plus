@@ -33,7 +33,11 @@ _LOGGER = logging.getLogger(__name__)
 # api.tonie.cloud is a CDN in front of this host and lacks some of the endpoints
 API_BASE = "https://api.prod.tcs.toys/v2"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
+# An audio file of up to 90 minutes goes to the storage in one request
+UPLOAD_TIMEOUT = aiohttp.ClientTimeout(total=600)
 PAGE_SIZE = 100
+# The cloud cuts longer chapter titles off with an error
+CHAPTER_TITLE_MAX = 128
 
 # The library of bought figures, with the chapter names the app shows
 _CONTENT_TONIE_FIELDS = "id title lock imageUrl coverUrl languageUnicode series { name } chapters { name } secondsPresent"
@@ -59,6 +63,32 @@ def _shape(node: dict[str, Any]) -> dict[str, Any]:
         else:
             shape[key] = f"{type(value).__name__}[{len(str(value))}]"
     return shape
+
+
+async def _error_detail(resp: aiohttp.ClientResponse) -> str:
+    """Name what the cloud objected to, from the codes of its error body.
+
+    Only the machine-readable codes are taken, never a free text: the message
+    ends up in the log and in the page.
+    """
+    try:
+        body = await resp.json(content_type=None)
+    except ValueError, aiohttp.ClientError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    if isinstance(body.get("retryInSeconds"), int):
+        return f" (retry in {body['retryInSeconds']} s)"
+    errors = body.get("errors")
+    if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+        codes = [
+            str(errors[0][key])
+            for key in ("code", "errorCode")
+            if isinstance(errors[0].get(key), str)
+        ]
+        if codes:
+            return f" ({'/'.join(codes)})"
+    return ""
 
 
 class CloudClient:
@@ -93,7 +123,10 @@ class CloudClient:
                 if resp.status == 401:
                     raise CloudAuthError("The cloud rejected the token")
                 if resp.status >= 400:
-                    raise CloudResponseError(f"{method} {path} answered {resp.status}", resp.status)
+                    detail = await _error_detail(resp)
+                    raise CloudResponseError(
+                        f"{method} {path} answered {resp.status}{detail}", resp.status
+                    )
                 if resp.status == 204 or resp.content_length == 0:
                     return None
                 try:
@@ -187,6 +220,18 @@ class CloudClient:
             f"/households/{household_id}/creativetonies", "creativetonies", "results"
         )
         return [t for item in items if (t := parse_creative_tonie(item, household_id))]
+
+    async def async_creative_tonie(self, household_id: str, tonie_id: str) -> Tonie | None:
+        """Return one creative figure with its chapters; None when the cloud knows none."""
+        try:
+            data = await self._request(
+                "GET", f"/households/{household_id}/creativetonies/{tonie_id}"
+            )
+        except CloudResponseError as err:
+            if err.status == 404:
+                return None
+            raise
+        return parse_creative_tonie(data, household_id) if isinstance(data, dict) else None
 
     async def async_content_tonies(self) -> list[Tonie]:
         """Return the bought figures of all households, with their chapter names.
@@ -296,5 +341,49 @@ class CloudClient:
         }
         data = await self._request(
             "PATCH", f"/households/{household_id}/creativetonies/{tonie_id}", payload
+        )
+        return parse_creative_tonie(data, household_id) if isinstance(data, dict) else None
+
+    async def async_upload_file(self, data: bytes, filename: str, content_type: str) -> str:
+        """Put an audio file into the cloud's storage and return its file ID.
+
+        The API hands out a ticket (POST /file): a file ID and a pre-signed
+        form for the storage. The audio goes there, with the ticket's fields
+        first and without the bearer token, which the storage would refuse.
+        The ID then names the file in a chapter.
+        """
+        ticket = await self._request("POST", "/file", {})
+        request = ticket.get("request") if isinstance(ticket, dict) else None
+        file_id = ticket.get("fileId") if isinstance(ticket, dict) else None
+        url = request.get("url") if isinstance(request, dict) else None
+        if not isinstance(file_id, str) or not file_id or not isinstance(url, str) or not url:
+            raise CloudResponseError("POST /file answered without an upload ticket", 200)
+        form = aiohttp.FormData()
+        fields = request.get("fields") if isinstance(request, dict) else None
+        for key, value in (fields or {}).items():
+            form.add_field(str(key), str(value))
+        form.add_field("file", data, filename=filename, content_type=content_type)
+        try:
+            async with self._session.post(url, data=form, timeout=UPLOAD_TIMEOUT) as resp:
+                if resp.status >= 300:
+                    raise CloudResponseError(
+                        f"The storage refused the file with {resp.status}", resp.status
+                    )
+        except TimeoutError as err:
+            raise CloudConnectionError("Timeout while uploading the file") from err
+        except aiohttp.ClientError as err:
+            raise CloudConnectionError(
+                f"Cannot reach the storage for the upload: {type(err).__name__}"
+            ) from err
+        return file_id
+
+    async def async_add_chapter(
+        self, household_id: str, tonie_id: str, title: str, file_id: str
+    ) -> Tonie | None:
+        """Append an uploaded file as a chapter of a creative figure."""
+        data = await self._request(
+            "POST",
+            f"/households/{household_id}/creativetonies/{tonie_id}/chapters",
+            {"title": title[:CHAPTER_TITLE_MAX], "file": file_id, "type": "file"},
         )
         return parse_creative_tonie(data, household_id) if isinstance(data, dict) else None

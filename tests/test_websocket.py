@@ -5,16 +5,18 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import aiohttp
 from freezegun.api import FrozenDateTimeFactory
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.typing import WebSocketGenerator
+from pytest_homeassistant_custom_component.typing import ClientSessionGenerator, WebSocketGenerator
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.storybox_plus.const import CONF_ANALYTICS, DOMAIN
+from custom_components.storybox_plus.websocket import _content_type
 
 from .conftest import (
     BOX_ID,
@@ -224,6 +226,7 @@ async def test_library(
         "seconds_remaining": None,
         "chapters_remaining": None,
         "transcoding": False,
+        "transcoding_errors": [],
         "on_box": BOX_ID,
     }
     creative = tonies[1]
@@ -408,3 +411,322 @@ async def test_non_admins_are_refused(
     result = await _ask(client, {"type": f"{DOMAIN}/{command}"})
     assert not result["success"]
     assert result["error"]["code"] == "unauthorized"
+
+
+# ---------------------------------------------------------------- chapters
+
+
+def _creative_with_chapters(cloud: FakeCloud) -> None:
+    """Give the creative figure three chapters, to rearrange them."""
+    cloud.main.creative_tonies[HOUSEHOLD_ID][0]["chapters"] = [
+        {"id": "ch1", "title": "Song", "file": "f1", "seconds": 120.5, "transcoding": False},
+        {"id": "ch2", "title": "Story", "file": "f2", "seconds": 300, "transcoding": False},
+        {"id": "ch3", "title": "Lullaby", "file": "f3", "seconds": 60, "transcoding": False},
+    ]
+
+
+async def test_arrange_chapters(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """Order and deletions go to the cloud as one list; the page gets the figure as it is now."""
+    _creative_with_chapters(cloud)
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client,
+        {"type": f"{DOMAIN}/chapters/arrange", "tonie_id": CREATIVE_ID, "chapters": ["ch3", "ch1"]},
+    )
+    assert result["success"], result
+    assert [c["id"] for c in result["result"]["chapters"]] == ["ch3", "ch1"]
+    assert result["result"]["transcoding"] is True
+    assert result["result"]["on_box"] is None
+    (patch,) = cloud.chapter_patches
+    assert patch[:2] == (HOUSEHOLD_ID, CREATIVE_ID)
+    assert patch[2] == {
+        "chapters": [
+            {"id": "ch3", "title": "Lullaby", "file": "f3", "seconds": 60, "transcoding": False},
+            {"id": "ch1", "title": "Song", "file": "f1", "seconds": 120.5, "transcoding": False},
+        ]
+    }
+    # The library knows the new order at once, without waiting for the next poll
+    library = await _ask(client, {"type": f"{DOMAIN}/library"})
+    creative = next(t for t in library["result"]["tonies"] if t["id"] == CREATIVE_ID)
+    assert [c["title"] for c in creative["chapters"]] == ["Lullaby", "Song"]
+
+
+async def test_arrange_chapters_answered_without_body(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """When the cloud answers a change with nothing, the figure is read again."""
+    cloud.main.chapters_no_body = True
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/arrange", "tonie_id": CREATIVE_ID, "chapters": []}
+    )
+    assert result["success"], result
+    assert result["result"]["chapters"] == []
+    assert result["result"]["transcoding"] is True
+
+
+@pytest.mark.parametrize(
+    ("tonie_id", "chapters", "code"),
+    [
+        ("nope", ["ch1"], "unknown_figure"),
+        (TONIE_ID, ["0"], "not_creative"),
+        (CREATIVE_ID, ["ch1", "ch9"], "unknown_chapter"),
+        (CREATIVE_ID, ["ch1", "ch1"], "unknown_chapter"),
+    ],
+)
+async def test_arrange_chapters_refused(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    tonie_id: str,
+    chapters: list[str],
+    code: str,
+) -> None:
+    """Unknown figures, bought figures and unknown or doubled chapters never reach the cloud."""
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/arrange", "tonie_id": tonie_id, "chapters": chapters}
+    )
+    assert not result["success"]
+    assert result["error"]["code"] == code
+    assert result["error"]["message"]
+    assert not cloud.chapter_patches
+
+
+async def test_arrange_chapters_cloud_error(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The cloud's refusal reaches the page with its codes; the library keeps the old chapters."""
+    cloud.main.chapters_error = (429, {"retryInSeconds": 60})
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/arrange", "tonie_id": CREATIVE_ID, "chapters": []}
+    )
+    assert not result["success"]
+    assert result["error"]["code"] == "cloud_error"
+    assert "429" in result["error"]["message"]
+    assert "retry in 60 s" in result["error"]["message"]
+    library = await _ask(client, {"type": f"{DOMAIN}/library"})
+    creative = next(t for t in library["result"]["tonies"] if t["id"] == CREATIVE_ID)
+    assert [c["id"] for c in creative["chapters"]] == ["ch1"]
+
+
+async def _upload(hass_client: ClientSessionGenerator, name: str, content: bytes) -> str:
+    """Upload a file as the page does, through Home Assistant's own endpoint."""
+    http = await hass_client()
+    # Browsers send the file name as it is; aiohttp would percent-encode the space
+    data = aiohttp.FormData(quote_fields=False)
+    data.add_field("file", content, filename=name, content_type="audio/mpeg")
+    response = await http.post("/api/file_upload", data=data)
+    assert response.status == 200, await response.text()
+    return str((await response.json())["file_id"])
+
+
+async def test_add_chapter(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_client: ClientSessionGenerator,
+) -> None:
+    """A file uploaded to Home Assistant goes to the cloud's storage and becomes a chapter."""
+    file_id = await _upload(hass_client, "Gute Nacht.mp3", b"ID3 lullaby")
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/add", "tonie_id": CREATIVE_ID, "file_id": file_id}
+    )
+    assert result["success"], result
+    chapters = result["result"]["chapters"]
+    assert [c["title"] for c in chapters] == ["Song", "Gute Nacht"]
+    assert chapters[1]["transcoding"] is True
+    assert result["result"]["transcoding"] is True
+    assert cloud.upload_tickets == 1
+    (upload,) = cloud.s3_uploads
+    assert upload["bearer"] is False
+    assert upload["fields"] == [
+        ("key", None, None, len("uploads/file-1")),
+        ("policy", None, None, len("signed")),
+        ("file", "Gute Nacht.mp3", "audio/mpeg", len(b"ID3 lullaby")),
+    ]
+    (added,) = cloud.chapter_adds
+    assert added == (
+        HOUSEHOLD_ID,
+        CREATIVE_ID,
+        {"title": "Gute Nacht", "file": "file-1", "type": "file"},
+    )
+    # The uploaded file is gone from Home Assistant once taken
+    again = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/add", "tonie_id": CREATIVE_ID, "file_id": file_id}
+    )
+    assert not again["success"]
+    assert again["error"]["code"] == "unknown_file"
+
+
+async def test_add_chapter_with_title_and_type(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_client: ClientSessionGenerator,
+) -> None:
+    """A given title wins over the file name; the content type follows the file's ending."""
+    file_id = await _upload(hass_client, "track01.M4A", b"audio")
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client,
+        {
+            "type": f"{DOMAIN}/chapters/add",
+            "tonie_id": CREATIVE_ID,
+            "file_id": file_id,
+            "title": "  Lied  ",
+        },
+    )
+    assert result["success"], result
+    (upload,) = cloud.s3_uploads
+    assert upload["fields"][-1][:3] == ("file", "track01.M4A", "audio/mp4")
+    assert cloud.chapter_adds[0][2]["title"] == "Lied"
+
+
+@pytest.mark.parametrize(
+    ("tonie_id", "content", "code"),
+    [
+        ("nope", b"audio", "unknown_figure"),
+        (TONIE_ID, b"audio", "not_creative"),
+        (CREATIVE_ID, b"", "empty_file"),
+    ],
+)
+async def test_add_chapter_refused(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_client: ClientSessionGenerator,
+    tonie_id: str,
+    content: bytes,
+    code: str,
+) -> None:
+    """Unknown or bought figures and empty files never reach the cloud."""
+    file_id = await _upload(hass_client, "a.mp3", content)
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/add", "tonie_id": tonie_id, "file_id": file_id}
+    )
+    assert not result["success"]
+    assert result["error"]["code"] == code
+    assert cloud.upload_tickets == 0
+    assert not cloud.chapter_adds
+
+
+async def test_add_chapter_storage_refuses(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_client: ClientSessionGenerator,
+) -> None:
+    """A refusal of the storage reaches the page; no chapter is added."""
+    cloud.s3_status = 403
+    file_id = await _upload(hass_client, "a.mp3", b"audio")
+    client = await hass_ws_client(hass)
+    result = await _ask(
+        client, {"type": f"{DOMAIN}/chapters/add", "tonie_id": CREATIVE_ID, "file_id": file_id}
+    )
+    assert not result["success"]
+    assert result["error"]["code"] == "cloud_error"
+    assert "403" in result["error"]["message"]
+    assert not cloud.chapter_adds
+
+
+async def test_refresh_figure(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """A creative figure is read again on request, bought figures and unknown ones are refused."""
+    raw = cloud.main.creative_tonies[HOUSEHOLD_ID][0]
+    raw["transcoding"] = False
+    raw["chapters"][0]["seconds"] = 99
+    raw["transcodingErrors"] = [{"reason": "wrongFormat", "deletedChapters": [{"title": "x"}]}]
+    client = await hass_ws_client(hass)
+    result = await _ask(client, {"type": f"{DOMAIN}/figure/refresh", "tonie_id": CREATIVE_ID})
+    assert result["success"], result
+    assert result["result"]["chapters"][0]["seconds"] == 99
+    assert result["result"]["transcoding_errors"] == ["wrongFormat"]
+    for tonie_id, code in (("nope", "unknown_figure"), (TONIE_ID, "not_creative")):
+        refused = await _ask(client, {"type": f"{DOMAIN}/figure/refresh", "tonie_id": tonie_id})
+        assert not refused["success"]
+        assert refused["error"]["code"] == code
+    # A figure the cloud no longer has
+    cloud.main.creative_tonies[HOUSEHOLD_ID].clear()
+    gone = await _ask(client, {"type": f"{DOMAIN}/figure/refresh", "tonie_id": CREATIVE_ID})
+    assert not gone["success"]
+    assert gone["error"]["code"] == "unknown_figure"
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        {"type": f"{DOMAIN}/chapters/arrange", "tonie_id": CREATIVE_ID, "chapters": []},
+        {"type": f"{DOMAIN}/chapters/add", "tonie_id": CREATIVE_ID, "file_id": "x"},
+        {"type": f"{DOMAIN}/figure/refresh", "tonie_id": CREATIVE_ID},
+    ],
+)
+async def test_chapter_commands_need_an_admin(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+    msg: dict[str, Any],
+) -> None:
+    """Changing chapters is for administrators only."""
+    client = await hass_ws_client(hass, access_token=hass_read_only_access_token)
+    result = await _ask(client, msg)
+    assert not result["success"]
+    assert result["error"]["code"] == "unauthorized"
+    assert not cloud.chapter_patches
+    assert not cloud.chapter_adds
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("a.mp3", "audio/mpeg"),
+        ("a.M4B", "audio/mp4"),
+        ("a.opus", "audio/ogg"),
+        ("a.flac", "audio/flac"),
+        ("a.wma", "audio/x-ms-wma"),
+        ("a.aiff", "audio/x-aiff"),
+        ("a.txt", "audio/mpeg"),
+        ("noending", "audio/mpeg"),
+    ],
+)
+def test_content_type_by_ending(filename: str, content_type: str) -> None:
+    """The upload's content type follows the file ending; unknown ones count as MP3."""
+    assert _content_type(filename) == content_type

@@ -1,27 +1,65 @@
 """The WebSocket commands of the page.
 
 For administrators only: the page shows the whole account, the figures and
-the listening statistics.
+the listening statistics, and changes the chapters of creative figures.
 """
 
 from __future__ import annotations
 
+from collections.abc import Coroutine
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 import probatio
 
+from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.components.websocket_api import async_register_command
 from homeassistant.components.websocket_api.connection import ActiveConnection
-from homeassistant.components.websocket_api.decorators import require_admin, websocket_command
+from homeassistant.components.websocket_api.decorators import (
+    async_response,
+    require_admin,
+    websocket_command,
+)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util.hass_dict import HassKey
 
-from .cloud import VOLUME_LEVELS, Tonie
+from .cloud import VOLUME_LEVELS, CloudError, Tonie
 from .const import DOMAIN
-from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
+from .coordinator import (
+    BoxState,
+    ChapterError,
+    CloudState,
+    StoryboxConfigEntry,
+    StoryboxCoordinator,
+)
 
 DATA_WEBSOCKET: HassKey[bool] = HassKey(f"{DOMAIN}_websocket")
+
+# The content type of an upload by its file ending; the platform's own table
+# differs between systems (.m4a alone has three spellings)
+_AUDIO_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".m4b": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+    ".wma": "audio/x-ms-wma",
+}
+
+# What the page is told when a chapter change is refused
+_CHAPTER_MESSAGES = {
+    "unknown_figure": "The figure is not in any account",
+    "not_creative": "Only creative figures take chapters",
+    "unknown_chapter": "The chapter list names chapters the figure does not have",
+    "unknown_file": "The uploaded file is not there any more",
+    "empty_file": "The uploaded file is empty",
+}
 
 
 @callback
@@ -33,11 +71,26 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_overview)
     async_register_command(hass, websocket_library)
     async_register_command(hass, websocket_analytics)
+    async_register_command(hass, websocket_arrange_chapters)
+    async_register_command(hass, websocket_add_chapter)
+    async_register_command(hass, websocket_refresh_figure)
 
 
 def _loaded_entries(hass: HomeAssistant) -> list[StoryboxConfigEntry]:
     entries: list[StoryboxConfigEntry] = hass.config_entries.async_entries(DOMAIN)
     return [e for e in entries if e.state is ConfigEntryState.LOADED]
+
+
+def _entry_for_tonie(hass: HomeAssistant, tonie_id: str) -> StoryboxConfigEntry | None:
+    """Return the account that owns the figure."""
+    return next(
+        (e for e in _loaded_entries(hass) if tonie_id in e.runtime_data.coordinator.data.tonies),
+        None,
+    )
+
+
+def _on_box(data: CloudState, tonie_id: str) -> str | None:
+    return next((b.box.id for b in data.boxes.values() if b.tonie_id == tonie_id), None)
 
 
 def _tonie_dict(tonie: Tonie, on_box: str | None) -> dict[str, Any]:
@@ -58,6 +111,7 @@ def _tonie_dict(tonie: Tonie, on_box: str | None) -> dict[str, Any]:
         "seconds_remaining": tonie.seconds_remaining,
         "chapters_remaining": tonie.chapters_remaining,
         "transcoding": tonie.transcoding,
+        "transcoding_errors": list(tonie.transcoding_errors),
         "on_box": on_box,
     }
 
@@ -174,14 +228,130 @@ def websocket_library(
     tonies: list[dict[str, Any]] = []
     for entry in _loaded_entries(hass):
         data = entry.runtime_data.coordinator.data
-        on_box = {b.tonie_id: b.box.id for b in data.boxes.values() if b.tonie_id}
         households.extend(
             {"id": h.id, "name": h.name, "entry_id": entry.entry_id}
             for h in data.households.values()
         )
-        tonies.extend(_tonie_dict(t, on_box.get(t.id)) for t in data.tonies.values())
+        tonies.extend(_tonie_dict(t, _on_box(data, t.id)) for t in data.tonies.values())
     tonies.sort(key=lambda t: str(t["name"]).lower())
     connection.send_result(msg["id"], {"households": households, "tonies": tonies})
+
+
+# ---------------------------------------------------------------- chapters
+
+
+async def _answer_with_figure(
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+    coordinator: StoryboxCoordinator,
+    change: Coroutine[Any, Any, Tonie],
+) -> None:
+    """Run a change to a creative figure and answer with the figure as the cloud left it."""
+    try:
+        tonie = await change
+    except ChapterError as err:
+        connection.send_error(msg["id"], err.code, _CHAPTER_MESSAGES.get(err.code, err.code))
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        connection.send_result(msg["id"], _tonie_dict(tonie, _on_box(coordinator.data, tonie.id)))
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/chapters/arrange",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("chapters"): [str],
+    }
+)
+@async_response
+async def websocket_arrange_chapters(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Keep only the named chapters of a creative figure, in the given order."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_figure(
+        connection,
+        msg,
+        coordinator,
+        coordinator.async_arrange_chapters(msg["tonie_id"], msg["chapters"]),
+    )
+
+
+def _content_type(filename: str) -> str:
+    """Name the audio type of a file by its ending; unknown endings count as MP3."""
+    suffix = Path(filename).suffix.lower()
+    if suffix in _AUDIO_TYPES:
+        return _AUDIO_TYPES[suffix]
+    guessed = mimetypes.guess_type(filename)[0]
+    return guessed if guessed and guessed.startswith("audio/") else "audio/mpeg"
+
+
+def _read_upload(hass: HomeAssistant, file_id: str) -> tuple[bytes, str]:
+    """Take the file the page uploaded to Home Assistant; it is deleted afterwards."""
+    with process_uploaded_file(hass, file_id) as path:
+        return path.read_bytes(), path.name
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/chapters/add",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("file_id"): str,
+        probatio.Optional("title"): str,
+    }
+)
+@async_response
+async def websocket_add_chapter(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Append a file the page uploaded (through /api/file_upload) as a chapter."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    try:
+        data, filename = await hass.async_add_executor_job(_read_upload, hass, msg["file_id"])
+    except ValueError:
+        connection.send_error(msg["id"], "unknown_file", _CHAPTER_MESSAGES["unknown_file"])
+        return
+    if not data:
+        connection.send_error(msg["id"], "empty_file", _CHAPTER_MESSAGES["empty_file"])
+        return
+    title = (msg.get("title") or "").strip() or Path(filename).stem or filename
+    content_type = _content_type(filename)
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_figure(
+        connection,
+        msg,
+        coordinator,
+        coordinator.async_add_chapter(msg["tonie_id"], title, data, filename, content_type),
+    )
+
+
+@require_admin
+@websocket_command(
+    {probatio.Required("type"): f"{DOMAIN}/figure/refresh", probatio.Required("tonie_id"): str}
+)
+@async_response
+async def websocket_refresh_figure(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Read one creative figure from the cloud again, while it converts the chapters."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_figure(
+        connection, msg, coordinator, coordinator.async_refresh_creative(msg["tonie_id"])
+    )
 
 
 @require_admin

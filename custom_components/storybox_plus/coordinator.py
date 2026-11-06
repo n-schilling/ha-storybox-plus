@@ -11,7 +11,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -55,6 +55,19 @@ type PlacementListener = Callable[[str | None, str | None], None]
 
 # Bought figures asked for their chapters per poll, when the library gave none
 DETAILS_PER_POLL = 5
+
+
+class ChapterError(HomeAssistantError):
+    """A change to the chapters of a figure that is refused before the cloud is asked.
+
+    The code names why: "unknown_figure", "not_creative" (only creative
+    figures take chapters) or "unknown_chapter".
+    """
+
+    def __init__(self, code: str) -> None:
+        """Keep the code; it is the message as well."""
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(slots=True)
@@ -387,6 +400,56 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
 
     def _details_to_save(self) -> dict[str, Any]:
         return {"tonies": {tonie_id: _details_to_dict(d) for tonie_id, d in self._details.items()}}
+
+    # --------------------------------------------------- creative figures
+
+    def _creative(self, tonie_id: str) -> Tonie:
+        """Return the creative figure, or refuse: only those take chapters."""
+        tonie = self.data.tonies.get(tonie_id)
+        if tonie is None:
+            raise ChapterError("unknown_figure")
+        if tonie.kind is not TonieKind.CREATIVE:
+            raise ChapterError("not_creative")
+        return tonie
+
+    async def async_arrange_chapters(self, tonie_id: str, chapter_ids: list[str]) -> Tonie:
+        """Keep only the named chapters of a creative figure, in the given order.
+
+        Order and deletions go to the cloud in one request, because every
+        change makes the cloud convert the whole figure again.
+        """
+        tonie = self._creative(tonie_id)
+        by_id = {c.id: c for c in tonie.chapters}
+        if len(set(chapter_ids)) != len(chapter_ids) or any(c not in by_id for c in chapter_ids):
+            raise ChapterError("unknown_chapter")
+        answer = await self.client.async_set_chapters(
+            tonie.household_id, tonie_id, [by_id[c] for c in chapter_ids]
+        )
+        return await self._async_take_creative(tonie, answer)
+
+    async def async_add_chapter(
+        self, tonie_id: str, title: str, data: bytes, filename: str, content_type: str
+    ) -> Tonie:
+        """Upload an audio file and append it as a chapter of a creative figure."""
+        tonie = self._creative(tonie_id)
+        file_id = await self.client.async_upload_file(data, filename, content_type)
+        answer = await self.client.async_add_chapter(tonie.household_id, tonie_id, title, file_id)
+        return await self._async_take_creative(tonie, answer)
+
+    async def async_refresh_creative(self, tonie_id: str) -> Tonie:
+        """Read one creative figure again, while the cloud converts its chapters."""
+        tonie = self._creative(tonie_id)
+        return await self._async_take_creative(tonie, None)
+
+    async def _async_take_creative(self, before: Tonie, answer: Tonie | None) -> Tonie:
+        """Keep what the cloud answered about a creative figure and tell the entities."""
+        if answer is None:
+            answer = await self.client.async_creative_tonie(before.household_id, before.id)
+        if answer is None:
+            raise ChapterError("unknown_figure")
+        self.data.tonies[answer.id] = answer
+        self.async_update_listeners()
+        return answer
 
     # ------------------------------------------------------------ helpers
 
