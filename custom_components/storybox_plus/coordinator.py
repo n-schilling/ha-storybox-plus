@@ -50,6 +50,7 @@ from .const import (
     UNAVAILABLE_AFTER_FAILURES,
     UPDATE_INTERVAL,
 )
+from .favourites import Action, FavouriteChapters
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ class RuntimeData:
     coordinator: StoryboxCoordinator
     analytics: Analytics | None
     battery_stats: BatteryStats
+    favourites: FavouriteChapters
 
 
 type StoryboxConfigEntry = ConfigEntry[RuntimeData]
@@ -148,6 +150,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         analytics: Analytics | None,
         details_store: Store[dict[str, Any]],
         battery_stats: BatteryStats,
+        favourites: FavouriteChapters,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -155,6 +158,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         )
         self.client = client
         self.push = push
+        self.favourites = favourites
         self.analytics = analytics
         self.battery_stats = battery_stats
         self._failures = 0
@@ -255,6 +259,11 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             box_state.playback = event.data
             if event.data.tonie_id is not None:
                 box_state.online = True
+            action = self.favourites.observe(box_state.box.id, event.data)
+            if action is not None:
+                self.config_entry.async_create_background_task(
+                    self.hass, self._async_steer(box_state, action), f"{DOMAIN} favourites"
+                )
         elif event.topic == TOPIC_VOLUME and isinstance(event.data, Volume):
             box_state.volume = event.data
         elif event.topic == TOPIC_SLEEP_TIMER and isinstance(event.data, SleepTimer):
@@ -282,6 +291,19 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                     f"{DOMAIN} chapters",
                 )
         self.async_update_listeners()
+
+    async def _async_steer(self, box_state: BoxState, action: Action) -> None:
+        """Send the box to a favourite chapter, or pause it after the last one."""
+        mac = box_state.box.mac
+        if mac is None:
+            return
+        try:
+            if action[0] == "jump":
+                await self.push.async_set_position(mac, action[1], 0)
+            else:
+                await self.push.async_pause(mac)
+        except CloudError as err:
+            _LOGGER.debug("The box was not steered to a favourite chapter: %s", err)
 
     @callback
     def set_push_connected(self, connected: bool) -> None:

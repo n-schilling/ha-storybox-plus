@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.util.hass_dict import HassKey
 
 from . import fetcher
-from .cloud import VOLUME_LEVELS, CloudError, Tonie
+from .cloud import VOLUME_LEVELS, CloudError, Tonie, TonieKind
 from .const import DOMAIN
 from .coordinator import (
     BoxState,
@@ -37,6 +37,7 @@ from .coordinator import (
     StoryboxConfigEntry,
     StoryboxCoordinator,
 )
+from .favourites import Favourites
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ _CHAPTER_MESSAGES = {
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
     "fetcher_missing": "The Media Fetcher app is not installed or not running",
+    "not_bought": "Favourites are for bought figures; the chapters of creative figures are arranged instead",
 }
 
 
@@ -82,6 +84,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_add_chapter)
     async_register_command(hass, websocket_add_link)
     async_register_command(hass, websocket_refresh_figure)
+    async_register_command(hass, websocket_set_favourites)
 
 
 def _loaded_entries(hass: HomeAssistant) -> list[StoryboxConfigEntry]:
@@ -101,7 +104,9 @@ def _on_box(data: CloudState, tonie_id: str) -> str | None:
     return next((b.box.id for b in data.boxes.values() if b.tonie_id == tonie_id), None)
 
 
-def _tonie_dict(tonie: Tonie, on_box: str | None) -> dict[str, Any]:
+def _tonie_dict(
+    tonie: Tonie, on_box: str | None, favourites: Favourites | None = None
+) -> dict[str, Any]:
     return {
         "id": tonie.id,
         "household_id": tonie.household_id,
@@ -121,6 +126,7 @@ def _tonie_dict(tonie: Tonie, on_box: str | None) -> dict[str, Any]:
         "transcoding": tonie.transcoding,
         "transcoding_errors": list(tonie.transcoding_errors),
         "on_box": on_box,
+        "favourites": favourites.as_dict() if favourites else None,
     }
 
 
@@ -240,7 +246,10 @@ async def websocket_library(
             {"id": h.id, "name": h.name, "entry_id": entry.entry_id}
             for h in data.households.values()
         )
-        tonies.extend(_tonie_dict(t, _on_box(data, t.id)) for t in data.tonies.values())
+        favourites = entry.runtime_data.favourites
+        tonies.extend(
+            _tonie_dict(t, _on_box(data, t.id), favourites.get(t.id)) for t in data.tonies.values()
+        )
     tonies.sort(key=lambda t: str(t["name"]).lower())
     connection.send_result(
         msg["id"],
@@ -418,6 +427,37 @@ async def websocket_add_link(
     connection.subscriptions[msg_id] = stop
     connection.send_result(msg_id)
     hass.async_create_background_task(run(), f"{DOMAIN} chapter from link")
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/favourites/set",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("chapters"): [probatio.All(int, probatio.Range(min=0))],
+        probatio.Required("active"): bool,
+    }
+)
+@async_response
+async def websocket_set_favourites(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Keep the favourite chapters of a bought figure (0-based) and whether they steer the box."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    tonie = entry.runtime_data.coordinator.data.tonies[msg["tonie_id"]]
+    if tonie.kind is TonieKind.CREATIVE:
+        connection.send_error(msg["id"], "not_bought", _CHAPTER_MESSAGES["not_bought"])
+        return
+    if tonie.chapters and any(c >= len(tonie.chapters) for c in msg["chapters"]):
+        connection.send_error(msg["id"], "unknown_chapter", _CHAPTER_MESSAGES["unknown_chapter"])
+        return
+    favourites = await entry.runtime_data.favourites.async_set(
+        msg["tonie_id"], msg["chapters"], msg["active"]
+    )
+    connection.send_result(msg["id"], {"favourites": favourites.as_dict() if favourites else None})
 
 
 @require_admin

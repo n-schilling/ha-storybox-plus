@@ -30,6 +30,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .coordinator import RuntimeData, StoryboxConfigEntry, StoryboxCoordinator
+from .favourites import FavouriteChapters
 from .frontend import async_register_frontend, async_unregister_panel
 from .websocket import async_register_websocket
 
@@ -56,6 +57,11 @@ def details_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
 def battery_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
     """Return the store of the battery cycles."""
     return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.battery")
+
+
+def favourites_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the favourite chapters."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.favourites")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> bool:
@@ -111,8 +117,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
     )
     battery_stats = BatteryStats(battery_store(hass, entry.entry_id), dt_util.now)
     await battery_stats.async_load()
+    favourites = FavouriteChapters(favourites_store(hass, entry.entry_id))
+    await favourites.async_load()
     coordinator = StoryboxCoordinator(
-        hass, entry, client, push, analytics, details_store(hass, entry.entry_id), battery_stats
+        hass,
+        entry,
+        client,
+        push,
+        analytics,
+        details_store(hass, entry.entry_id),
+        battery_stats,
+        favourites,
     )
     await coordinator.async_load_details()
     await coordinator.async_config_entry_first_refresh()
@@ -123,6 +138,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
         coordinator=coordinator,
         analytics=analytics,
         battery_stats=battery_stats,
+        favourites=favourites,
     )
 
     await async_register_frontend(hass)
@@ -158,10 +174,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> None:
-    """Forget the listening sums and the learned chapters of a removed account."""
+    """Forget the listening sums, the learned chapters and the favourites of a removed account."""
     await analytics_store(hass, entry.entry_id).async_remove()
     await details_store(hass, entry.entry_id).async_remove()
     await battery_store(hass, entry.entry_id).async_remove()
+    await favourites_store(hass, entry.entry_id).async_remove()
 
 
 @callback

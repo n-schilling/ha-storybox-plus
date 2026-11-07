@@ -32,6 +32,8 @@ if (!customElements.get("storybox-plus-panel")) {
     up: "M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z",
     down: "M11,4H13V16L18.5,10.5L19.92,11.92L12,19.84L4.08,11.92L5.5,10.5L11,16V4Z",
     remove: "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z",
+    star: "M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z",
+    starOff: "M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z",
     link: "M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z",
   };
   // How often a creative figure is read again while the cloud converts its chapters (ms)
@@ -81,6 +83,9 @@ if (!customElements.get("storybox-plus-panel")) {
       linkProbe: "Reading the video …", linkFetch: "Fetching {name} …", linkFetchPct: "Fetching {name} ({p} %) …",
       linkConvert: "Converting {name} …", linkUpload: "Uploading {name} to the cloud …", linkFailed: "Adding from YouTube failed: {e}",
       fetcherMissing: "Needs the Media Fetcher app: install it in Home Assistant under Settings → Apps.",
+      favChip: "{n} favourites", favToggle: "Favourite chapter", favOn: "Favourites on", favOff: "Favourites off",
+      favHint: "The Toniebox 2 skips every other chapter and pauses after the last favourite; the start of a skipped chapter can be heard for a moment.",
+      favFailed: "Saving the favourites failed: {e}",
       convErrors: "The last conversion dropped chapters: {r}",
       reason_wrongFormat: "unsupported format", reason_tooLong: "more than 90 minutes in total", reason_unknownError: "unknown error",
       range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All",
@@ -122,6 +127,9 @@ if (!customElements.get("storybox-plus-panel")) {
       linkProbe: "Liest das Video …", linkFetch: "Holt {name} …", linkFetchPct: "Holt {name} ({p} %) …",
       linkConvert: "Wandelt {name} um …", linkUpload: "Lädt {name} in die Cloud hoch …", linkFailed: "Hinzufügen von YouTube fehlgeschlagen: {e}",
       fetcherMissing: "Dafür wird die App „Media Fetcher“ gebraucht: in Home Assistant unter Einstellungen → Apps installieren.",
+      favChip: "{n} Lieblingskapitel", favToggle: "Lieblingskapitel", favOn: "Lieblingskapitel an", favOff: "Lieblingskapitel aus",
+      favHint: "Die Toniebox 2 überspringt alle anderen Kapitel und hält nach dem letzten Lieblingskapitel an; der Anfang eines übersprungenen Kapitels kann kurz zu hören sein.",
+      favFailed: "Lieblingskapitel speichern fehlgeschlagen: {e}",
       convErrors: "Die letzte Umwandlung hat Kapitel verworfen: {r}",
       reason_wrongFormat: "nicht unterstütztes Format", reason_tooLong: "insgesamt mehr als 90 Minuten", reason_unknownError: "unbekannter Fehler",
       range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles",
@@ -188,6 +196,8 @@ if (!customElements.get("storybox-plus-panel")) {
       this._uploads = {};
       // The open link field of a creative figure: { id, url }
       this._link = null;
+      // A refused change of favourites: { id, message }
+      this._favError = null;
       this._uploadTarget = null;
       this._bindOnce();
     }
@@ -649,6 +659,7 @@ if (!customElements.get("storybox-plus-panel")) {
       const badges =
         (f.on_box ? this._chip(fill(t.onBox, { box: boxes.get(f.on_box) || f.on_box }), "on") : "") +
         (f.transcoding ? this._chip(t.transcoding, "warn") : "") +
+        (f.favourites?.active ? this._chip(fill(t.favChip, { n: f.favourites.chapters.length }), "fav") : "") +
         (f.locked ? `<span class="lock" title="${esc(t.locked)}">${icon("lock")}</span>` : "");
       let detail = "";
       if (f.kind === "creative") {
@@ -656,28 +667,50 @@ if (!customElements.get("storybox-plus-panel")) {
         if (Number.isFinite(f.chapters_remaining)) free.push(fill(f.chapters_remaining === 1 ? t.chapter1 : t.chaptersN, { n: f.chapters_remaining }));
         detail += `<div class="muted small">${esc(free.join(" · "))}</div>`;
       }
-      // Only a creative figure takes chapters; the detail is drawn open when it is edited
-      detail += f.kind === "creative" ? this._creativeDetail(f) : this._chapterList(chapters);
+      // Only a creative figure takes chapters; a bought one takes favourites
+      detail += f.kind === "creative" ? this._creativeDetail(f) : this._boughtDetail(f, chapters);
       return `<div class="figure${open ? " open" : ""}"><button class="fig-head" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
         `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
         `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
         `<span class="badges">${badges}</span>${icon("chevron")}</button><div class="detail">${detail}</div></div>`;
     }
 
-    _chapterList(chapters, editing = false) {
+    // With `fav` ({ id, set }) every chapter gets a star that marks it as a favourite
+    _chapterList(chapters, editing = false, fav = null) {
       const t = this._t;
       if (!chapters.length) return `<div class="muted small">${esc(t.noChapters)}</div>`;
       const last = chapters.length - 1;
       return `<ol class="chapters${editing ? " editing" : ""}">${chapters.map((c, i) => {
+        const on = !!fav && fav.set.has(i);
         const tools = editing
           ? `<span class="ch-tools">` +
             `<button class="icon-button" data-act="up:${i}" title="${esc(t.moveUp)}"${i === 0 ? " disabled" : ""}>${icon("up")}</button>` +
             `<button class="icon-button" data-act="down:${i}" title="${esc(t.moveDown)}"${i === last ? " disabled" : ""}>${icon("down")}</button>` +
             `<button class="icon-button danger" data-act="remove:${i}" title="${esc(t.remove)}">${icon("remove")}</button></span>`
-          : "";
+          : fav
+            ? `<button class="icon-button star${on ? " on" : ""}" data-act="fav:${esc(fav.id)}:${i}" title="${esc(t.favToggle)}" aria-pressed="${on}">${icon(on ? "star" : "starOff")}</button>`
+            : "";
         return `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
           `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span>${tools}</li>`;
       }).join("")}</ol>`;
+    }
+
+    // The chapters of a bought figure with their favourite stars; with favourites set,
+    // a switch says whether the box is steered by them
+    _boughtDetail(f, chapters) {
+      const t = this._t;
+      const fav = f.favourites;
+      let html = "";
+      if (fav) {
+        html += `<div class="ch-bar">` +
+          `<button class="btn${fav.active ? " primary" : ""}" data-act="favon:${esc(f.id)}" aria-pressed="${fav.active}">${icon("star")}${esc(fav.active ? t.favOn : t.favOff)}</button>` +
+          `<span class="muted small hint">${esc(t.favHint)}</span></div>`;
+      }
+      if (this._favError?.id === f.id) {
+        html += `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.favFailed, { e: this._favError.message }))}</span>` +
+          `<button class="text-button" data-act="favdismiss:${esc(f.id)}">${esc(t.dismiss)}</button></div>`;
+      }
+      return html + this._chapterList(chapters, false, { id: f.id, set: new Set(fav?.chapters || []) });
     }
 
     // The chapters of a creative figure with the tools to upload, rearrange and remove them.
@@ -782,6 +815,26 @@ if (!customElements.get("storybox-plus-panel")) {
         case "linkcancel":
           this._link = null;
           break;
+        case "fav": {
+          const [id, index] = arg.split(/:(\d+)$/);
+          const f = tonie(id);
+          if (!f) return;
+          const set = new Set(f.favourites?.chapters || []);
+          const i = Number(index);
+          if (set.has(i)) set.delete(i); else set.add(i);
+          // The first star switches the favourites on; later stars keep the switch as it is
+          this._setFavourites(id, [...set], f.favourites ? f.favourites.active : true);
+          return;
+        }
+        case "favon": {
+          const f = tonie(arg);
+          if (!f?.favourites) return;
+          this._setFavourites(arg, f.favourites.chapters, !f.favourites.active);
+          return;
+        }
+        case "favdismiss":
+          this._favError = null;
+          break;
         case "dismiss":
           delete this._uploads[arg];
           break;
@@ -842,6 +895,21 @@ if (!customElements.get("storybox-plus-panel")) {
         }
       }
       if (!up.error && this._uploads[id] === up) delete this._uploads[id];
+      this._refreshList();
+    }
+
+    // The favourites of a bought figure go to the integration at once; the answer is kept
+    async _setFavourites(id, chapters, active) {
+      if (!this._hass) return;
+      const f = this._library?.tonies.find((x) => x.id === id);
+      if (!f) return;
+      this._favError = null;
+      try {
+        const answer = await this._hass.callWS({ type: "storybox_plus/favourites/set", tonie_id: id, chapters, active });
+        f.favourites = answer.favourites;
+      } catch (err) {
+        this._favError = { id, message: err?.message || String(err) };
+      }
       this._refreshList();
     }
 
@@ -1134,6 +1202,9 @@ if (!customElements.get("storybox-plus-panel")) {
   .ch-bar .hint, .link-form .hint { flex: 1 1 240px; margin: 0; }
   .link-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
   .link-form .search { height: 36px; border-radius: 18px; }
+  .star { flex: none; color: var(--secondary-text-color); }
+  .star.on { color: #F9A825; }
+  .chip.fav { background: color-mix(in srgb, #F9A825 22%, transparent); color: #9A6A00; }
   .tip { display: inline-flex; }
   .btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px;
     border: 1px solid var(--divider-color); background: none; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }

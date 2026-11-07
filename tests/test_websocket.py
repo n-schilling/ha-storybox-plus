@@ -235,6 +235,7 @@ async def test_library(
         "transcoding": False,
         "transcoding_errors": [],
         "on_box": BOX_ID,
+        "favourites": None,
     }
     creative = tonies[1]
     assert creative["id"] == CREATIVE_ID
