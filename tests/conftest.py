@@ -13,11 +13,11 @@ from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import re
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
-from aiohasupervisor.models import Discovery
+from aiohasupervisor.models import AddonState
 import aiohttp
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -48,7 +48,6 @@ from custom_components.storybox_plus.cloud.models import parse_battery
 from custom_components.storybox_plus.cloud.push import PushData
 from custom_components.storybox_plus.cloud.rest import API_BASE
 from custom_components.storybox_plus.const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN
-from custom_components.storybox_plus.fetcher import SERVICE as FETCHER_SERVICE
 
 # The account, the household and what is in it
 USER_ID = "0f3c5f2a-1111-4d2e-9c3b-000000000001"
@@ -711,9 +710,9 @@ class PushChannels:
 
 # ---------------------------------------------------------------- the Media Fetcher app
 
+FETCHER_SLUG = "local_media_fetcher"
 FETCHER_HOST = "local-media-fetcher"
 FETCHER_PORT = 8099
-FETCHER_TOKEN = "fetch-secret"
 FETCHER_URL = f"http://{FETCHER_HOST}:{FETCHER_PORT}/api/v1"
 VIDEO_ID = "jNQXAC9IVRw"
 VIDEO_URL = f"https://youtu.be/{VIDEO_ID}"
@@ -724,8 +723,9 @@ class FakeFetcher:
 
     def __init__(self, mocker: AiohttpClientMocker) -> None:
         self.mocker = mocker
-        # The app announced itself to the Supervisor
-        self.announced = True
+        # The Supervisor lists the app, and it is started
+        self.installed = True
+        self.started = True
         # Every request fails with a connection error
         self.unreachable = False
         self.info: dict[str, Any] = {
@@ -758,18 +758,13 @@ class FakeFetcher:
         mocker.post(pattern, side_effect=self._handle)
         mocker.delete(pattern, side_effect=self._handle)
 
-    def discoveries(self) -> list[Discovery]:
-        """What the Supervisor lists."""
-        if not self.announced:
-            return []
-        return [
-            Discovery(
-                addon="local_media_fetcher",
-                service=FETCHER_SERVICE,
-                uuid=uuid4(),
-                config={"host": FETCHER_HOST, "port": FETCHER_PORT, "token": FETCHER_TOKEN},
-            )
-        ]
+    def addons(self) -> list[Any]:
+        """What the Supervisor lists as installed apps."""
+        others = [SimpleNamespace(slug="core_mosquitto", state=AddonState.STARTED)]
+        if not self.installed:
+            return others
+        state = AddonState.STARTED if self.started else AddonState.STOPPED
+        return [*others, SimpleNamespace(slug=FETCHER_SLUG, state=state)]
 
     async def _handle(self, method: str, url: URL, data: Any) -> AiohttpClientMockResponse:
         if self.unreachable:
@@ -847,11 +842,11 @@ def cloud(aioclient_mock: AiohttpClientMocker) -> FakeCloud:
 
 @pytest.fixture
 def fetcher_app(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> Generator[FakeFetcher]:
-    """The Media Fetcher app, announced to the Supervisor and answering its API."""
+    """The Media Fetcher app, listed by the Supervisor and answering its API."""
     fake = FakeFetcher(aioclient_mock)
     hass.config.components.add("hassio")
     supervisor = MagicMock()
-    supervisor.discovery.list = AsyncMock(side_effect=lambda: fake.discoveries())
+    supervisor.addons.list = AsyncMock(side_effect=lambda: fake.addons())
     with patch(
         "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
     ):

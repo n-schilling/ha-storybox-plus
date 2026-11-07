@@ -2,9 +2,10 @@
 
 The app, a Home Assistant app of its own, fetches the audio of a video with
 yt-dlp and a JavaScript runtime, which Home Assistant's own container lacks.
-It announces itself to the Supervisor as the service "media_fetcher" with
-host, port and token; the integration reads that announcement whenever the
-page needs the app and talks to the app's HTTP API.
+The integration asks the Supervisor whether the app is installed and
+started, whenever the page needs it, and talks to the app's HTTP API in
+Home Assistant's app network. The app trusts Home Assistant's address
+there, so no token travels; other clients of the app need its token.
 """
 
 from __future__ import annotations
@@ -16,17 +17,19 @@ import logging
 from typing import Any
 
 from aiohasupervisor import SupervisorError
+from aiohasupervisor.models import AddonState
 import aiohttp
 
-from homeassistant.components.hassio import get_supervisor_client
+from homeassistant.components.hassio import get_supervisor_client, hostname_from_addon_slug
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.hassio import is_hassio
 
 _LOGGER = logging.getLogger(__name__)
 
-# The service the app announces to the Supervisor
-SERVICE = "media_fetcher"
+# The app's slug; the Supervisor puts the repository's prefix before it
+SLUG = "media_fetcher"
+PORT = 8099
 API = "/api/v1"
 TIMEOUT = aiohttp.ClientTimeout(total=30)
 FILE_TIMEOUT = aiohttp.ClientTimeout(total=600)
@@ -65,7 +68,8 @@ class Fetcher:
 
     host: str
     port: int
-    token: str
+    # Only a client outside Home Assistant needs one
+    token: str | None = None
 
     @property
     def url(self) -> str:
@@ -101,23 +105,24 @@ class Job:
 
 
 async def async_find(hass: HomeAssistant) -> Fetcher | None:
-    """Return the app as it announced itself to the Supervisor, if it did."""
+    """Return the app as the Supervisor lists it, if it is installed and started.
+
+    The Supervisor names the app's container after its slug in the app
+    network, so the slug is all the integration needs.
+    """
     if not is_hassio(hass):
         return None
     try:
-        messages = await get_supervisor_client(hass).discovery.list()
+        addons = await get_supervisor_client(hass).addons.list()
     except SupervisorError as err:
-        _LOGGER.debug("The Supervisor did not list the discoveries: %s", err)
+        _LOGGER.debug("The Supervisor did not list the apps: %s", err)
         return None
-    for message in messages:
-        if message.service != SERVICE:
+    for addon in addons:
+        if addon.slug != SLUG and not addon.slug.endswith(f"_{SLUG}"):
             continue
-        host = message.config.get("host")
-        port = message.config.get("port")
-        token = message.config.get("token")
-        if isinstance(host, str) and host and isinstance(port, int) and isinstance(token, str):
-            return Fetcher(host, port, token)
-        _LOGGER.debug("The app announced itself without host, port or token")
+        if addon.state is AddonState.STARTED:
+            return Fetcher(hostname_from_addon_slug(addon.slug), PORT)
+        _LOGGER.debug("The app %s is installed but not started", addon.slug)
     return None
 
 
@@ -161,7 +166,7 @@ class FetcherClient:
         wait: aiohttp.ClientTimeout = TIMEOUT,
     ) -> Any:
         """Ask the app; an error answer becomes a FetcherError, silence FetcherUnavailable."""
-        headers = {"Authorization": f"Bearer {self._fetcher.token}"}
+        headers = {"Authorization": f"Bearer {self._fetcher.token}"} if self._fetcher.token else {}
         try:
             async with self._session.request(
                 method, f"{self._fetcher.url}{path}", json=json, headers=headers, timeout=wait

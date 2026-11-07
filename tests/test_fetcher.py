@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aiohasupervisor import SupervisorError
-from aiohasupervisor.models import Discovery
+from aiohasupervisor.models import AddonState
 import pytest
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
@@ -15,9 +16,10 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.storybox_plus import fetcher
 
-from .conftest import FETCHER_HOST, FETCHER_PORT, FETCHER_TOKEN, VIDEO_ID, VIDEO_URL, FakeFetcher
+from .conftest import FETCHER_HOST, FETCHER_PORT, VIDEO_ID, VIDEO_URL, FakeFetcher
 
-APP = fetcher.Fetcher(FETCHER_HOST, FETCHER_PORT, FETCHER_TOKEN)
+APP = fetcher.Fetcher(FETCHER_HOST, FETCHER_PORT)
+TOKEN = "fetch-secret"
 
 
 async def test_find_without_a_supervisor(hass: HomeAssistant) -> None:
@@ -26,60 +28,33 @@ async def test_find_without_a_supervisor(hass: HomeAssistant) -> None:
 
 
 async def test_find(hass: HomeAssistant, fetcher_app: FakeFetcher) -> None:
-    """The app is what it announced to the Supervisor."""
+    """The app is the installed and started one the Supervisor lists, named after its slug."""
     assert await fetcher.async_find(hass) == APP
+    assert APP.token is None
     assert APP.url == f"http://{FETCHER_HOST}:{FETCHER_PORT}/api/v1"
-    fetcher_app.announced = False
+    fetcher_app.started = False
+    assert await fetcher.async_find(hass) is None
+    fetcher_app.installed = False
     assert await fetcher.async_find(hass) is None
 
 
 @pytest.mark.parametrize(
-    "discoveries",
+    "addons",
     [
         [],
-        [
-            Discovery(
-                addon="x",
-                service="other",
-                uuid=MagicMock(),
-                config={"host": "h", "port": 1, "token": "t"},
-            )
-        ],
-        [
-            Discovery(
-                addon="x",
-                service="media_fetcher",
-                uuid=MagicMock(),
-                config={"host": "", "port": 1, "token": "t"},
-            )
-        ],
-        [
-            Discovery(
-                addon="x",
-                service="media_fetcher",
-                uuid=MagicMock(),
-                config={"host": "h", "port": "1", "token": "t"},
-            )
-        ],
-        [
-            Discovery(
-                addon="x",
-                service="media_fetcher",
-                uuid=MagicMock(),
-                config={"host": "h", "port": 1},
-            )
-        ],
+        [SimpleNamespace(slug="core_mosquitto", state=AddonState.STARTED)],
+        [SimpleNamespace(slug="media_fetcher_fork", state=AddonState.STARTED)],
         SupervisorError("no"),
     ],
 )
-async def test_find_nothing_usable(hass: HomeAssistant, discoveries: Any) -> None:
-    """Other services, incomplete announcements and a silent Supervisor mean no app."""
+async def test_find_nothing_usable(hass: HomeAssistant, addons: Any) -> None:
+    """Other apps, a slug that only resembles the app's and a silent Supervisor mean no app."""
     hass.config.components.add("hassio")
     supervisor = MagicMock()
-    supervisor.discovery.list = (
-        AsyncMock(side_effect=discoveries)
-        if isinstance(discoveries, Exception)
-        else AsyncMock(return_value=discoveries)
+    supervisor.addons.list = (
+        AsyncMock(side_effect=addons)
+        if isinstance(addons, Exception)
+        else AsyncMock(return_value=addons)
     )
     with patch(
         "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
@@ -87,14 +62,31 @@ async def test_find_nothing_usable(hass: HomeAssistant, discoveries: Any) -> Non
         assert await fetcher.async_find(hass) is None
 
 
+async def test_find_by_any_repository_prefix(hass: HomeAssistant) -> None:
+    """An app installed from a repository carries the repository's hash before the slug."""
+    hass.config.components.add("hassio")
+    supervisor = MagicMock()
+    supervisor.addons.list = AsyncMock(
+        return_value=[SimpleNamespace(slug="a1b2c3d4_media_fetcher", state=AddonState.STARTED)]
+    )
+    with patch(
+        "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
+    ):
+        assert await fetcher.async_find(hass) == fetcher.Fetcher("a1b2c3d4-media-fetcher", 8099)
+
+
 async def test_info(
     hass: HomeAssistant, fetcher_app: FakeFetcher, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """The video comes back with ID, title and rounded length; the token goes along."""
+    """The video comes back with ID, title and rounded length; no token travels inside Home Assistant."""
     client = fetcher.FetcherClient(hass, APP)
     assert await client.async_info(VIDEO_URL) == fetcher.Video(VIDEO_ID, "Me at the zoo", 19)
     assert fetcher_app.calls == [("POST", "/info", {"url": VIDEO_URL})]
-    assert aioclient_mock.mock_calls[-1][3]["Authorization"] == f"Bearer {FETCHER_TOKEN}"
+    assert "Authorization" not in (aioclient_mock.mock_calls[-1][3] or {})
+    # A client outside Home Assistant would carry the app's token
+    outside = fetcher.FetcherClient(hass, fetcher.Fetcher(FETCHER_HOST, FETCHER_PORT, TOKEN))
+    await outside.async_info(VIDEO_URL)
+    assert aioclient_mock.mock_calls[-1][3]["Authorization"] == f"Bearer {TOKEN}"
     fetcher_app.info = {"id": VIDEO_ID, "duration": 19.6}
     assert await client.async_info(VIDEO_URL) == fetcher.Video(VIDEO_ID, VIDEO_ID, 20)
     fetcher_app.info = {"id": VIDEO_ID, "title": "No length", "duration": None}

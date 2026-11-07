@@ -798,7 +798,13 @@ async def test_add_link(
         ),
         (
             CREATIVE_ID,
-            lambda app: setattr(app, "announced", False),
+            lambda app: setattr(app, "installed", False),
+            "fetcher_missing",
+            "The Media Fetcher app is not installed or not running",
+        ),
+        (
+            CREATIVE_ID,
+            lambda app: setattr(app, "started", False),
             "fetcher_missing",
             "The Media Fetcher app is not installed or not running",
         ),
@@ -942,10 +948,12 @@ async def test_library_tells_whether_links_can_be_fetched(
     setup_entry: MockConfigEntry,
     hass_ws_client: WebSocketGenerator,
 ) -> None:
-    """The page greys the link button out while the app is not announced."""
+    """The page greys the link button out while the app is not installed or not started."""
     client = await hass_ws_client(hass)
     assert (await _ask(client, {"type": f"{DOMAIN}/library"}))["result"]["fetcher"] is True
-    fetcher_app.announced = False
+    fetcher_app.started = False
+    assert (await _ask(client, {"type": f"{DOMAIN}/library"}))["result"]["fetcher"] is False
+    fetcher_app.installed = False
     assert (await _ask(client, {"type": f"{DOMAIN}/library"}))["result"]["fetcher"] is False
 
 

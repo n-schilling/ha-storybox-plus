@@ -158,7 +158,7 @@ The statistics are daily sums per figure and box, nothing more: no single plays,
 
 ### The Media Fetcher app
 
-Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for YouTube; without one, YouTube refuses most videos. So the fetching lives in the **Media Fetcher** app, a Home Assistant app of its own with yt-dlp, a runtime and ffmpeg. Install it from its repository, start it, and the page's link button comes alive: the app announces itself to the Supervisor, and the integration asks the Supervisor for it whenever the page needs it. Nothing is configured in the integration for that.
+Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for YouTube; without one, YouTube refuses most videos. So the fetching lives in the **Media Fetcher** app, a Home Assistant app of its own with yt-dlp, a runtime and ffmpeg. Install it from its repository, start it, and the page's link button comes alive: the integration asks the Supervisor whether the app is installed and started whenever the page needs it, and talks to it inside Home Assistant's app network. The app trusts Home Assistant's address there, so no token has to be configured anywhere; other clients of the app need its token.
 
 ## How the data is updated
 
@@ -192,7 +192,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 - Only a refresh token is stored, never the password. It is rotated with every refresh.
 - No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data.
 - Changes to the account (uploading, moving and removing chapters) are not offered as entities, only on the page, which is for administrators only. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
-- A link is fetched by the Media Fetcher app inside your Home Assistant, which the integration finds through the Supervisor; the file is deleted from the app once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and the platform's terms; the integration does not check that.
+- A link is fetched by the Media Fetcher app inside your Home Assistant, which the integration finds through the Supervisor's list of apps and reaches without a token, because the app trusts Home Assistant's address in the app network; the file is deleted from the app once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and the platform's terms; the integration does not check that.
 
 ## Development
 
