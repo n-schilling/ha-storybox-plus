@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows
 
 - The page is built from Home Assistant's own elements: top app bar with the menu button, cards, buttons, icon buttons, alerts, a switch for the favourites and forms for the search and the link. The header has the sidebar's colour like the settings pages.
 - The script of the page is loaded with a hash of its content, so a changed page is never served from a cache.
+- Favourite chapters: pressing play at the box after the pause behind the last favourite stops the steering for that figure until it is taken off, so the rest of the figure plays.
 - A box's device is removed only after an hour of polls without the box, not after one.
 - A box that told nothing about a figure's chapters is asked again an hour later or when the figure is placed anew.
 - Requires Home Assistant 2026.11; tests run on pytest-homeassistant 2026.11.1.

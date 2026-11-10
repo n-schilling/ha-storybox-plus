@@ -120,10 +120,12 @@ stateDiagram-v2
     Playing --> Jump: another chapter begins
     Jump --> Playing: to the next favourite,<br/>after a jump back at the box to the previous one
     Playing --> Paused: a chapter after the last favourite begins
-    Paused --> Playing: play pressed at the box
+    Paused --> Free: play pressed at the box
+    Free --> Free: every chapter plays
+    Free --> [*]: figure taken off
 ```
 
-The box itself knows no selection; the integration sends it on through the cloud, so the start of a skipped chapter can be heard for a moment, and without the cloud or Home Assistant the box plays everything. After the pause behind the last favourite, play at the box plays the chapter it stopped in; the next chapter pauses again. The lists live in the integration's own store.
+The box itself knows no selection; the integration sends it on through the cloud, so the start of a skipped chapter can be heard for a moment, and without the cloud or Home Assistant the box plays everything. Pressing play at the box after the pause behind the last favourite means the child wants to go on: the favourites stop steering that box for the figure, and every chapter plays, until the figure is taken off. Placed again, it is steered by its favourites again. The lists live in the integration's own store.
 
 ### Listening times and battery
 

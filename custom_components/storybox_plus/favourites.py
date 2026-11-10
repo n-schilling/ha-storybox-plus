@@ -64,6 +64,12 @@ class FavouriteChapters:
         self._tonies: dict[str, Favourites] = {}
         # The playback each box was last looked at for: (figure, chapter)
         self._seen: dict[str, tuple[str, int]] = {}
+        # The figure each box was paused for after its last favourite, and
+        # whether the box has reported the pause since
+        self._paused: dict[str, tuple[str, bool]] = {}
+        # The figure each box is not steered for any more: a hand pressed play
+        # after that pause; it ends when the figure is taken off
+        self._suspended: dict[str, str] = {}
 
     async def async_load(self) -> None:
         """Read the lists from the store; what does not fit is left out."""
@@ -100,30 +106,51 @@ class FavouriteChapters:
 
         Every (figure, chapter) pair is looked at once per box: the reports
         that follow while the same chapter plays, and while a command is on
-        its way, change nothing. A report that is not playing is remembered
-        but never acted on: a box paused after the last favourite plays the
-        chapter it stopped in when a hand presses play, and is paused again
-        when the next chapter begins.
+        its way, change nothing. A report that is not playing is never acted
+        on. When a hand presses play on a box that was paused after the last
+        favourite, the favourites stop steering that box for the figure until
+        it is taken off: the child wants to go on listening.
         """
         if playback is None or playback.tonie_id is None or playback.chapter is None:
             self._seen.pop(box_id, None)
+            self._paused.pop(box_id, None)
+            self._suspended.pop(box_id, None)
             return None
-        now = (playback.tonie_id, playback.chapter)
+        figure = playback.tonie_id
+        now = (figure, playback.chapter)
+        if self._suspended.get(box_id) == figure:
+            self._seen[box_id] = now
+            return None
+        self._suspended.pop(box_id, None)
+        if (paused := self._paused.get(box_id)) is not None:
+            if paused[0] != figure:
+                del self._paused[box_id]
+            elif not playback.playing:
+                # The pause arrived; reports before it still said playing
+                self._paused[box_id] = (figure, True)
+            elif paused[1]:
+                del self._paused[box_id]
+                self._suspended[box_id] = figure
+                self._seen[box_id] = now
+                _LOGGER.debug("Play pressed after the last favourite: the figure plays on")
+                return None
         last = self._seen.get(box_id)
         if last == now:
             return None
         self._seen[box_id] = now
         if not playback.playing:
             return None
-        favourites = self._tonies.get(playback.tonie_id)
+        favourites = self._tonies.get(figure)
         if favourites is None:
             return None
-        previous = last[1] if last is not None and last[0] == playback.tonie_id else None
+        previous = last[1] if last is not None and last[0] == figure else None
         action = decide(favourites, playback.chapter, previous)
         if action is not None:
             _LOGGER.debug(
                 "Chapter %s of a figure is no favourite: %s", playback.chapter + 1, action
             )
+            if action[0] == "pause":
+                self._paused[box_id] = (figure, False)
         return action
 
 

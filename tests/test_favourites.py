@@ -223,16 +223,56 @@ async def test_box_is_steered_to_the_favourites(
     channel.playback(chapter=2)
     await _settle(hass)
     assert channel.commands == [_jump(1), _jump(3), _jump(1)]
-    # After the last favourite the box pauses; a hand pressing play lets it go on
+    # After the last favourite the box pauses; reports still on their way say it plays
     channel.playback(chapter=3)
     channel.playback(chapter=4)
+    channel.playback(chapter=4, position=2.0)
     await _settle(hass)
     assert channel.commands[-1] == PAUSE
     channel.playback(chapter=4, paused=True)
+    # A hand presses play: the figure plays on, no chapter is skipped or paused any more
     channel.playback(chapter=4, paused=False)
+    channel.playback(chapter=5)
+    channel.playback(chapter=0)
     await _settle(hass)
-    assert channel.commands[-1] == PAUSE
     assert len(channel.commands) == 4
+    # Taken off and placed again: the favourites steer again
+    channel.playback(tonie_id=None, chapter=None)
+    channel.playback(chapter=0)
+    await _settle(hass)
+    assert channel.commands[-1] == _jump(1)
+    assert len(channel.commands) == 5
+
+
+async def test_another_figure_ends_the_suspension(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+) -> None:
+    """A different figure on the box, or a pause it never reported, leaves the steering on."""
+    favourites = setup_entry.runtime_data.favourites
+    await favourites.async_set(TONIE_ID, [0], True)
+    channel = push.last
+    channel.connect()
+    channel.playback(chapter=0)
+    channel.playback(chapter=1)
+    await _settle(hass)
+    assert channel.commands == [PAUSE]
+    # Another figure before the pause was reported: nothing is suspended
+    channel.playback(chapter=0, tonie_id=DISC_ID)
+    channel.playback(chapter=0)
+    channel.playback(chapter=1)
+    await _settle(hass)
+    assert channel.commands == [PAUSE, PAUSE]
+    # Paused, play pressed: suspended; then another figure replaces it directly
+    channel.playback(chapter=1, paused=True)
+    channel.playback(chapter=1, paused=False)
+    channel.playback(chapter=0, tonie_id=DISC_ID)
+    channel.playback(chapter=0)
+    channel.playback(chapter=1)
+    await _settle(hass)
+    assert channel.commands == [PAUSE, PAUSE, PAUSE]
 
 
 async def test_box_is_left_alone(
