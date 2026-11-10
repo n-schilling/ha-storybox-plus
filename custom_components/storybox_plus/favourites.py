@@ -101,8 +101,9 @@ class FavouriteChapters:
         Every (figure, chapter) pair is looked at once per box: the reports
         that follow while the same chapter plays, and while a command is on
         its way, change nothing. A report that is not playing is remembered
-        but never acted on, so a box that was paused after the last
-        favourite goes on when a hand presses play.
+        but never acted on: a box paused after the last favourite plays the
+        chapter it stopped in when a hand presses play, and is paused again
+        when the next chapter begins.
         """
         if playback is None or playback.tonie_id is None or playback.chapter is None:
             self._seen.pop(box_id, None)

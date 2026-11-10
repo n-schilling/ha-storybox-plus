@@ -11,8 +11,8 @@ from unittest.mock import patch
 import aiohttp
 from freezegun.api import FrozenDateTimeFactory
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.typing import ClientSessionGenerator, WebSocketGenerator
+from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.typing import ClientSessionGenerator, WebSocketGenerator
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -846,6 +846,74 @@ async def test_add_link_refused(
     # A job that was started is forgotten
     if fetcher_app.jobs:
         assert fetcher_app.jobs["job-1"]["deleted"] is True
+
+
+@pytest.mark.parametrize(
+    "url", ["file:///etc/passwd", "ftp://example.com/a.mp3", "no link", "https://", "http://[::1"]
+)
+async def test_add_link_refuses_what_is_no_web_link(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    fetcher_app: FakeFetcher,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    url: str,
+) -> None:
+    """Only http and https links with a host reach the app; a link longer than 2048 is refused outright."""
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": CREATIVE_ID, "url": url}
+    )
+    assert (await client.receive_json())["success"]
+    events = await _events_until_end(client)
+    assert events == [
+        {
+            "stage": "error",
+            "code": "invalid_url",
+            "message": "Only web links (http or https) can be fetched",
+        }
+    ]
+    assert fetcher_app.calls == []
+    too_long = await _ask(
+        client,
+        {
+            "type": f"{DOMAIN}/chapters/add_link",
+            "tonie_id": CREATIVE_ID,
+            "url": "https://example.com/" + "a" * 2048,
+        },
+    )
+    assert not too_long["success"]
+    assert too_long["error"]["code"] == "invalid_format"
+
+
+async def test_add_link_ends_when_the_entry_unloads(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    fetcher_app: FakeFetcher,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reload stops a running fetch with the entry; the page hears the end."""
+    monkeypatch.setattr(fetcher, "POLL", 0.01)
+    fetcher_app.hold = True
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": f"{DOMAIN}/chapters/add_link", "tonie_id": CREATIVE_ID, "url": VIDEO_URL}
+    )
+    assert (await client.receive_json())["success"]
+    assert (await client.receive_json())["event"] == {"stage": "probe"}
+    assert (await client.receive_json())["event"]["stage"] == "download"
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+    events = await _events_until_end(client)
+    assert events[-1] == {
+        "stage": "error",
+        "code": "unloaded",
+        "message": "Storybox Plus was reloaded",
+    }
+    assert not cloud.chapter_adds
 
 
 async def test_add_link_unexpected_error(

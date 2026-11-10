@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import json
 import re
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from homeassistant.core import HomeAssistant
 

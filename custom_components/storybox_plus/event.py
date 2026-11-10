@@ -62,8 +62,3 @@ class FigureEvent(BoxEntity, EventEntity):
         else:
             return
         self.async_write_ha_state()
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Only the placement listener writes the state; the coordinator's updates change nothing here."""
-        self.async_write_ha_state()

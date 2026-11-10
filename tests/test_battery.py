@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -555,3 +555,29 @@ async def test_battery_store_is_written_saved_and_removed(
     assert key not in hass_storage
     assert analytics_key not in hass_storage
     assert chapters_key not in hass_storage
+
+
+async def test_lost_push_channel_stops_the_clock(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Without the push channel nothing tells the box is on: those hours do not count."""
+    freezer.move_to("2026-11-04T10:00:00+00:00")
+    await _setup(hass, config_entry)
+    stats = config_entry.runtime_data.battery_stats
+    channel = push.last
+    channel.connect(True)
+    channel.battery(100, "discharging")
+    freezer.tick(timedelta(hours=1))
+    channel.connect(False)
+    freezer.tick(timedelta(hours=6))
+    stats.tick()
+    assert stats.summary(BOX_ID)["current"]["hours"] == 1.0
+    # Back: the retained messages switch the clock on again
+    channel.connect(True)
+    channel.battery(90, "discharging")
+    freezer.tick(timedelta(hours=1))
+    assert stats.summary(BOX_ID)["current"]["hours"] == 2.0

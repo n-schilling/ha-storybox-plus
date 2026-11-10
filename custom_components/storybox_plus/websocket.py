@@ -67,6 +67,7 @@ _CHAPTER_MESSAGES = {
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
     "fetcher_missing": "The Media Fetcher app is not installed or not running",
+    "invalid_url": "Only web links (http or https) can be fetched",
     "not_bought": "Favourites are for bought figures; the chapters of creative figures are arranged instead",
 }
 
@@ -369,7 +370,7 @@ async def websocket_add_chapter(
     {
         probatio.Required("type"): f"{DOMAIN}/chapters/add_link",
         probatio.Required("tonie_id"): str,
-        probatio.Required("url"): str,
+        probatio.Required("url"): probatio.All(str, probatio.Length(min=1, max=2048)),
     }
 )
 @async_response
@@ -408,6 +409,10 @@ async def websocket_add_link(
             tell({"stage": "error", "code": "cloud_error", "message": str(err)})
         except FetchCancelled:
             _LOGGER.debug("A fetch of a link was given up")
+        except asyncio.CancelledError:
+            # The entry unloads: the page hears the end before the task goes
+            tell({"stage": "error", "code": "unloaded", "message": "Storybox Plus was reloaded"})
+            raise
         except FetcherUnavailable as err:
             tell({"stage": "error", "code": "fetcher_unavailable", "message": err.message})
         except FetcherError as err:
@@ -426,7 +431,8 @@ async def websocket_add_link(
 
     connection.subscriptions[msg_id] = stop
     connection.send_result(msg_id)
-    hass.async_create_background_task(run(), f"{DOMAIN} chapter from link")
+    # Bound to the entry, so a reload or a removal ends it with the coordinator it uses
+    entry.async_create_background_task(hass, run(), f"{DOMAIN} chapter from link")
 
 
 @require_admin

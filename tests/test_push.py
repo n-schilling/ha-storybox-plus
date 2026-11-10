@@ -539,3 +539,43 @@ async def test_without_connected_callback(broker: FakeBroker, sleeps: list[float
     await running.until(lambda: len(broker.clients) == 2 and running.push.connected)
     await running.stop()
     assert running.connections == []
+
+
+async def test_failing_handler_keeps_the_channel(
+    broker: FakeBroker, sleeps: list[float], caplog: pytest.LogCaptureFixture
+) -> None:
+    """A message the handler cannot take is logged; the next one arrives on the same connection."""
+    received: list[PushEvent] = []
+
+    def on_event(event: PushEvent) -> None:
+        if not received:
+            received.append(event)
+            raise KeyError("a field the handler did not expect")
+        received.append(event)
+
+    push = PushClient(FakeAuth(), USER_ID, ssl_context=SSL_CONTEXT, on_event=on_event)  # type: ignore[arg-type]
+    push.set_boxes([MAC])
+    task = asyncio.get_running_loop().create_task(push.async_run())
+    running = Channel(FakeAuth())
+    await running.until(lambda: push.connected)
+    broker.current.feed(f"{TOPIC_PREFIX}/{MAC}/{TOPIC_VOLUME}", b'{"level": 3}')
+    broker.current.feed(f"{TOPIC_PREFIX}/{MAC}/{TOPIC_VOLUME}", b'{"level": 4}')
+    await running.until(lambda: len(received) == 2)
+    assert [e.data for e in received] == [Volume(level=3), Volume(level=4)]
+    assert len(broker.clients) == 1
+    assert push.connected
+    assert "Push message on" in caplog.text
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+async def test_unexpected_failure_reconnects(
+    broker: FakeBroker, sleeps: list[float], channel: Channel, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An error nobody expected closes the connection and opens a new one instead of ending the loop."""
+    broker.current._queue.put_nowait(RuntimeError("something odd"))
+    await channel.until(lambda: len(broker.clients) == 2 and channel.push.connected)
+    assert channel.connections == [True, False, True]
+    assert sleeps == [BACKOFF_FIRST]
+    assert "Push channel failed" in caplog.text

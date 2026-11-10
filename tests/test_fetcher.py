@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from aiohasupervisor import SupervisorError
 from aiohasupervisor.models import AddonState
 import pytest
-from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant.test_util.aiohttp import AiohttpClientMocker, AiohttpClientMockResponse
 
 from homeassistant.core import HomeAssistant
 
@@ -20,6 +20,7 @@ from .conftest import FETCHER_HOST, FETCHER_PORT, VIDEO_ID, VIDEO_URL, FakeFetch
 
 APP = fetcher.Fetcher(FETCHER_HOST, FETCHER_PORT)
 TOKEN = "fetch-secret"
+JSON = {"Content-Type": "application/json"}
 
 
 async def test_find_without_a_supervisor(hass: HomeAssistant) -> None:
@@ -217,3 +218,73 @@ async def test_file_refused(
         json={"error": {"code": "not_found", "message": "gone"}},
     )
     await client.async_forget(job_id)
+
+
+async def test_answers_of_the_wrong_shape(
+    hass: HomeAssistant, fetcher_app: FakeFetcher, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Broken JSON, a page instead of JSON or a job without ID are the app's error, not a crash."""
+    client = fetcher.FetcherClient(hass, APP)
+    for answer in (
+        {"text": "{broken", "headers": {"Content-Type": "application/json"}},
+        {"text": "<html>Updating</html>", "headers": {"Content-Type": "text/html"}},
+        {"json": ["a", "list"], "headers": {"Content-Type": "application/json"}},
+    ):
+        aioclient_mock.clear_requests()
+        aioclient_mock.post(f"{APP.url}/info", **answer)  # type: ignore[arg-type]
+        with pytest.raises(fetcher.FetcherError) as caught:
+            await client.async_info(VIDEO_URL)
+        assert caught.value.code == "bad_answer"
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(f"{APP.url}/jobs", json={"state": "queued"}, headers=JSON)
+    with pytest.raises(fetcher.FetcherError) as no_id:
+        await client.async_start(VIDEO_URL, None)
+    assert no_id.value.code == "bad_answer"
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{APP.url}/jobs/job-1", text="oops", headers={"Content-Type": "text/plain"})
+    with pytest.raises(fetcher.FetcherError) as no_job:
+        await client.async_job("job-1")
+    assert no_job.value.code == "bad_answer"
+
+
+async def test_job_with_odd_fields(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """An error given as text and a content type that is no audio are not taken over."""
+    client = fetcher.FetcherClient(hass, APP)
+    aioclient_mock.get(
+        f"{APP.url}/jobs/job-1",
+        json={"id": "job-1", "state": "failed", "error": "boom", "content_type": "text/html"},
+        headers=JSON,
+    )
+    job = await client.async_job("job-1")
+    assert (job.error_code, job.error_message, job.content_type) == (None, None, None)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(
+        f"{APP.url}/jobs/job-1",
+        json={"id": "job-1", "state": "done", "content_type": "audio/mp4"},
+        headers=JSON,
+    )
+    assert (await client.async_job("job-1")).content_type == "audio/mp4"
+
+
+async def test_file_larger_than_a_figure_is_refused(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file over the limit is refused by its announced length and while it arrives."""
+    monkeypatch.setattr(fetcher, "MAX_FILE_BYTES", 4)
+    client = fetcher.FetcherClient(hass, APP)
+    aioclient_mock.get(f"{APP.url}/jobs/job-1/file", content=b"12345")
+    with pytest.raises(fetcher.FetcherError) as announced:
+        await client.async_file("job-1")
+    assert announced.value.code == "too_large"
+    # Without an announced length the body is counted as it arrives
+    with (
+        patch.object(AiohttpClientMockResponse, "content_length", None),
+        pytest.raises(fetcher.FetcherError) as streamed,
+    ):
+        await client.async_file("job-1")
+    assert streamed.value.code == "too_large"
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{APP.url}/jobs/job-1/file", content=b"1234")
+    assert await client.async_file("job-1") == b"1234"

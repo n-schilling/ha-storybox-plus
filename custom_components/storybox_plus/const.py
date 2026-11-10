@@ -19,6 +19,9 @@ DEFAULT_ANALYTICS = True
 # names and the classic box; the live state of the Toniebox 2 comes by push.
 UPDATE_INTERVAL = timedelta(minutes=5)
 RETRY_INTERVAL = timedelta(minutes=1)
+# A box missing from this many polls in a row (an hour) has left the account;
+# one answer without it may be a hiccup of the cloud
+STALE_AFTER_POLLS = 12
 UNAVAILABLE_AFTER_FAILURES = 3
 # A classic box tells the cloud nothing but when it was last there
 CLASSIC_ONLINE_WINDOW = timedelta(minutes=30)

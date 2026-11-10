@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo, format_mac
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -58,10 +59,16 @@ def async_follow_boxes(
 ) -> None:
     """Create the entities of every box, also of boxes that join later."""
     coordinator = entry.runtime_data.coordinator
+    devices = dr.async_get(coordinator.hass)
     known: set[str] = set()
 
     @callback
     def _add_new() -> None:
+        # A box whose device was removed lost its entities; should it come
+        # back, it gets new ones
+        for box_id in known - set(coordinator.data.boxes):
+            if devices.async_get_device(identifiers={(DOMAIN, box_id)}) is None:
+                known.discard(box_id)
         new: list[Entity] = []
         for box_id, box_state in coordinator.data.boxes.items():
             if box_id in known:

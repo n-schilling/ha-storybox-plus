@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 from zoneinfo import ZoneInfo
 
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant.common import async_fire_time_changed
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -86,9 +86,7 @@ def test_counts_while_playing(analytics: Analytics, clock: Clock) -> None:
     assert analytics.per_box() == {"box1": 100}
     assert analytics.per_day() == {TODAY: 100}
     assert analytics.total() == 100
-    assert analytics.top() == [("t1", 100)]
     assert analytics.first_day == date(2026, 11, 4)
-    assert analytics.as_dict() == {"days": {TODAY: {"box1": {"t1": 100}}}}
 
 
 def test_switching_the_figure_closes_the_count(analytics: Analytics, clock: Clock) -> None:
@@ -99,7 +97,6 @@ def test_switching_the_figure_closes_the_count(analytics: Analytics, clock: Cloc
     clock.advance(40)
     analytics.observe("box1", "t2", False)
     assert analytics.per_tonie() == {"t1": 60, "t2": 40}
-    assert analytics.top() == [("t1", 60), ("t2", 40)]
 
 
 def test_two_boxes_count_apart(analytics: Analytics, clock: Clock) -> None:
@@ -108,7 +105,8 @@ def test_two_boxes_count_apart(analytics: Analytics, clock: Clock) -> None:
     clock.advance(10)
     analytics.observe("box2", "t1", True)
     clock.advance(20)
-    analytics.stop_all()
+    analytics.observe("box1", "t1", False)
+    analytics.observe("box2", "t1", False)
     assert analytics.per_box() == {"box1": 30, "box2": 20}
     assert analytics.per_tonie() == {"t1": 50}
     clock.advance(100)
@@ -193,7 +191,7 @@ async def test_load_without_usable_data(store: Mock, clock: Clock, stored: Any) 
     assert analytics.per_day() == {}
     assert analytics.first_day is None
     assert analytics.total() == 0
-    assert analytics.top() == []
+    assert analytics.per_tonie() == {}
     analytics.save_soon()
     store.async_delay_save.assert_not_called()
 
@@ -216,10 +214,7 @@ async def test_queries_over_the_last_days(store: Mock, clock: Clock) -> None:
     assert analytics.total(2) == 310
     assert analytics.per_tonie(2) == {"t1": 110, "t2": 100, "t4": 100}
     assert analytics.per_box(2) == {"box1": 210, "box2": 100}
-    assert analytics.top(2, days=2) == [("t1", 110), ("t2", 100)]
-    assert analytics.top(days=1) == [("t4", 100), ("t1", 10)]
-    assert analytics.top() == [("t1", 810), ("t2", 100), ("t4", 100), ("t3", 50)]
-    assert analytics.top(1) == [("t1", 810)]
+    assert analytics.per_tonie() == {"t1": 810, "t2": 100, "t3": 50, "t4": 100}
 
 
 def test_save_soon_writes_once_per_change(analytics: Analytics, clock: Clock, store: Mock) -> None:
@@ -252,26 +247,10 @@ async def test_async_save_books_what_plays(analytics: Analytics, clock: Clock, s
     store.async_delay_save.assert_not_called()
 
 
-async def test_async_clear(analytics: Analytics, clock: Clock, store: Mock) -> None:
-    """Clearing forgets the sums and the running spans and removes the store."""
-    analytics.observe("box1", "t1", True)
-    clock.advance(42)
-    analytics.tick()
-    await analytics.async_clear()
-    store.async_remove.assert_awaited_once()
-    assert analytics.per_day() == {}
-    assert analytics.first_day is None
-    clock.advance(100)
-    analytics.tick()
-    assert analytics.total() == 0
-    analytics.save_soon()
-    store.async_delay_save.assert_not_called()
-
-
 async def test_with_the_real_store(
     hass: HomeAssistant, hass_storage: dict[str, Any], clock: Clock
 ) -> None:
-    """The delayed write lands in the store after the delay; clearing deletes it."""
+    """The delayed write lands in the store after the delay and is read back."""
     key = "storybox_plus.test.analytics"
     store: Store[Any] = Store(hass, 1, key)
     analytics = Analytics(store, clock.now)
@@ -288,6 +267,3 @@ async def test_with_the_real_store(
     again = Analytics(Store(hass, 1, key), clock.now)
     await again.async_load()
     assert again.total() == 30
-
-    await analytics.async_clear()
-    assert key not in hass_storage

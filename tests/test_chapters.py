@@ -9,8 +9,8 @@ from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
-from pytest_homeassistant_custom_component.typing import WebSocketGenerator
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant.typing import WebSocketGenerator
 
 from homeassistant.components.media_player import DOMAIN as MP_DOMAIN
 from homeassistant.config_entries import ConfigEntryState
@@ -168,13 +168,16 @@ async def test_figures_with_chapters_are_not_asked(
         {"id": "1", "title": "Kapitel 2", "seconds": None, "transcoding": False},
     ]
     assert listed["seconds"] == 500
-    # Not again for that figure, nor for creative figures (timed already) or unknown ones
+    # Never for creative figures (the cloud times them) or unknown ones; placed
+    # anew, the bought figure is asked once more, since the box may know it now
     push.last.playback(tonie_id=CREATIVE_ID)
     push.last.playback(tonie_id="unknown-figure")
     push.last.removed()
-    push.last.playback(tonie_id=TONIE_ID)
     await _background_done(hass, push)
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    push.last.playback(tonie_id=TONIE_ID)
+    await _background_done(hass, push)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)] * 2
     assert cloud.detail_calls == []
     await _save(hass, freezer)
     assert _chapters_key(setup_entry) not in hass_storage
@@ -315,15 +318,16 @@ async def test_damaged_store_is_ignored(
     [None, playback_info(chapters=[]), playback_info(chapters=[], status="unavailable")],
     ids=["404", "no chapters", "unavailable"],
 )
-async def test_unknown_figure_is_asked_once_per_run(
+async def test_unknown_figure_is_asked_again_later(
     hass: HomeAssistant,
     cloud: FakeCloud,
     push: PushChannels,
     config_entry: MockConfigEntry,
     hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
     answer: dict[str, Any] | None,
 ) -> None:
-    """A figure the cloud has no chapters for is asked once per run, and again after a restart."""
+    """A figure the cloud has no chapters for is asked again when placed anew, or an hour later."""
     cloud.main.boxes[HOUSEHOLD_ID] = [tb2_box(placed=None)]
     _bought_without_chapters(cloud, known=False)
     if answer is not None:
@@ -338,19 +342,27 @@ async def test_unknown_figure_is_asked_once_per_run(
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
     assert coordinator.data.tonies[TONIE_ID].chapters == ()
     assert _media_title(hass) == TONIE_NAME
-    # Placed again, and seen on the box by a poll: not asked again
-    push.last.removed()
-    push.last.playback(tonie_id=TONIE_ID, chapter=0)
-    await hass.async_block_till_done(wait_background_tasks=True)
+    # Seen on the box by the next polls: not asked again within the hour
     cloud.main.box(BOX_ID)["placement"] = {"tonie": {"id": TONIE_ID}}
+    await coordinator.async_refresh()
+    freezer.tick(timedelta(minutes=59))
     await coordinator.async_refresh()
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
     assert _chapters_key(config_entry) not in hass_storage
+    # An hour after the box was asked, the next poll asks again
+    freezer.tick(timedelta(minutes=2))
+    await coordinator.async_refresh()
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)] * 2
+    # Placed anew: asked at once
+    push.last.removed()
+    push.last.playback(tonie_id=TONIE_ID, chapter=0)
+    await _background_done(hass, push)
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)] * 3
 
     # A restart asks once more
     assert await hass.config_entries.async_reload(config_entry.entry_id)
     await hass.async_block_till_done()
-    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)] * 2
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)] * 4
 
 
 async def test_cloud_error_during_fetch_is_tolerated(
@@ -611,7 +623,7 @@ async def test_stored_names_do_not_stop_the_box_being_asked(
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
 
 
-async def test_box_that_names_but_does_not_time_is_asked_once_per_run(
+async def test_box_that_names_but_does_not_time_is_asked_again_when_placed(
     hass: HomeAssistant,
     cloud: FakeCloud,
     push: PushChannels,
@@ -619,7 +631,7 @@ async def test_box_that_names_but_does_not_time_is_asked_once_per_run(
     hass_storage: dict[str, Any],
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    """A box answer without lengths serves where nothing names the chapters, and is not asked for again this run."""
+    """A box answer without lengths serves where nothing names the chapters; only a new placement asks again."""
     _bought_without_chapters(cloud, known=False)
     cloud.main.playback_info[(BOX_ID, TONIE_ID)] = playback_info(chapters=[{"title": "Nur Name"}])
     await _setup(hass, config_entry)
@@ -629,10 +641,11 @@ async def test_box_that_names_but_does_not_time_is_asked_once_per_run(
         ("Nur Name", None)
     ]
     await coordinator.async_refresh()
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
     push.last.removed()
     push.last.playback(tonie_id=TONIE_ID, chapter=0)
     await _background_done(hass, push)
-    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
+    assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)] * 2
     await _save(hass, freezer)
     stored = hass_storage[_chapters_key(config_entry)]["data"]["tonies"][TONIE_ID]["chapters"]
     assert [c["title"] for c in stored] == ["Nur Name"]
@@ -659,3 +672,41 @@ async def test_box_names_without_lengths_do_not_replace_the_library(
     assert cloud.playback_info_calls == [(BOX_ID, TONIE_ID)]
     await _save(hass, freezer)
     assert _chapters_key(config_entry) not in hass_storage
+
+
+async def test_creative_figure_keeps_the_chapters_of_the_cloud(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+) -> None:
+    """A creative figure whose chapters are still untimed is never asked from the box.
+
+    Its chapters carry the cloud's IDs, which rearranging them needs; chapters
+    a box told about it earlier are not put in their place.
+    """
+    cloud.main.creative_tonies[HOUSEHOLD_ID][0]["chapters"] = [
+        {"id": "ch1", "title": "Fresh upload", "file": "f1", "seconds": 0, "transcoding": True}
+    ]
+    cloud.main.boxes[HOUSEHOLD_ID] = [tb2_box(placed=CREATIVE_ID)]
+    cloud.main.playback_info[(BOX_ID, CREATIVE_ID)] = playback_info()
+    key = _chapters_key(config_entry)
+    hass_storage[key] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": key,
+        "data": {
+            "tonies": {
+                CREATIVE_ID: {"chapters": [{"id": "0", "title": "From a box", "seconds": 60}]}
+            }
+        },
+    }
+    await _setup(hass, config_entry)
+    push.last.removed()
+    push.last.playback(tonie_id=CREATIVE_ID, chapter=0)
+    await _background_done(hass, push)
+    coordinator = config_entry.runtime_data.coordinator
+    await coordinator.async_refresh()
+    assert cloud.playback_info_calls == []
+    assert [c.id for c in coordinator.data.tonies[CREATIVE_ID].chapters] == ["ch1"]

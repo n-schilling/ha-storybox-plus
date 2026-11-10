@@ -7,10 +7,7 @@ from typing import Any
 
 import aiohttp
 import pytest
-from pytest_homeassistant_custom_component.test_util.aiohttp import (
-    AiohttpClientMocker,
-    AiohttpClientMockResponse,
-)
+from pytest_homeassistant.test_util.aiohttp import AiohttpClientMocker, AiohttpClientMockResponse
 from yarl import URL
 
 from homeassistant.core import HomeAssistant

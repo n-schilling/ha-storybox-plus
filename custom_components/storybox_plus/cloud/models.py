@@ -441,7 +441,9 @@ def parse_playback_info(data: dict[str, Any]) -> TonieDetails:
     )
 
 
-# Statuses the battery message is known to send while not charging
+# Statuses the battery message sends while charging, and while not; any other
+# status ("charged", say) leaves it unknown
+_CHARGING = frozenset({"charging", "fastcharging", "fast_charging"})
 _NOT_CHARGING = frozenset({"discharging", "notcharging", "not_charging", "full", "idle"})
 
 
@@ -451,7 +453,7 @@ def parse_battery(data: dict[str, Any]) -> Battery:
     charging: bool | None = None
     if status is not None:
         lowered = status.lower()
-        if "charg" in lowered and not lowered.startswith("dis") and "not" not in lowered:
+        if lowered in _CHARGING:
             charging = True
         elif lowered in _NOT_CHARGING:
             charging = False

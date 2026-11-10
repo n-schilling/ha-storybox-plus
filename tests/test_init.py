@@ -7,12 +7,14 @@ from typing import Any
 from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant.typing import WebSocketGenerator
 
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.setup import async_setup_component
 
 from custom_components.storybox_plus.cloud import CloudAuthError
 from custom_components.storybox_plus.const import (
@@ -20,6 +22,7 @@ from custom_components.storybox_plus.const import (
     CONF_REFRESH_TOKEN,
     DOMAIN,
     RETRY_INTERVAL,
+    STALE_AFTER_POLLS,
     UPDATE_INTERVAL,
 )
 from custom_components.storybox_plus.frontend import PANEL_URL_PATH
@@ -27,6 +30,7 @@ from custom_components.storybox_plus.frontend import PANEL_URL_PATH
 from .conftest import (
     BOX_ID,
     CLASSIC_BOX_ID,
+    HOUSEHOLD_ID,
     MAC,
     FakeCloud,
     PushChannels,
@@ -320,24 +324,45 @@ async def test_stored_analytics_are_loaded(
     assert config_entry.runtime_data.analytics.total() == 60
 
 
+async def _polls(hass: HomeAssistant, entry: MockConfigEntry, count: int) -> None:
+    for _ in range(count):
+        await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+
 async def test_box_leaving_the_account_removes_its_device(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
 ) -> None:
-    """A box that disappears from the account loses its device and entities."""
+    """A box missing from an hour of polls loses its device and entities; one poll is a hiccup."""
     connectivity = entity_id(hass, "binary_sensor", f"{CLASSIC_BOX_ID}_connectivity")
+    removed = cloud.main.box(CLASSIC_BOX_ID)
     cloud.main.remove_box(CLASSIC_BOX_ID)
-    await setup_entry.runtime_data.coordinator.async_refresh()
-    await hass.async_block_till_done()
+    # Missing for a while, then back: nothing is lost, the count starts over
+    await _polls(hass, setup_entry, STALE_AFTER_POLLS - 1)
+    assert device(hass, setup_entry, CLASSIC_BOX_ID) is not None
+    assert hass.states.get(connectivity).state == STATE_UNAVAILABLE
+    cloud.main.boxes[HOUSEHOLD_ID].append(removed)
+    await _polls(hass, setup_entry, 1)
+    assert hass.states.get(connectivity).state != STATE_UNAVAILABLE
+    cloud.main.remove_box(CLASSIC_BOX_ID)
+    await _polls(hass, setup_entry, STALE_AFTER_POLLS - 1)
+    assert device(hass, setup_entry, CLASSIC_BOX_ID) is not None
+    await _polls(hass, setup_entry, 1)
     assert device(hass, setup_entry, CLASSIC_BOX_ID) is None
     assert device(hass, setup_entry, BOX_ID) is not None
     assert er.async_get(hass).async_get(connectivity) is None
     assert hass.states.get(connectivity) is None
+    # Back in the account after all: the box gets its entities anew
+    cloud.main.boxes[HOUSEHOLD_ID].append(removed)
+    await _polls(hass, setup_entry, 1)
+    connectivity = entity_id(hass, "binary_sensor", f"{CLASSIC_BOX_ID}_connectivity")
+    assert hass.states.get(connectivity) is not None
 
 
-async def test_stale_device_is_removed_at_setup(
+async def test_stale_device_is_removed_after_an_hour(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
 ) -> None:
-    """A device left over from an earlier run is removed when the box is gone."""
+    """A device left over from an earlier run goes once its box stayed away for an hour."""
     config_entry.add_to_hass(hass)
     registry = dr.async_get(hass)
     registry.async_get_or_create(
@@ -345,8 +370,34 @@ async def test_stale_device_is_removed_at_setup(
     )
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
+    assert device(hass, config_entry, "box-sold") is not None
+    await _polls(hass, config_entry, STALE_AFTER_POLLS - 1)
     assert device(hass, config_entry, "box-sold") is None
     assert device(hass, config_entry, BOX_ID) is not None
+
+
+async def test_device_of_a_gone_box_can_be_removed_by_hand(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The user may remove the device of a box the account lacks, not of one it has."""
+    assert await async_setup_component(hass, "config", {})
+    cloud.main.remove_box(CLASSIC_BOX_ID)
+    await _polls(hass, setup_entry, 1)
+    client = await hass_ws_client(hass)
+    for box_id, success in ((BOX_ID, False), (CLASSIC_BOX_ID, True)):
+        await client.send_json_auto_id(
+            {
+                "type": "config/device_registry/remove_config_entry",
+                "config_entry_id": setup_entry.entry_id,
+                "device_id": device(hass, setup_entry, box_id).id,
+            }
+        )
+        assert (await client.receive_json())["success"] is success
+    assert device(hass, setup_entry, CLASSIC_BOX_ID) is None
 
 
 async def test_new_box_gets_entities(

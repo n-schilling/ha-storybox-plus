@@ -35,6 +35,9 @@ TIMEOUT = aiohttp.ClientTimeout(total=30)
 FILE_TIMEOUT = aiohttp.ClientTimeout(total=600)
 # How often a running job is asked about (s)
 POLL = 1.0
+# The largest file taken from the app: far more than the 90 minutes of audio
+# a figure holds, as m4a
+MAX_FILE_BYTES = 200 * 1024 * 1024
 
 # The audio as the cloud takes it
 KIND = "audio"
@@ -126,6 +129,13 @@ async def async_find(hass: HomeAssistant) -> Fetcher | None:
     return None
 
 
+def _object(body: Any, what: str) -> dict[str, Any]:
+    """Return the JSON object the app answered, or refuse an answer of another shape."""
+    if not isinstance(body, dict):
+        raise FetcherError("bad_answer", f"The app answered {what} without a JSON object")
+    return body
+
+
 def _video(data: dict[str, Any]) -> Video:
     video_id = str(data.get("id") or "")
     duration = data.get("duration")
@@ -137,17 +147,26 @@ def _video(data: dict[str, Any]) -> Video:
 
 
 def _job(data: dict[str, Any]) -> Job:
-    error = data.get("error") or {}
+    error = data.get("error")
+    if not isinstance(error, dict):
+        error = {}
     total = data.get("total_bytes")
     return Job(
         id=str(data.get("id") or ""),
         state=str(data.get("state") or ""),
         done=int(data.get("done_bytes") or 0),
         total=int(total) if isinstance(total, int | float) and total > 0 else None,
-        content_type=data.get("content_type") or None,
-        error_code=error.get("code") or None,
-        error_message=error.get("message") or None,
+        content_type=_audio_type(data.get("content_type")),
+        error_code=str(error["code"]) if error.get("code") else None,
+        error_message=str(error["message"]) if error.get("message") else None,
     )
+
+
+def _audio_type(value: Any) -> str | None:
+    """Return the content type of the file if it names audio; anything else is not passed on."""
+    if isinstance(value, str) and value.lower().startswith("audio/"):
+        return value
+    return None
 
 
 class FetcherClient:
@@ -165,7 +184,11 @@ class FetcherClient:
         json: dict[str, Any] | None = None,
         wait: aiohttp.ClientTimeout = TIMEOUT,
     ) -> Any:
-        """Ask the app; an error answer becomes a FetcherError, silence FetcherUnavailable."""
+        """Ask the app; an error answer becomes a FetcherError, silence FetcherUnavailable.
+
+        A JSON answer comes back decoded, anything else as bytes, at most
+        MAX_FILE_BYTES of them.
+        """
         headers = {"Authorization": f"Bearer {self._fetcher.token}"} if self._fetcher.token else {}
         try:
             async with self._session.request(
@@ -176,9 +199,11 @@ class FetcherClient:
                 if resp.content_type == "application/json":
                     body = await resp.json()
                 else:
-                    body = await resp.read()
+                    body = await _read_limited(resp)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise FetcherUnavailable("unreachable", f"The app does not answer: {err}") from err
+        except ValueError as err:
+            raise FetcherError("bad_answer", f"{method} {path} answered broken JSON") from err
         if resp.status >= 400:
             error = body.get("error") if isinstance(body, dict) else None
             if isinstance(error, dict) and error.get("code"):
@@ -188,19 +213,21 @@ class FetcherClient:
 
     async def async_info(self, url: str) -> Video:
         """Ask what the video is, without fetching it."""
-        return _video(await self._request("POST", "/info", {"url": url}))
+        return _video(_object(await self._request("POST", "/info", {"url": url}), "the info"))
 
     async def async_start(self, url: str, max_seconds: int | None) -> str:
         """Start a job for the audio of the video; return its ID."""
         body: dict[str, Any] = {"url": url, "kind": KIND, "format": FORMAT}
         if max_seconds is not None:
             body["max_duration"] = max_seconds
-        answer = await self._request("POST", "/jobs", body)
+        answer = _object(await self._request("POST", "/jobs", body), "the job")
+        if not answer.get("id"):
+            raise FetcherError("bad_answer", "The app answered the job without an ID")
         return str(answer["id"])
 
     async def async_job(self, job_id: str) -> Job:
         """Ask how far a job is."""
-        return _job(await self._request("GET", f"/jobs/{job_id}"))
+        return _job(_object(await self._request("GET", f"/jobs/{job_id}"), "the job"))
 
     async def async_wait(
         self, job_id: str, report: Callable[[Job], None], cancelled: asyncio.Event
@@ -239,3 +266,15 @@ class FetcherClient:
             await self._request("DELETE", f"/jobs/{job_id}")
         except FetcherError as err:
             _LOGGER.debug("The job %s was not deleted: %s", job_id, err)
+
+
+async def _read_limited(resp: aiohttp.ClientResponse) -> bytes:
+    """Read a body of at most MAX_FILE_BYTES; a larger one is refused, also while it arrives."""
+    if resp.content_length is not None and resp.content_length > MAX_FILE_BYTES:
+        raise FetcherError("too_large", "The app's file is larger than a figure can hold")
+    data = bytearray()
+    async for chunk in resp.content.iter_chunked(1024 * 1024):
+        data.extend(chunk)
+        if len(data) > MAX_FILE_BYTES:
+            raise FetcherError("too_large", "The app's file is larger than a figure can hold")
+    return bytes(data)

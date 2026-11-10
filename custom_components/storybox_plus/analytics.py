@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from homeassistant.helpers.storage import Store
 
@@ -64,13 +64,6 @@ class Analytics:
         if playing and tonie_id is not None and active is None:
             self._active[box_id] = (tonie_id, now)
 
-    def stop_all(self) -> None:
-        """Close every running count, for example when the push channel is gone."""
-        now = self._now()
-        for box_id, (tonie_id, since) in self._active.items():
-            self._add(box_id, tonie_id, since, now)
-        self._active.clear()
-
     def tick(self) -> None:
         """Book the time counted so far, so the sums are current and survive a restart."""
         now = self._now()
@@ -111,13 +104,6 @@ class Analytics:
         self.tick()
         self._dirty = False
         await self._store.async_save(self._data_to_save())
-
-    async def async_clear(self) -> None:
-        """Forget everything, for example when the option is switched off."""
-        self._days.clear()
-        self._active.clear()
-        self._dirty = False
-        await self._store.async_remove()
 
     def _data_to_save(self) -> AnalyticsData:
         return {"days": self._days}
@@ -162,12 +148,3 @@ class Analytics:
     def total(self, days: int | None = None) -> int:
         """Return the seconds listened over the last days."""
         return sum(self.per_day(days).values())
-
-    def top(self, limit: int = 10, days: int | None = None) -> list[tuple[str, int]]:
-        """Return the most played figures."""
-        ranking = sorted(self.per_tonie(days).items(), key=lambda item: (-item[1], item[0]))
-        return ranking[:limit]
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return the raw sums, for the page."""
-        return {"days": self._days}

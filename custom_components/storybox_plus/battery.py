@@ -120,6 +120,12 @@ class BatteryStats:
         elif not on:
             self._pause(cycle, now)
 
+    def pause_all(self) -> None:
+        """Stop the clock of every box: without the push channel nothing tells it is on."""
+        now = self._now()
+        for cycle in self._open.values():
+            self._pause(cycle, now)
+
     def tick(self) -> None:
         """Book the time switched on so far, so it survives a restart."""
         now = self._now()

@@ -124,7 +124,8 @@ class PushClient:
         """Keep the channel open until cancelled.
 
         A refused token ends the loop with CloudAuthError: the account needs a
-        new login, which the caller asks the user for.
+        new login, which the caller asks the user for. Any other failure,
+        expected or not, closes the connection and opens a new one.
         """
         backoff = BACKOFF_FIRST
         while True:
@@ -146,6 +147,8 @@ class PushClient:
                     backoff = BACKOFF_FIRST
                 level = logging.DEBUG if lasted > 60 else logging.INFO
                 _LOGGER.log(level, "Push channel closed (%s), reconnecting in %ss", err, backoff)
+            except Exception:
+                _LOGGER.exception("Push channel failed, reconnecting in %ss", backoff)
             finally:
                 self._set_connected(False)
             await asyncio.sleep(backoff)
@@ -178,16 +181,20 @@ class PushClient:
                 async with asyncio.TaskGroup() as group:
                     group.create_task(self._async_receive(client))
                     group.create_task(self._async_follow_boxes(client, subscribed))
-            except* aiomqtt.MqttError as group_error:
+            except* Exception as group_error:
                 raise group_error.exceptions[0] from None
             finally:
                 self._client = None
 
     async def _async_receive(self, client: aiomqtt.Client) -> None:
         async for message in client.messages:
-            event = self._parse(str(message.topic), message.payload)
-            if event is not None:
-                self._on_event(event)
+            # One message that cannot be handled must not cost the channel
+            try:
+                event = self._parse(str(message.topic), message.payload)
+                if event is not None:
+                    self._on_event(event)
+            except Exception:
+                _LOGGER.exception("Push message on %s not handled", message.topic)
 
     async def _async_follow_boxes(self, client: aiomqtt.Client, subscribed: set[str]) -> None:
         while True:

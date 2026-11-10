@@ -144,10 +144,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
     await async_register_frontend(hass)
     async_register_websocket(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(
-        coordinator.async_add_listener(lambda: _remove_stale_devices(hass, entry))
-    )
-    _remove_stale_devices(hass, entry)
 
     async def _run_push() -> None:
         """Keep the push channel open; a refused login asks for a new one."""
@@ -181,12 +177,13 @@ async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
     await favourites_store(hass, entry.entry_id).async_remove()
 
 
-@callback
-def _remove_stale_devices(hass: HomeAssistant, entry: StoryboxConfigEntry) -> None:
-    """Remove devices of boxes that left the account."""
-    data = entry.runtime_data.coordinator.data
-    registry = dr.async_get(hass)
-    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
-        box_ids = {identifier[1] for identifier in device.identifiers if identifier[0] == DOMAIN}
-        if box_ids and not box_ids & set(data.boxes):
-            registry.async_update_device(device.id, remove_config_entry_id=entry.entry_id)
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: StoryboxConfigEntry, device: dr.DeviceEntry
+) -> bool:
+    """Let the user remove the device of a box the account no longer has.
+
+    The integration removes such a device itself after an hour without the
+    box; this is for whoever does not want to wait.
+    """
+    boxes = entry.runtime_data.coordinator.data.boxes
+    return not any(i[0] == DOMAIN and i[1] in boxes for i in device.identifiers)

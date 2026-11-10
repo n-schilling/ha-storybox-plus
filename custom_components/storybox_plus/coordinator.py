@@ -6,13 +6,16 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Any
+
+from yarl import URL
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -47,6 +50,7 @@ from .const import (
     CLASSIC_ONLINE_WINDOW,
     DOMAIN,
     RETRY_INTERVAL,
+    STALE_AFTER_POLLS,
     UNAVAILABLE_AFTER_FAILURES,
     UPDATE_INTERVAL,
 )
@@ -58,6 +62,9 @@ type PlacementListener = Callable[[str | None, str | None], None]
 
 # Bought figures asked for their chapters per poll, when the library gave none
 DETAILS_PER_POLL = 5
+# A box that told nothing about a figure's chapters is asked again after this
+# long, or as soon as the figure is placed again
+LENGTHS_RETRY = timedelta(hours=1)
 
 
 class ChapterError(HomeAssistantError):
@@ -162,12 +169,19 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self.analytics = analytics
         self.battery_stats = battery_stats
         self._failures = 0
+        # Polls in a row a box with a device was missing from
+        self._missing_polls: dict[str, int] = {}
         self._placement_listeners: dict[str, list[PlacementListener]] = defaultdict(list)
         # The chapters of bought figures come only from the box they stand on
         # (playback info); they are kept so the page knows them afterwards.
+        # Creative figures are left out: the cloud names and times their
+        # chapters itself, with the IDs a change of them needs.
         self._details_store = details_store
         self._details: dict[str, TonieDetails] = {}
+        # Figures the app's detail query knew nothing about, for this run
         self._details_missing: set[str] = set()
+        # Figures a box told nothing (more) about, with the time it was asked
+        self._lengths_asked: dict[str, datetime] = {}
 
     async def async_load_details(self) -> None:
         """Read the chapters learned in earlier runs."""
@@ -226,12 +240,34 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 box_state = BoxState(box=box, online=_online_from_rest(box))
             state.boxes[box.id] = box_state
         self.push.set_boxes(b.box.mac for b in state.boxes.values() if b.box.live and b.box.mac)
+        self._remove_stale_devices(state)
         if self.analytics is not None:
             self.analytics.tick()
             self.analytics.save_soon()
         self.battery_stats.tick()
         self.battery_stats.save_soon()
         return state
+
+    def _remove_stale_devices(self, state: CloudState) -> None:
+        """Remove the devices of boxes that left the account.
+
+        A box counts as gone only after an hour of polls without it, so an
+        answer of the cloud that lacks it once does not cost its entities
+        and what the user made of them.
+        """
+        registry = dr.async_get(self.hass)
+        seen: set[str] = set()
+        for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+            box_ids = {i[1] for i in device.identifiers if i[0] == DOMAIN}
+            if not box_ids or box_ids & set(state.boxes):
+                continue
+            key = min(box_ids)
+            seen.add(key)
+            self._missing_polls[key] = self._missing_polls.get(key, 0) + 1
+            if self._missing_polls[key] >= STALE_AFTER_POLLS:
+                _LOGGER.debug("A box left the account; its device is removed")
+                registry.async_remove_device(device.id)
+        self._missing_polls = {k: v for k, v in self._missing_polls.items() if k in seen}
 
     # ------------------------------------------------------------ push
 
@@ -284,6 +320,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             for listener in self._placement_listeners.get(box_state.box.id, []):
                 listener(tonie_before, box_state.tonie_id)
             placed = box_state.tonie_id
+            if placed is not None:
+                # Placed anew: the box may know now what it did not before
+                self._lengths_asked.pop(placed, None)
             if placed is not None and self._needs_lengths(self.data.tonies.get(placed)):
                 self.config_entry.async_create_background_task(
                     self.hass,
@@ -310,9 +349,11 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         """Note that the push channel came or went."""
         self.data.push_connected = connected
         if not connected:
-            # Without the channel nothing is known about playing; count no further
+            # Without the channel nothing is known about playing or being on; count no further
             for box_state in self.data.boxes.values():
                 self._stop_playing(box_state)
+            self.battery_stats.pause_all()
+            self.battery_stats.save_soon()
         self.async_update_listeners()
 
     def _stop_playing(self, box_state: BoxState) -> None:
@@ -351,9 +392,14 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         The library names the chapters of bought figures but does not time
         them; the box the figure stands on tells both. Names already kept,
         from the library or from a box that knew no lengths either, do not
-        answer the question and so do not stop the asking.
+        answer the question and so do not stop the asking. A box that told
+        nothing is asked again an hour later, or when the figure is placed
+        anew. Creative figures are never asked for: the cloud times them.
         """
-        if tonie is None or tonie.id in self._details_missing:
+        if tonie is None or tonie.kind is TonieKind.CREATIVE:
+            return False
+        asked = self._lengths_asked.get(tonie.id)
+        if asked is not None and dt_util.utcnow() - asked < LENGTHS_RETRY:
             return False
         if any(c.seconds for c in tonie.chapters):
             return False
@@ -361,9 +407,13 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         return details is None or not any(c.seconds for c in details.chapters)
 
     def _with_details(self, tonie: Tonie) -> Tonie:
-        """Fill in what the box told about the figure, where the library is silent."""
+        """Fill in what the box told about the figure, where the library is silent.
+
+        Creative figures stay as the cloud describes them: their chapters
+        carry the IDs that rearranging them needs.
+        """
         details = self._details.get(tonie.id)
-        if details is None:
+        if details is None or tonie.kind is TonieKind.CREATIVE:
             return tonie
         return replace(
             tonie,
@@ -395,12 +445,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             )
             # "outdated" means the box's version was not the latest: worth asking again
             if details is None or details.status != "outdated":
-                self._details_missing.add(tonie_id)
+                self._lengths_asked[tonie_id] = dt_util.utcnow()
             return False
         if not any(c.seconds for c in details.chapters):
-            # Names without lengths: kept only where nothing names them yet, asked again next run
+            # Names without lengths: kept only where nothing names them yet, asked again later
             _LOGGER.debug("The box named the chapters of a figure but did not time them")
-            self._details_missing.add(tonie_id)
+            self._lengths_asked[tonie_id] = dt_util.utcnow()
             if named or tonie_id in self._details:
                 return False
         self._details[tonie_id] = details
@@ -499,6 +549,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         job; an upload that has begun completes.
         """
         tonie = self._creative(tonie_id)
+        try:
+            link = URL(url)
+        except ValueError:
+            link = None
+        if link is None or link.scheme not in ("http", "https") or not link.host:
+            raise ChapterError("invalid_url")
         app = await fetcher.async_find(self.hass)
         if app is None:
             raise ChapterError("fetcher_missing")
