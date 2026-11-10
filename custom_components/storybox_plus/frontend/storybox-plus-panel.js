@@ -1,8 +1,9 @@
 // Storybox Plus panel: the page in the sidebar where administrators see their
 // boxes with the live state, the figures of the household with their chapters
 // and the listening statistics. Everything comes from the integration over the
-// WebSocket API; the page looks like Home Assistant's own.
-const VERSION = "0.1.0";
+// WebSocket API; the page is built from Home Assistant's own elements (top app
+// bar, cards, buttons, alerts, switches, forms) and shows the version the
+// integration reports at its bottom.
 // The boxes are asked again this often while their tab is open (ms)
 const REFRESH = 10000;
 // A chart with more days than this groups them by week
@@ -10,12 +11,10 @@ const WEEKS_FROM = 120;
 
 if (!customElements.get("storybox-plus-panel")) {
   const MDI = {
-    menu: "M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z",
     boxes: "M12,12A3,3 0 0,0 9,15A3,3 0 0,0 12,18A3,3 0 0,0 15,15A3,3 0 0,0 12,12M12,20A5,5 0 0,1 7,15A5,5 0 0,1 12,10A5,5 0 0,1 17,15A5,5 0 0,1 12,20M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8C10.89,8 10,7.1 10,6C10,4.89 10.89,4 12,4M17,2H7C5.89,2 5,2.89 5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4C19,2.89 18.1,2 17,2Z",
     figures: "M12,3V13.55C11.41,13.21 10.73,13 10,13A4,4 0 0,0 6,17A4,4 0 0,0 10,21A4,4 0 0,0 14,17V7H18V3H12Z",
     listening: "M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z",
     refresh: "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
-    search: "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z",
     lock: "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",
     chevron: "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,15.41L6,9.41L7.41,8.58Z",
     play: "M8,5.14V19.14L19,12.14L8,5.14Z",
@@ -23,8 +22,6 @@ if (!customElements.get("storybox-plus-panel")) {
     flash: "M7,2V13H10V22L17,10H13L17,2H7Z",
     volume: "M5,9V15H9L14,20V4L9,9M18.5,12C18.5,10.23 17.5,8.71 16,7.97V16C17.5,15.29 18.5,13.76 18.5,12Z",
     sleep: "M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z",
-    info: "M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z",
-    alert: "M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z",
     pencil: "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z",
     check: "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z",
     close: "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",
@@ -54,7 +51,8 @@ if (!customElements.get("storybox-plus-panel")) {
   const TEXTS = {
     en: {
       tabBoxes: "Boxes", tabFigures: "Figures", tabListening: "Listening",
-      menu: "Menu", refresh: "Refresh", retry: "Try again", loading: "Loading …",
+      refresh: "Refresh", retry: "Try again", loading: "Loading …",
+      about: "Storybox Plus {version}", aboutCommit: "Storybox Plus {version} · commit {commit}",
       failed: "The data could not be read",
       noEntry: "No account is set up. Add one under Settings → Devices & services.",
       notLoaded: "No account is loaded at the moment. Home Assistant tries again by itself.",
@@ -67,7 +65,7 @@ if (!customElements.get("storybox-plus-panel")) {
       charge1: "1 charge", chargesN: "{n} charges", nowSince: "now {t} since {p} %", noCycles: "no discharge recorded yet",
       history: "Charge history", colDay: "Day", colOn: "Run time", colLevel: "Level", colPerFull: "Per full charge",
       playing: "Playing", paused: "Paused", placed: "Figure placed", nothing: "Nothing on the box",
-      chapter: "Chapter", unknownFigure: "Unknown figure", search: "Search figures and chapters …",
+      chapter: "Chapter", unknownFigure: "Unknown figure", search: "Search figures and chapters",
       kind_all: "All", kind_content: "Tonies", kind_creative: "Creative-Tonies", kind_disc: "Discs",
       kind1_creative: "Creative-Tonie", kind1_disc: "Disc",
       figure1: "1 figure", figuresAll: "{n} figures", figuresOf: "{n} of {m} figures",
@@ -83,7 +81,7 @@ if (!customElements.get("storybox-plus-panel")) {
       linkProbe: "Reading the video …", linkFetch: "Fetching {name} …", linkFetchPct: "Fetching {name} ({p} %) …",
       linkConvert: "Converting {name} …", linkUpload: "Uploading {name} to the cloud …", linkFailed: "Adding from YouTube failed: {e}",
       fetcherMissing: "Needs the Media Fetcher app: install it in Home Assistant under Settings → Apps.",
-      favChip: "{n} favourites", favToggle: "Favourite chapter", favOn: "Favourites on", favOff: "Favourites off",
+      favChip: "{n} favourites", favToggle: "Favourite chapter", favSwitch: "Steer the Toniebox 2 by the favourites",
       favHint: "The Toniebox 2 skips every other chapter and pauses after the last favourite; the start of a skipped chapter can be heard for a moment.",
       favFailed: "Saving the favourites failed: {e}",
       convErrors: "The last conversion dropped chapters: {r}",
@@ -98,7 +96,8 @@ if (!customElements.get("storybox-plus-panel")) {
     },
     de: {
       tabBoxes: "Boxen", tabFigures: "Figuren", tabListening: "Hörzeit",
-      menu: "Menü", refresh: "Aktualisieren", retry: "Erneut versuchen", loading: "Lädt …",
+      refresh: "Aktualisieren", retry: "Erneut versuchen", loading: "Lädt …",
+      about: "Storybox Plus {version}", aboutCommit: "Storybox Plus {version} · Commit {commit}",
       failed: "Die Daten ließen sich nicht lesen",
       noEntry: "Kein Konto eingerichtet. Unter Einstellungen → Geräte & Dienste hinzufügen.",
       notLoaded: "Gerade ist kein Konto geladen. Home Assistant versucht es selbst erneut.",
@@ -111,7 +110,7 @@ if (!customElements.get("storybox-plus-panel")) {
       charge1: "1 Ladung", chargesN: "{n} Ladungen", nowSince: "jetzt {t} seit {p} %", noCycles: "noch kein Entladezyklus erfasst",
       history: "Ladungsverlauf", colDay: "Tag", colOn: "Laufzeit", colLevel: "Ladestand", colPerFull: "Pro Ladung",
       playing: "Spielt", paused: "Pausiert", placed: "Figur aufgestellt", nothing: "Nichts auf der Box",
-      chapter: "Kapitel", unknownFigure: "Unbekannte Figur", search: "Figuren und Kapitel suchen …",
+      chapter: "Kapitel", unknownFigure: "Unbekannte Figur", search: "Figuren und Kapitel suchen",
       kind_all: "Alle", kind_content: "Tonies", kind_creative: "Kreativ-Tonies", kind_disc: "Discs",
       kind1_creative: "Kreativ-Tonie", kind1_disc: "Disc",
       figure1: "1 Figur", figuresAll: "{n} Figuren", figuresOf: "{n} von {m} Figuren",
@@ -127,7 +126,7 @@ if (!customElements.get("storybox-plus-panel")) {
       linkProbe: "Liest das Video …", linkFetch: "Holt {name} …", linkFetchPct: "Holt {name} ({p} %) …",
       linkConvert: "Wandelt {name} um …", linkUpload: "Lädt {name} in die Cloud hoch …", linkFailed: "Hinzufügen von YouTube fehlgeschlagen: {e}",
       fetcherMissing: "Dafür wird die App „Media Fetcher“ gebraucht: in Home Assistant unter Einstellungen → Apps installieren.",
-      favChip: "{n} Lieblingskapitel", favToggle: "Lieblingskapitel", favOn: "Lieblingskapitel an", favOff: "Lieblingskapitel aus",
+      favChip: "{n} Lieblingskapitel", favToggle: "Lieblingskapitel", favSwitch: "Toniebox 2 nach den Lieblingskapiteln steuern",
       favHint: "Die Toniebox 2 überspringt alle anderen Kapitel und hält nach dem letzten Lieblingskapitel an; der Anfang eines übersprungenen Kapitels kann kurz zu hören sein.",
       favFailed: "Lieblingskapitel speichern fehlgeschlagen: {e}",
       convErrors: "Die letzte Umwandlung hat Kapitel verworfen: {r}",
@@ -144,7 +143,9 @@ if (!customElements.get("storybox-plus-panel")) {
 
   const esc = (v) =>
     String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const icon = (name) => `<svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d="${MDI[name]}"/></svg>`;
+  const icon = (name) => `<ha-svg-icon path="${MDI[name]}"></ha-svg-icon>`;
+  const iconButton = (name, label, attrs = "") =>
+    `<ha-icon-button path="${MDI[name]}" label="${esc(label)}"${attrs ? ` ${attrs}` : ""}></ha-icon-button>`;
   const fill = (text, values) => text.replace(/\{(\w+)\}/g, (_, k) => values[k] ?? "");
   const time = (iso) => (iso ? Date.parse(iso) : NaN);
   // Only web addresses go into an <img>
@@ -208,11 +209,13 @@ if (!customElements.get("storybox-plus-panel")) {
       if (first) {
         this._ensure();
         this._syncTimers();
+        this._render();
       }
-      if (first || this._menuShown !== this._showMenu) this._render();
+      for (const el of this.shadowRoot.querySelectorAll("ha-menu-button, ha-form")) el.hass = hass;
     }
 
     set narrow(narrow) {
+      if (this._narrow === narrow) return;
       this._narrow = narrow;
       this._render();
     }
@@ -254,18 +257,16 @@ if (!customElements.get("storybox-plus-panel")) {
       return this._lang.toLowerCase().startsWith("de") ? TEXTS.de : TEXTS.en;
     }
 
-    get _showMenu() {
-      return !!this._narrow || this._hass?.dockedSidebar === "always_hidden";
-    }
-
-    // Loads what the open tab shows; the figures also need the boxes' names
+    // Loads what the open tab shows; every tab needs the overview once, for the
+    // version at the bottom and, on the figures, the boxes' names
     _ensure() {
       if (!this._hass || document.visibilityState === "hidden") return;
       if (this._tab === "boxes") this._loadOverview();
-      else if (this._tab === "figures") {
-        this._loadLibrary();
+      else {
+        if (this._tab === "figures") this._loadLibrary();
+        else this._loadStats(this._range);
         if (!this._overview) this._loadOverview();
-      } else this._loadStats(this._range);
+      }
     }
 
     // The boxes are polled and their progress ticks only while their tab shows; the
@@ -337,43 +338,67 @@ if (!customElements.get("storybox-plus-panel")) {
           this._go(tab.dataset.tab);
           return;
         }
-        const act = el.closest?.("[data-act]")?.dataset.act;
-        if (act === "menu") this.dispatchEvent(new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true }));
-        if (act === "refresh" || act === "retry") this._ensure();
-        if (act) this._chapterAction(act);
         const range = el.closest?.("[data-range]");
         if (range) {
           this._range = range.dataset.range;
           this._render();
           this._loadStats(this._range);
+          return;
         }
         const kind = el.closest?.("[data-kind]");
         if (kind) {
           this._kind = kind.dataset.kind;
-          for (const c of root.querySelectorAll("[data-kind]")) c.classList.toggle("on", c.dataset.kind === this._kind);
+          for (const c of root.querySelectorAll("[data-kind]")) {
+            c.classList.toggle("on", c.dataset.kind === this._kind);
+            c.setAttribute("aria-pressed", String(c.dataset.kind === this._kind));
+          }
           this._refreshList();
+          return;
         }
         // A fold (a figure's chapters, a box's charge history) opens and closes on its head
         const head = el.closest?.("[data-fold]");
-        if (head) {
+        if (head && !el.closest?.("[data-act]")) {
           const id = head.dataset.fold;
           const open = !this._open.has(id);
           if (open) this._open.add(id); else this._open.delete(id);
           head.parentElement.classList.toggle("open", open);
           head.setAttribute("aria-expanded", String(open));
           this._sheetHtml = this._content();
+          return;
         }
+        const target = el.closest?.("[data-act]");
+        // A switch tells its new state with "change"
+        if (!target || target.tagName === "HA-SWITCH" || target.hasAttribute("disabled")) return;
+        const act = target.dataset.act;
+        if (act === "refresh" || act === "retry") this._ensure();
+        else this._chapterAction(act);
       });
-      root.addEventListener("input", (e) => {
-        if (e.target.id === "link-url" && this._link) this._link.url = e.target.value;
-        if (e.target.id !== "search") return;
-        this._query = e.target.value;
-        this._refreshList();
-      });
-      root.addEventListener("submit", (e) => {
-        if (e.target.id !== "link-form") return;
+      // The fold heads are rows, as in Home Assistant's lists: Enter and Space open them
+      root.addEventListener("keydown", (e) => {
+        // Enter in the link field adds the link, as the button does
+        if (e.key === "Enter" && e.target.closest?.('ha-form[data-form="link"]')) {
+          e.preventDefault();
+          this._fetchLink();
+          return;
+        }
+        const head = e.target.closest?.("[data-fold]");
+        if (!head || e.target !== head || (e.key !== "Enter" && e.key !== " ")) return;
         e.preventDefault();
-        this._fetchLink();
+        head.click();
+      });
+      root.addEventListener("change", (e) => {
+        const sw = e.target.closest?.("ha-switch[data-act]");
+        if (sw) this._chapterAction(sw.dataset.act);
+      });
+      // The search and the link are forms of Home Assistant; they tell their value
+      root.addEventListener("value-changed", (e) => {
+        const form = e.target.closest?.("ha-form[data-form]");
+        if (!form) return;
+        const value = e.detail?.value || {};
+        if (form.dataset.form === "link" && this._link) this._link.url = value.url || "";
+        if (form.dataset.form !== "search") return;
+        this._query = value.query || "";
+        this._refreshList();
       });
       // The hidden file field of the frame serves every creative figure in turn
       root.addEventListener("change", (e) => {
@@ -393,15 +418,15 @@ if (!customElements.get("storybox-plus-panel")) {
       const list = this.shadowRoot.getElementById("figlist");
       if (!list) return this._render();
       list.innerHTML = this._figureList();
+      this._hydrate(list);
       this._sheetHtml = this._content();
     }
 
     _render() {
       if (!this._hass) return;
-      const key = [this._tab, !!this._narrow, this._showMenu, this._lang].join("|");
+      const key = [this._tab, !!this._narrow, this._lang].join("|");
       if (key !== this._frameKey) {
         this._frameKey = key;
-        this._menuShown = this._showMenu;
         this._frame();
       }
       const sheet = this.shadowRoot.getElementById("sheet");
@@ -409,32 +434,65 @@ if (!customElements.get("storybox-plus-panel")) {
       if (sheet && html !== this._sheetHtml) {
         this._sheetHtml = html;
         sheet.innerHTML = html;
+        this._hydrate(sheet);
         this._tick();
       }
     }
 
-    // The parts that stay while the page is open: toolbar and tabs
+    // Home Assistant's forms take their schema, data and labels as properties
+    _hydrate(host) {
+      const t = this._t;
+      const forms = {
+        search: [[{ name: "query", selector: { text: { type: "search" } } }], { query: this._query }, t.search],
+        link: [[{ name: "url", required: true, selector: { text: { type: "url" } } }], { url: this._link?.url || "" }, t.linkPlaceholder],
+      };
+      for (const form of host.querySelectorAll("ha-form[data-form]")) {
+        const [schema, data, label] = forms[form.dataset.form];
+        form.hass = this._hass;
+        form.schema = schema;
+        form.data = data;
+        form.computeLabel = () => label;
+      }
+    }
+
+    // The parts that stay while the page is open: top app bar and tabs (at the
+    // bottom on a phone), as on Home Assistant's own pages
     _frame() {
       const t = this._t;
       const tabs = TABS.map(([id, ic, label]) =>
         `<a class="tab${this._tab === id ? " active" : ""}" data-tab="${id}" href="#${id}">` +
         `${this._narrow ? icon(ic) : ""}<span>${esc(t[label])}</span></a>`).join("");
-      const menu = this._showMenu
-        ? `<button class="icon-button menu-button" data-act="menu" title="${esc(t.menu)}">${icon("menu")}</button>`
-        : "";
-      this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="app${this._narrow ? " narrow" : ""}">` +
-        `<div class="toolbar">${menu}<div class="main-title">Storybox Plus</div>${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}` +
-        `<div class="tools"><button class="icon-button" data-act="refresh" title="${esc(t.refresh)}">${icon("refresh")}</button></div></div>` +
-        `<div class="content"><div class="sheet" id="sheet"></div></div>${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}` +
-        `<input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden></div>`;
+      this.shadowRoot.innerHTML = `
+        <style>${STYLE}</style>
+        <ha-top-app-bar-fixed class="${this._narrow ? "" : "with-tabs"}">
+          <ha-menu-button slot="navigationIcon"></ha-menu-button>
+          <div slot="title">Storybox Plus</div>
+          ${iconButton("refresh", t.refresh, 'slot="actionItems" data-act="refresh"')}
+          <div class="app${this._narrow ? " narrow" : ""}">
+            ${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}
+            <div class="content"><div class="sheet" id="sheet"></div></div>
+            ${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}
+          </div>
+        </ha-top-app-bar-fixed>
+        <input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden>`;
+      const menu = this.shadowRoot.querySelector("ha-menu-button");
+      menu.hass = this._hass;
+      menu.narrow = this._narrow;
       this._sheetHtml = null;
+    }
+
+    // The version of the integration, at the bottom of every tab
+    _about() {
+      const a = this._overview?.about;
+      if (!a?.version) return "";
+      return `<div class="about">${esc(fill(a.commit ? this._t.aboutCommit : this._t.about, a))}</div>`;
     }
 
     _content() {
       switch (this._tab) {
-        case "figures": return this._figures();
-        case "listening": return this._listening();
-        default: return this._boxes();
+        case "figures": return this._figures() + this._about();
+        case "listening": return this._listening() + this._about();
+        default: return this._boxes() + this._about();
       }
     }
 
@@ -470,21 +528,30 @@ if (!customElements.get("storybox-plus-panel")) {
       }
     }
 
-    _card(title, body, extra = "") {
-      return `<div class="card${extra}">${title ? `<h2>${title}</h2>` : ""}<div class="card-content">${body}</div></div>`;
+    // A card of Home Assistant; the title is HTML (a box's name with its chips and status)
+    _card(title, body, extra = "", footer = "") {
+      return `<ha-card class="${extra.trim()}">${title ? `<h1 class="card-header">${title}</h1>` : ""}` +
+        `<div class="card-content${title ? "" : " bare"}">${body}</div>${footer}</ha-card>`;
     }
 
     _chip(text, kind = "") {
       return `<span class="chip ${kind}">${esc(text)}</span>`;
     }
 
-    _alert(text, kind = "") {
-      return `<div class="alert ${kind}">${esc(text)}</div>`;
+    // kind: "info", "warning", "error", "success"
+    _alert(text, kind = "info", title = "", action = "") {
+      return `<ha-alert alert-type="${kind}"${title ? ` title="${esc(title)}"` : ""}>${esc(text)}${action}</ha-alert>`;
     }
 
     _fail(message) {
-      return `<div class="alert err">${esc(this._t.failed)}: ${esc(message)} ` +
-        `<button class="text-button" data-act="retry">${esc(this._t.retry)}</button></div>`;
+      return this._alert(`${this._t.failed}: ${message}`, "error", "",
+        `<ha-button slot="action" appearance="plain" data-act="retry">${esc(this._t.retry)}</ha-button>`);
+    }
+
+    // look: "plain" (the default), "filled" (the main action of a group)
+    _btn(act, label, ic, { look = "plain", disabled = false, attrs = "" } = {}) {
+      return `<ha-button${look === "filled" ? "" : ' appearance="plain"'} data-act="${esc(act)}"${disabled ? " disabled" : ""}${attrs ? ` ${attrs}` : ""}>` +
+        `${ic ? `<ha-svg-icon slot="start" path="${MDI[ic]}"></ha-svg-icon>` : ""}${esc(label)}</ha-button>`;
     }
 
     _loading() {
@@ -507,7 +574,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!o.entries.length) return html + this._alert(t.noEntry);
       if (!o.entries.some((e) => e.loaded)) return html + this._alert(t.notLoaded);
       // Only a Toniebox 2 uses the live channel
-      if (!o.push_connected && o.boxes.some((b) => b.generation === "toniebox_2")) html += this._alert(t.pushDown, "warn");
+      if (!o.push_connected && o.boxes.some((b) => b.generation === "toniebox_2")) html += this._alert(t.pushDown, "warning");
       if (!o.boxes.length) return html + this._card("", `<div class="muted">${esc(t.noBoxes)}</div>`);
       const households = new Set(o.boxes.map((b) => b.household).filter(Boolean));
       return html + `<div class="grid">${o.boxes.map((b) => this._box(b, households.size > 1)).join("")}</div>`;
@@ -531,9 +598,9 @@ if (!customElements.get("storybox-plus-panel")) {
       if ((!live || b.online !== true) && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (b.firmware) notes.push(`${t.firmware} ${b.firmware}`);
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
-      // The battery hangs under the card as a tile of its own
+      // The battery is a section of its own at the bottom of the card
       const tile = live && b.battery_stats ? this._battery(b) : "";
-      return tile ? `<div class="box">${this._card(title, body)}${tile}</div>` : this._card(title, body);
+      return this._card(title, body, "", tile);
     }
 
     // The timer counts as set unless its state says otherwise
@@ -575,8 +642,8 @@ if (!customElements.get("storybox-plus-panel")) {
           return `<tr><td>${esc(this._date(c.day))}</td><td>${esc(hours(c.hours))}</td><td>${esc(level)}</td>` +
             `<td><div class="pf"><div class="bar"><div style="width:${width}%"></div></div><span>${esc(hours(c.per_full))}</span></div></td></tr>`;
         }).join("");
-        html += `<div class="fold${open ? " open" : ""}"><button class="fig-head" data-fold="${esc(key)}" aria-expanded="${open}">` +
-          `<span class="headline">${esc(t.history)}</span>${icon("chevron")}</button><div class="detail"><table class="cycles"><thead><tr>` +
+        html += `<div class="fold${open ? " open" : ""}"><div class="fig-head" role="button" tabindex="0" data-fold="${esc(key)}" aria-expanded="${open}">` +
+          `<span class="headline">${esc(t.history)}</span>${icon("chevron")}</div><div class="detail"><table class="cycles"><thead><tr>` +
           `<th>${esc(t.colDay)}</th><th>${esc(t.colOn)}</th><th>${esc(t.colLevel)}</th><th>${esc(t.colPerFull)}</th></tr></thead>` +
           `<tbody>${rows}</tbody></table></div></div>`;
       }
@@ -625,9 +692,9 @@ if (!customElements.get("storybox-plus-panel")) {
       const err = this._errors.library;
       if (!lib) return err ? this._fail(err) : this._loading();
       const kinds = KINDS.map((k) =>
-        `<button class="chip pick${this._kind === k ? " on" : ""}" data-kind="${k}">${esc(t[`kind_${k}`])}</button>`).join("");
+        `<button class="chip pick${this._kind === k ? " on" : ""}" data-kind="${k}" aria-pressed="${this._kind === k}">${esc(t[`kind_${k}`])}</button>`).join("");
       return (err ? this._fail(err) : "") +
-        `<div class="filters"><label class="search">${icon("search")}<input id="search" type="search" placeholder="${esc(t.search)}" value="${esc(this._query)}" autocomplete="off"></label>` +
+        `<div class="filters"><ha-form class="search" data-form="search"></ha-form>` +
         `<div class="chips">${kinds}</div></div><div id="figlist">${this._figureList()}</div>`;
     }
 
@@ -669,10 +736,10 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       // Only a creative figure takes chapters; a bought one takes favourites
       detail += f.kind === "creative" ? this._creativeDetail(f) : this._boughtDetail(f, chapters);
-      return `<div class="figure${open ? " open" : ""}"><button class="fig-head" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
+      return `<div class="figure${open ? " open" : ""}"><div class="fig-head" role="button" tabindex="0" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
         `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
         `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
-        `<span class="badges">${badges}</span>${icon("chevron")}</button><div class="detail">${detail}</div></div>`;
+        `<span class="badges">${badges}</span>${icon("chevron")}</div><div class="detail">${detail}</div></div>`;
     }
 
     // With `fav` ({ id, set }) every chapter gets a star that marks it as a favourite
@@ -684,11 +751,11 @@ if (!customElements.get("storybox-plus-panel")) {
         const on = !!fav && fav.set.has(i);
         const tools = editing
           ? `<span class="ch-tools">` +
-            `<button class="icon-button" data-act="up:${i}" title="${esc(t.moveUp)}"${i === 0 ? " disabled" : ""}>${icon("up")}</button>` +
-            `<button class="icon-button" data-act="down:${i}" title="${esc(t.moveDown)}"${i === last ? " disabled" : ""}>${icon("down")}</button>` +
-            `<button class="icon-button danger" data-act="remove:${i}" title="${esc(t.remove)}">${icon("remove")}</button></span>`
+            iconButton("up", t.moveUp, `data-act="up:${i}"${i === 0 ? " disabled" : ""}`) +
+            iconButton("down", t.moveDown, `data-act="down:${i}"${i === last ? " disabled" : ""}`) +
+            iconButton("remove", t.remove, `class="danger" data-act="remove:${i}"`) + `</span>`
           : fav
-            ? `<button class="icon-button star${on ? " on" : ""}" data-act="fav:${esc(fav.id)}:${i}" title="${esc(t.favToggle)}" aria-pressed="${on}">${icon(on ? "star" : "starOff")}</button>`
+            ? iconButton(on ? "star" : "starOff", t.favToggle, `class="star${on ? " on" : ""}" data-act="fav:${esc(fav.id)}:${i}" aria-pressed="${on}"`)
             : "";
         return `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
           `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span>${tools}</li>`;
@@ -702,13 +769,12 @@ if (!customElements.get("storybox-plus-panel")) {
       const fav = f.favourites;
       let html = "";
       if (fav) {
-        html += `<div class="ch-bar">` +
-          `<button class="btn${fav.active ? " primary" : ""}" data-act="favon:${esc(f.id)}" aria-pressed="${fav.active}">${icon("star")}${esc(fav.active ? t.favOn : t.favOff)}</button>` +
-          `<span class="muted small hint">${esc(t.favHint)}</span></div>`;
+        html += `<div class="switch-row"><ha-switch data-act="favon:${esc(f.id)}"${fav.active ? " checked" : ""} aria-label="${esc(t.favSwitch)}"></ha-switch>` +
+          `<div class="text"><span>${esc(t.favSwitch)}</span><span class="supporting wrap">${esc(t.favHint)}</span></div></div>`;
       }
       if (this._favError?.id === f.id) {
-        html += `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.favFailed, { e: this._favError.message }))}</span>` +
-          `<button class="text-button" data-act="favdismiss:${esc(f.id)}">${esc(t.dismiss)}</button></div>`;
+        html += this._alert(fill(t.favFailed, { e: this._favError.message }), "error", "",
+          `<ha-button slot="action" appearance="plain" data-act="favdismiss:${esc(f.id)}">${esc(t.dismiss)}</ha-button>`);
       }
       return html + this._chapterList(chapters, false, { id: f.id, set: new Set(fav?.chapters || []) });
     }
@@ -722,37 +788,35 @@ if (!customElements.get("storybox-plus-panel")) {
       let html = "";
       if (f.transcoding_errors?.length) {
         const reasons = [...new Set(f.transcoding_errors)].map((r) => t[`reason_${r}`] || r).join(", ");
-        html += `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.convErrors, { r: reasons }))}</span></div>`;
+        html += this._alert(fill(t.convErrors, { r: reasons }), "error");
       }
       if (edit) {
         const busy = edit.saving;
         html += `<div class="ch-bar">` +
-          `<button class="btn primary" data-act="save" ${busy ? "disabled" : ""}>${icon("check")}${esc(t.save)}</button>` +
-          `<button class="btn" data-act="cancel" ${busy ? "disabled" : ""}>${icon("close")}${esc(t.cancel)}</button>` +
+          this._btn("save", t.save, "check", { look: "filled", disabled: busy }) +
+          this._btn("cancel", t.cancel, "close", { disabled: busy }) +
           `<span class="muted small hint">${esc(t.editHint)}</span></div>`;
-        if (edit.error) html += `<div class="alert err inline">${icon("alert")}<span>${esc(fill(t.saveFailed, { e: edit.error }))}</span></div>`;
+        if (edit.error) html += this._alert(fill(t.saveFailed, { e: edit.error }), "error");
         return html + this._chapterList(edit.chapters, true);
       }
       const busy = !!up && !up.error;
       const link = !busy && this._link?.id === f.id ? this._link : null;
       // Links need the Media Fetcher app; without it the button stays grey and says so on hover
       const app = this._library?.fetcher !== false;
-      const linkBtn = `<button class="btn" data-act="link:${esc(f.id)}" ${busy || link || !app ? "disabled" : ""}>${icon("link")}${esc(t.fromLink)}</button>`;
+      const linkBtn = this._btn(`link:${f.id}`, t.fromLink, "link", { disabled: busy || !!link || !app });
       html += `<div class="ch-bar">` +
-        `<button class="btn" data-act="upload:${esc(f.id)}" ${busy ? "disabled" : ""}>${icon("upload")}${esc(t.upload)}</button>` +
+        this._btn(`upload:${f.id}`, t.upload, "upload", { disabled: busy }) +
         (app ? linkBtn : `<span class="tip" title="${esc(t.fetcherMissing)}">${linkBtn}</span>`) +
-        `<button class="btn" data-act="edit:${esc(f.id)}" ${busy || !f.chapters.length ? "disabled" : ""}>${icon("pencil")}${esc(t.edit)}</button></div>`;
+        this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy || !f.chapters.length }) + `</div>`;
       if (link) {
-        html += `<form class="link-form" id="link-form">` +
-          `<label class="search">${icon("link")}<input id="link-url" type="url" placeholder="${esc(t.linkPlaceholder)}" value="${esc(link.url)}" autocomplete="off" spellcheck="false" required></label>` +
-          `<button class="btn primary" type="submit">${icon("check")}${esc(t.add)}</button>` +
-          `<button class="btn" type="button" data-act="linkcancel">${icon("close")}${esc(t.cancel)}</button>` +
-          `<span class="muted small hint">${esc(t.linkHint)}</span></form>`;
+        html += `<div class="link-form"><ha-form data-form="link"></ha-form>` +
+          `<div class="ch-bar">${this._btn("linkadd", t.add, "check", { look: "filled" })}${this._btn("linkcancel", t.cancel, "close")}` +
+          `<span class="muted small hint">${esc(t.linkHint)}</span></div></div>`;
       }
       if (up) {
         html += up.error
-          ? `<div class="alert err inline">${icon("alert")}<span>${esc(fill(up.link ? t.linkFailed : t.uploadFailed, { e: up.error }))}</span>` +
-            `<button class="text-button" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</button></div>`
+          ? this._alert(fill(up.link ? t.linkFailed : t.uploadFailed, { e: up.error }), "error", "",
+            `<ha-button slot="action" appearance="plain" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</ha-button>`)
           : `<div class="muted small busy">${esc(this._progressText(up))}</div>`;
       }
       return html + this._chapterList(f.chapters);
@@ -810,7 +874,10 @@ if (!customElements.get("storybox-plus-panel")) {
           delete this._uploads[arg];
           this._link = { id: arg, url: "" };
           this._refreshList();
-          this.shadowRoot.getElementById("link-url")?.focus();
+          this.shadowRoot.querySelector('ha-form[data-form="link"]')?.focus();
+          return;
+        case "linkadd":
+          this._fetchLink();
           return;
         case "linkcancel":
           this._link = null;
@@ -975,9 +1042,9 @@ if (!customElements.get("storybox-plus-panel")) {
       const s = this._stats[range];
       const err = this._errors[`stats:${range}`];
       const chips = RANGES.map(([k]) =>
-        `<button class="chip pick${range === k ? " on" : ""}" data-range="${k}">${esc(t[`range_${k}`])}</button>`).join("");
+        `<button class="chip pick${range === k ? " on" : ""}" data-range="${k}" aria-pressed="${range === k}">${esc(t[`range_${k}`])}</button>`).join("");
       // Where the numbers come from, and so what they cannot contain: above everything else
-      const note = `<div class="alert notice">${icon("info")}<div><div class="notice-title">${esc(t.noteLocalTitle)}</div>${esc(t.noteLocal)}</div></div>`;
+      const note = this._alert(t.noteLocal, "info", t.noteLocalTitle);
       let html = note + `<div class="filters"><div class="chips">${chips}</div></div>`;
       if (!s) return html + (err ? this._fail(err) : this._loading());
       if (err) html += this._fail(err);
@@ -1056,185 +1123,169 @@ if (!customElements.get("storybox-plus-panel")) {
     }
   }
 
-  // Home Assistant's look: toolbar and tabs of the settings pages, cards, list
-  // items; the colours of the active theme
+  // The page is built from Home Assistant's elements; this sheet lays them out and
+  // draws what Home Assistant has no element for (tabs, chips, lists, charts),
+  // in the colours and sizes of the active theme
   const STYLE = `
-  /* The page takes the window */
+  /* The panel's own container has no height of its own: the page takes the window */
   :host { display: block; height: 100vh; height: 100dvh; background: var(--primary-background-color); color: var(--primary-text-color);
-    font-family: var(--ha-font-family-body, Roboto, Noto, sans-serif); font-size: 14px; line-height: 1.5;
+    font-family: var(--ha-font-family-body, Roboto, Noto, sans-serif); font-size: var(--ha-font-size-m, 14px); line-height: 1.5;
     -webkit-font-smoothing: antialiased; }
   * { box-sizing: border-box; }
-  .app { display: flex; flex-direction: column; height: 100%; }
-  .toolbar { display: flex; align-items: center; flex: none; height: var(--header-height, 56px); padding: 0 12px;
-    background: var(--sidebar-background-color); color: var(--sidebar-text-color, var(--primary-text-color));
-    border-bottom: 1px solid var(--divider-color); }
-  .menu-button { color: var(--sidebar-icon-color, var(--secondary-text-color)); margin-right: 12px; }
-  .main-title { font-size: 20px; font-weight: 400; line-height: 32px; margin-left: 12px; white-space: nowrap; }
-  .menu-button + .main-title { margin-left: 0; }
-  .tabs { display: flex; height: 100%; margin-left: 24px; overflow-x: auto; scrollbar-width: none; }
+  /* Like the settings and other panels: the header in the sidebar's colour, with a line */
+  ha-top-app-bar-fixed { height: 100%;
+    --app-header-background-color: var(--sidebar-background-color, var(--card-background-color));
+    --app-header-text-color: var(--sidebar-text-color, var(--primary-text-color));
+    --app-header-border-bottom: 1px solid var(--divider-color); }
+  /* The tabs continue the header; the line moves below them */
+  ha-top-app-bar-fixed.with-tabs { --app-header-border-bottom: none; }
+  .app { display: flex; flex-direction: column;
+    height: calc(100vh - var(--header-height, 56px) - var(--safe-area-inset-top, 0px));
+    height: calc(100dvh - var(--header-height, 56px) - var(--safe-area-inset-top, 0px)); }
+  .tabs { display: flex; flex: none; height: 48px; padding: 0 12px; overflow-x: auto; scrollbar-width: none;
+    background: var(--sidebar-background-color, var(--card-background-color)); border-bottom: 1px solid var(--divider-color); }
   .tab { display: flex; align-items: center; justify-content: center; height: 100%; padding: 0 20px; position: relative;
-    color: var(--sidebar-text-color, var(--primary-text-color)); text-decoration: none; font-weight: 500; white-space: nowrap; opacity: 0.8; }
+    color: var(--sidebar-text-color, var(--primary-text-color)); text-decoration: none; font-weight: var(--ha-font-weight-medium, 500);
+    white-space: nowrap; opacity: 0.8; }
+  .tab:hover { background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); }
   .tab.active { color: var(--primary-color); opacity: 1; }
   .tabs .tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--primary-color); }
-  .tools { display: flex; align-items: center; gap: 4px; margin-left: auto; padding-left: 8px; }
-  .bottom-tabs { display: flex; flex: none; justify-content: space-around; background: var(--sidebar-background-color);
+  .bottom-tabs { display: flex; flex: none; justify-content: space-around; background: var(--sidebar-background-color, var(--card-background-color));
     border-top: 1px solid var(--divider-color); padding-bottom: env(safe-area-inset-bottom); }
-  .bottom-tabs .tab { flex: 1 1 0; flex-direction: column; gap: 2px; height: 56px; padding: 6px 2px 4px; font-size: 11px; min-width: 0; }
+  .bottom-tabs .tab { flex: 1 1 0; flex-direction: column; gap: 2px; height: 56px; padding: 6px 2px 4px;
+    font-size: var(--ha-font-size-xs, 11px); min-width: 0; }
   .bottom-tabs .tab span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .bottom-tabs .tab .mdi { padding: 2px 12px; border-radius: 14px; box-sizing: content-box; }
-  .bottom-tabs .tab.active .mdi { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
+  .bottom-tabs .tab ha-svg-icon { padding: 2px 12px; border-radius: 14px; box-sizing: content-box; }
+  .bottom-tabs .tab.active ha-svg-icon { background: color-mix(in srgb, var(--primary-color) 15%, transparent); }
   .content { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   .sheet { max-width: 1040px; margin: 0 auto; padding: 16px; }
   .narrow .sheet { padding: 8px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 16px; }
+  .about { text-align: center; color: var(--secondary-text-color); font-size: var(--ha-font-size-s, 12px); padding: 8px 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 16px; align-items: start; }
   .narrow .grid { grid-template-columns: 1fr; }
-  .card { background: var(--card-background-color); color: var(--primary-text-color);
-    border-radius: var(--ha-card-border-radius, 12px); border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color));
-    box-shadow: var(--ha-card-box-shadow, none); margin-bottom: 16px; overflow: hidden; }
-  .narrow .card { margin-bottom: 8px; }
-  .card h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 16px 16px 8px; font-size: 20px; font-weight: 400; line-height: 28px; }
+  ha-card { display: block; margin-bottom: 16px; overflow: hidden; }
+  .narrow ha-card { margin-bottom: 8px; }
+  ha-card .card-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
   .card-content { padding: 0 16px 16px; }
-  .card:not(:has(h2)) .card-content { padding-top: 16px; }
-  .card.list .card-content { padding: 0; }
-  /* A box with a battery: the card and, attached under it, the battery tile */
-  .box { margin-bottom: 16px; border-radius: var(--ha-card-border-radius, 12px); box-shadow: var(--ha-card-box-shadow, none); }
-  .narrow .box { margin-bottom: 8px; }
-  .box .card { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-width: 0; box-shadow: none; }
-  .tile { padding: 12px 16px 14px; background: color-mix(in srgb, var(--primary-text-color) 4%, var(--card-background-color));
-    border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color)); border-top: 1px solid var(--divider-color);
-    border-radius: 0 0 var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px); }
+  .card-content.bare { padding-top: 16px; }
+  ha-card.list .card-content { padding: 0; }
+  ha-alert { display: block; margin-bottom: 16px; }
+  ha-card ha-alert { margin: 0 0 8px; }
+  ha-alert ha-button { margin-inline-start: 8px; }
+  /* The battery: a section of its own at the bottom of a box's card */
+  .tile { padding: 12px 16px 14px; border-top: 1px solid var(--divider-color);
+    background: color-mix(in srgb, var(--primary-text-color) 4%, var(--card-background-color)); }
   .tile-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
-  .tile-title { font-weight: 500; }
+  .tile-title { font-weight: var(--ha-font-weight-medium, 500); }
   .tile .small { margin-top: 0; }
-  .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0;
-    border-radius: 50%; background: none; color: inherit; cursor: pointer; }
-  .tab:hover, .icon-button:hover, .fig-head:hover { background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
-  .text-button { border: 0; background: none; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; padding: 0 4px; }
-  .mdi { width: 24px; height: 24px; fill: currentColor; display: block; flex: none; }
+  ha-svg-icon { flex: none; }
   .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .chip { display: inline-flex; align-items: center; padding: 0 8px; border-radius: 10px; font-size: 12px; line-height: 20px; font-weight: 500;
+  .chip { display: inline-flex; align-items: center; padding: 0 8px; border-radius: 10px; font-size: var(--ha-font-size-xs, 12px);
+    line-height: 20px; font-weight: var(--ha-font-weight-medium, 500);
     background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); color: var(--secondary-text-color); white-space: nowrap; }
-  .chip.ok { background: color-mix(in srgb, var(--success-color, #43a047) 16%, transparent); color: var(--success-color, #43a047); }
-  .chip.err { background: color-mix(in srgb, var(--error-color, #db4437) 16%, transparent); color: var(--error-color, #db4437); }
-  .chip.warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 18%, transparent); color: var(--warning-color, #ffa600); }
+  .chip.ok { background: color-mix(in srgb, var(--success-color) 16%, transparent); color: var(--success-color); }
+  .chip.err { background: color-mix(in srgb, var(--error-color) 16%, transparent); color: var(--error-color); }
+  .chip.warn { background: color-mix(in srgb, var(--warning-color) 18%, transparent); color: var(--warning-color); }
   .chip.on { background: color-mix(in srgb, var(--primary-color) 16%, transparent); color: var(--primary-color); }
-  .chip.pick { border: 0; font: inherit; font-size: 13px; line-height: 32px; padding: 0 14px; border-radius: 16px; cursor: pointer; }
+  .chip.pick { border: 0; font: inherit; font-size: var(--ha-font-size-s, 13px); line-height: 32px; padding: 0 14px; border-radius: 16px; cursor: pointer; }
   .chip.pick:hover:not(.on) { background: color-mix(in srgb, var(--primary-text-color) 14%, transparent); }
-  .status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 14px; color: var(--secondary-text-color); }
+  .status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: var(--ha-font-size-m, 14px);
+    color: var(--secondary-text-color); font-weight: var(--ha-font-weight-normal, 400); }
   .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--secondary-text-color); opacity: 0.6; }
-  .dot.ok { background: var(--success-color, #43a047); opacity: 1; }
-  .dot.err { background: var(--error-color, #db4437); opacity: 1; }
+  .dot.ok { background: var(--success-color); opacity: 1; }
+  .dot.err { background: var(--error-color); opacity: 1; }
   .facts { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 12px; }
   .fact { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-  .fact .mdi { width: 20px; height: 20px; color: var(--secondary-text-color); }
-  .charge { display: inline-flex; align-items: center; color: var(--success-color, #43a047); font-size: 12px; }
-  .charge .mdi, .state .mdi { width: 16px; height: 16px; color: inherit; }
+  .fact ha-svg-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+  .charge { display: inline-flex; align-items: center; color: var(--success-color); font-size: var(--ha-font-size-xs, 12px); }
+  .charge ha-svg-icon, .state ha-svg-icon { --mdc-icon-size: 16px; color: inherit; }
   .batt { position: relative; width: 11px; height: 18px; border: 1.5px solid var(--secondary-text-color); border-radius: 2px; }
   .batt::before { content: ""; position: absolute; top: -4px; left: 2px; right: 2px; height: 2px; background: var(--secondary-text-color); border-radius: 1px; }
-  .batt i { position: absolute; left: 1px; right: 1px; bottom: 1px; background: var(--success-color, #43a047); border-radius: 1px; }
-  .batt.low i { background: var(--error-color, #db4437); }
+  .batt i { position: absolute; left: 1px; right: 1px; bottom: 1px; background: var(--success-color); border-radius: 1px; }
+  .batt.low i { background: var(--error-color); }
   .play { display: flex; align-items: center; gap: 12px; }
   .pic { position: relative; flex: none; width: 56px; height: 56px; border-radius: 8px; overflow: hidden;
     background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); color: var(--secondary-text-color); }
-  .pic .mdi { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; transform: translate(-50%, -50%); opacity: 0.6; }
+  .pic ha-svg-icon { position: absolute; left: 50%; top: 50%; --mdc-icon-size: 28px; transform: translate(-50%, -50%); opacity: 0.6; }
   .pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--card-background-color); }
   .pic img.broken { display: none; }
   .pic.small { width: 40px; height: 40px; border-radius: 6px; }
-  .pic.small .mdi { width: 20px; height: 20px; }
+  .pic.small ha-svg-icon { --mdc-icon-size: 20px; }
   .text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
   .headline { line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .narrow .play .headline, .narrow .fig-head .headline { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .supporting { font-size: 12px; line-height: 16px; color: var(--secondary-text-color); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .supporting { font-size: var(--ha-font-size-xs, 12px); line-height: 16px; color: var(--secondary-text-color); margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .supporting.wrap { white-space: normal; }
   .state { display: inline-flex; align-items: center; gap: 4px; }
-  .state.ok { color: var(--success-color, #43a047); }
-  .state.warn { color: var(--warning-color, #ffa600); }
+  .state.ok { color: var(--success-color); }
+  .state.warn { color: var(--warning-color); }
   .progress { margin-top: 10px; }
   .bar { position: relative; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--primary-text-color) 10%, transparent); overflow: hidden; }
   .bar div { height: 100%; border-radius: 3px; background: var(--primary-color); transition: width 0.5s linear; }
-  .times { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; }
+  .times { display: flex; justify-content: space-between; margin-top: 4px; font-size: var(--ha-font-size-xs, 12px); }
   .times, .no, .rank, .len { color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
   .muted { color: var(--secondary-text-color); }
-  .small { font-size: 12px; line-height: 16px; margin-top: 8px; }
-  .alert { display: block; padding: 12px 16px; margin-bottom: 16px; border-radius: 8px; line-height: 20px;
-    background: color-mix(in srgb, var(--info-color, #039be5) 12%, transparent); }
-  .alert.warn { background: color-mix(in srgb, var(--warning-color, #ffa600) 16%, transparent); }
-  .alert.err { background: color-mix(in srgb, var(--error-color, #db4437) 14%, transparent); }
-  .alert.notice { display: flex; gap: 12px; align-items: flex-start; }
-  .alert.notice .mdi { flex: none; width: 24px; height: 24px; fill: var(--info-color, #039be5); }
-  .notice-title { font-weight: 500; }
+  .small { font-size: var(--ha-font-size-xs, 12px); line-height: 16px; margin-top: 8px; }
   .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
-  .search { display: flex; align-items: center; gap: 8px; flex: 1 1 240px; height: 40px; padding: 0 12px; border-radius: 20px;
-    background: var(--card-background-color); border: 1px solid var(--divider-color); color: var(--secondary-text-color); }
-  .search:focus-within { border-color: var(--primary-color); }
-  .search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; color: var(--primary-text-color); }
+  .filters ha-form.search { flex: 1 1 260px; min-width: 0; }
   .count { margin: 0 0 8px 4px; }
   .figure + .figure { border-top: 1px solid var(--divider-color); }
-  .fig-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: 0; background: none; color: inherit;
-    font: inherit; text-align: left; cursor: pointer; }
+  /* A row that opens and closes, like the rows of Home Assistant's lists */
+  .fig-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; cursor: pointer; outline: none; }
+  .fig-head:hover, .fig-head:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); }
   .badges { display: inline-flex; align-items: center; gap: 6px; flex: none; }
   .narrow .badges { flex-wrap: wrap; justify-content: flex-end; max-width: 40%; }
   .lock { display: inline-flex; color: var(--secondary-text-color); }
-  .lock .mdi { width: 18px; height: 18px; }
-  .fig-head > .mdi:last-child { color: var(--secondary-text-color); transition: transform 0.2s; }
-  .open > .fig-head > .mdi:last-child { transform: rotate(180deg); }
+  .lock ha-svg-icon { --mdc-icon-size: 18px; }
+  .fig-head > ha-svg-icon:last-child { color: var(--secondary-text-color); transition: transform 0.2s; }
+  .open > .fig-head > ha-svg-icon:last-child { transform: rotate(180deg); }
   .detail { display: none; padding: 0 16px 12px 84px; }
   .narrow .detail { padding-left: 16px; }
   .open > .detail { display: block; }
   .detail .small { margin: 0 0 6px; }
-  /* The charge history in the battery tile: a fold with a small table and a bar per cycle */
+  /* The charge history in the battery section: a fold with a small table and a bar per cycle */
   .fold .fig-head { justify-content: space-between; gap: 8px; width: calc(100% + 8px); margin: 4px -4px 0; padding: 4px; border-radius: 8px; }
   .fold .detail { padding: 2px 0 4px; }
+  table { border-collapse: collapse; width: 100%; }
   table.cycles th, table.cycles td { padding: 4px 10px 4px 0; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  table.cycles th { font-weight: 400; font-size: 12px; color: var(--secondary-text-color); }
+  table.cycles th { font-weight: var(--ha-font-weight-normal, 400); font-size: var(--ha-font-size-xs, 12px); color: var(--secondary-text-color); }
   table.cycles th:last-child, table.cycles td:last-child { width: 100%; padding-right: 0; }
   table.cycles tbody tr + tr td { border-top: 1px solid var(--divider-color); }
   .pf { display: flex; align-items: center; gap: 8px; }
   .pf .bar { flex: 1 1 32px; height: 5px; }
   .pf span { min-width: 44px; text-align: right; color: var(--secondary-text-color); }
   .chapters { list-style: none; margin: 0; padding: 0; }
-  .chapters li { display: flex; align-items: center; gap: 10px; padding: 5px 0; line-height: 20px; }
+  .chapters li { display: flex; align-items: center; gap: 10px; padding: 2px 0; min-height: 36px; line-height: 20px; }
   .chapters li + li { border-top: 1px solid var(--divider-color); }
   .chapters .no { flex: none; min-width: 24px; text-align: right; }
   .ch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .len { flex: none; }
-  /* The tools of a creative figure: upload and edit, or save and cancel while editing */
+  /* The tools of a figure: upload and edit, or save and cancel while editing */
   .ch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
-  .ch-bar .hint, .link-form .hint { flex: 1 1 240px; margin: 0; }
-  .link-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
-  .link-form .search { height: 36px; border-radius: 18px; }
-  .star { flex: none; color: var(--secondary-text-color); }
-  .star.on { color: #F9A825; }
-  .chip.fav { background: color-mix(in srgb, #F9A825 22%, transparent); color: #9A6A00; }
+  .ch-bar .hint { flex: 1 1 240px; margin: 0; }
+  .link-form { margin: 2px 0 8px; }
+  .link-form ha-form { display: block; margin-bottom: 8px; }
+  .switch-row { display: flex; align-items: center; gap: 12px; margin: 2px 0 8px; }
+  .switch-row ha-switch { flex: none; }
+  ha-icon-button { --mdc-icon-button-size: 36px; --mdc-icon-size: 20px; color: var(--secondary-text-color); flex: none; }
+  ha-icon-button.star.on { color: var(--state-active-color, var(--amber-color, #ffc107)); }
+  ha-icon-button.danger:hover { color: var(--error-color); }
+  ha-icon-button[slot="actionItems"] { --mdc-icon-button-size: 48px; --mdc-icon-size: 24px; color: inherit; }
+  .chip.fav { background: color-mix(in srgb, var(--amber-color, #ffc107) 22%, transparent); color: var(--primary-text-color); }
   .tip { display: inline-flex; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 16px 0 12px; border-radius: 18px;
-    border: 1px solid var(--divider-color); background: none; color: var(--primary-color); font: inherit; font-weight: 500; cursor: pointer; }
-  .btn .mdi { width: 20px; height: 20px; }
-  .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
-  .btn.primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: transparent; }
-  .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary-color) 88%, #000); }
-  .btn:disabled, .icon-button:disabled { opacity: 0.4; cursor: default; }
-  .icon-button:disabled:hover { background: none; }
-  .chapters.editing li { padding: 2px 0; }
   .ch-tools { display: inline-flex; flex: none; gap: 0; margin-right: -8px; }
-  .ch-tools .icon-button { width: 36px; height: 36px; color: var(--secondary-text-color); }
-  .ch-tools .icon-button .mdi { width: 20px; height: 20px; }
-  .ch-tools .danger:hover:not(:disabled) { color: var(--error-color, #db4437); }
-  .alert.inline { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin: 0 0 8px; font-size: 13px; }
-  .alert.inline .mdi { flex: none; width: 20px; height: 20px; }
-  .alert.err.inline .mdi { fill: var(--error-color, #db4437); }
-  .alert.inline span { flex: 1; }
   .busy { margin: 0 0 8px; }
   .total { display: flex; align-items: baseline; gap: 6px; }
   .total .big { font-size: 44px; line-height: 52px; font-weight: 300; font-variant-numeric: tabular-nums; }
-  .total .unit { font-size: 18px; color: var(--secondary-text-color); }
+  .total .unit { font-size: var(--ha-font-size-l, 18px); color: var(--secondary-text-color); }
   .top { list-style: none; margin: 0; padding: 0; }
   .top li { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
   .top li + li { border-top: 1px solid var(--divider-color); }
   .rank { flex: none; width: 20px; text-align: right; }
   .top .bar { margin-top: 6px; height: 5px; }
   .top .len { min-width: 44px; text-align: right; }
-  table { border-collapse: collapse; width: 100%; }
-  table.kv th { text-align: left; font-weight: 400; padding: 8px 16px 8px 0; }
+  table.kv th { text-align: left; font-weight: var(--ha-font-weight-normal, 400); padding: 8px 16px 8px 0; }
   table.kv td { padding: 8px 0; text-align: right; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.kv tr + tr th, table.kv tr + tr td { border-top: 1px solid var(--divider-color); }
   .chart { width: 100%; height: auto; display: block; }
@@ -1246,5 +1297,4 @@ if (!customElements.get("storybox-plus-panel")) {
   `;
 
   customElements.define("storybox-plus-panel", StoryboxPlusPanel);
-  console.info(`%c STORYBOX-PLUS-PANEL %c ${VERSION} `, "color:#fff;background:#e53935;font-weight:700", "");
 }

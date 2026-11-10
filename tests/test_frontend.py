@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+import re
+from typing import Any
 from unittest.mock import patch
 
 from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.typing import WebSocketGenerator
 
 from homeassistant.components import panel_custom
 from homeassistant.components.frontend import DATA_PANELS, async_panel_exists
@@ -12,10 +17,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 from homeassistant.setup import async_setup_component
 
+from custom_components.storybox_plus import frontend, websocket
 from custom_components.storybox_plus.const import (
     DOMAIN,
     FRONTEND_URL_BASE,
     PANEL_ELEMENT,
+    PANEL_FILENAME,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL_PATH,
@@ -28,8 +35,9 @@ from .conftest import FakeCloud, PushChannels, entry_for
 async def test_panel_is_registered_for_admins(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
 ) -> None:
-    """The panel loads our module, versioned, and is for administrators only."""
-    integration = await async_get_integration(hass, DOMAIN)
+    """The panel loads our module, with a hash of its content, and is for administrators only."""
+    script = Path(frontend.__file__).parent / "frontend" / PANEL_FILENAME
+    digest = hashlib.sha256(script.read_bytes()).hexdigest()[:12]
     assert async_panel_exists(hass, PANEL_URL_PATH)
     panel = hass.data[DATA_PANELS][PANEL_URL_PATH]
     assert panel.component_name == "custom"
@@ -37,7 +45,7 @@ async def test_panel_is_registered_for_admins(
     assert panel.sidebar_icon == PANEL_ICON
     assert panel.require_admin is True
     assert panel.config["_panel_custom"]["name"] == PANEL_ELEMENT
-    assert panel.config["_panel_custom"]["module_url"] == f"{PANEL_PATH}?v={integration.version}"
+    assert panel.config["_panel_custom"]["module_url"] == f"{PANEL_PATH}?v={digest}"
     assert panel.config["_panel_custom"]["embed_iframe"] is False
     assert hass.data[DATA_STATIC] is True
 
@@ -92,3 +100,33 @@ async def test_unregister_without_panel(hass: HomeAssistant) -> None:
     """Removing a panel that is not there is harmless."""
     async_unregister_panel(hass)
     assert not async_panel_exists(hass, PANEL_URL_PATH)
+
+
+async def test_page_gets_the_version_of_the_manifest(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    """The overview carries the manifest's version, and a commit only for a test deployment."""
+    integration = await async_get_integration(hass, DOMAIN)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": f"{DOMAIN}/overview"})
+    about = (await client.receive_json())["result"]["about"]
+    assert about == {"version": str(integration.version), "commit": None}
+    # A test deployment wrote the commit next to the files
+    (tmp_path / "BUILD").write_text("abc1234\n", encoding="utf-8")
+    monkeypatch.setattr(websocket, "__file__", str(tmp_path / "websocket.py"))
+    hass.data.pop(websocket.DATA_ABOUT)
+    await client.send_json_auto_id({"type": f"{DOMAIN}/overview"})
+    about = (await client.receive_json())["result"]["about"]
+    assert about == {"version": str(integration.version), "commit": "abc1234"}
+
+
+def test_page_keeps_no_version_of_its_own() -> None:
+    """The page shows the version it is told; the script names none, so nothing drifts."""
+    script = (Path(frontend.__file__).parent / "frontend" / PANEL_FILENAME).read_text()
+    assert not re.search(r"\b\d+\.\d+\.\d+\b", script)

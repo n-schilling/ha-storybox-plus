@@ -47,3 +47,5 @@ PANEL_ELEMENT = "storybox-plus-panel"
 PANEL_URL_PATH = "storybox-plus"
 PANEL_TITLE = "Storybox Plus"
 PANEL_ICON = "mdi:teddy-bear"
+# Written by scripts/deploy.sh: the commit a test deployment comes from
+BUILD_FILE = "BUILD"

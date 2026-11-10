@@ -25,11 +25,12 @@ from homeassistant.components.websocket_api.decorators import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.loader import async_get_integration
 from homeassistant.util.hass_dict import HassKey
 
 from . import fetcher
 from .cloud import VOLUME_LEVELS, CloudError, Tonie, TonieKind
-from .const import DOMAIN
+from .const import BUILD_FILE, DOMAIN
 from .coordinator import (
     BoxState,
     ChapterError,
@@ -43,6 +44,7 @@ from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 _LOGGER = logging.getLogger(__name__)
 
 DATA_WEBSOCKET: HassKey[bool] = HassKey(f"{DOMAIN}_websocket")
+DATA_ABOUT: HassKey[dict[str, str | None]] = HassKey(f"{DOMAIN}_about")
 
 # The content type of an upload by its file ending; the platform's own table
 # differs between systems (.m4a alone has three spellings)
@@ -201,13 +203,33 @@ def _box_dict(
     }
 
 
+async def _about(hass: HomeAssistant) -> dict[str, str | None]:
+    """The version the page shows at its bottom, and the commit of a test deployment.
+
+    The version is the manifest's; only scripts/deploy.sh writes a commit,
+    so a release shows none.
+    """
+    if (about := hass.data.get(DATA_ABOUT)) is None:
+        integration = await async_get_integration(hass, DOMAIN)
+        commit = await hass.async_add_executor_job(_read_commit)
+        about = hass.data[DATA_ABOUT] = {"version": str(integration.version), "commit": commit}
+    return about
+
+
+def _read_commit() -> str | None:
+    try:
+        return (Path(__file__).parent / BUILD_FILE).read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
 @require_admin
 @websocket_command({probatio.Required("type"): f"{DOMAIN}/overview"})
-@callback
-def websocket_overview(
+@async_response
+async def websocket_overview(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return the accounts and their boxes with the live state."""
+    """Return the accounts and their boxes with the live state, and the version for the page."""
     all_entries: list[StoryboxConfigEntry] = hass.config_entries.async_entries(DOMAIN)
     boxes: list[dict[str, Any]] = []
     push_connected = False
@@ -228,6 +250,7 @@ def websocket_overview(
             ],
             "push_connected": push_connected,
             "boxes": boxes,
+            "about": await _about(hass),
         },
     )
 

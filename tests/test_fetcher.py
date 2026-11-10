@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -57,9 +60,7 @@ async def test_find_nothing_usable(hass: HomeAssistant, addons: Any) -> None:
         if isinstance(addons, Exception)
         else AsyncMock(return_value=addons)
     )
-    with patch(
-        "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
-    ):
+    with patch("homeassistant.components.hassio.get_supervisor_client", return_value=supervisor):
         assert await fetcher.async_find(hass) is None
 
 
@@ -70,9 +71,7 @@ async def test_find_by_any_repository_prefix(hass: HomeAssistant) -> None:
     supervisor.addons.list = AsyncMock(
         return_value=[SimpleNamespace(slug="a1b2c3d4_media_fetcher", state=AddonState.STARTED)]
     )
-    with patch(
-        "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
-    ):
+    with patch("homeassistant.components.hassio.get_supervisor_client", return_value=supervisor):
         assert await fetcher.async_find(hass) == fetcher.Fetcher("a1b2c3d4-media-fetcher", 8099)
 
 
@@ -288,3 +287,16 @@ async def test_file_larger_than_a_figure_is_refused(
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{APP.url}/jobs/job-1/file", content=b"1234")
     assert await client.async_file("job-1") == b"1234"
+
+
+def test_loads_without_the_supervisor_packages() -> None:
+    """Without the Supervisor its packages may be missing; the integration still loads."""
+    blocked = "import sys\nfor name in ('aiohasupervisor', 'aiohasupervisor.models'):\n    sys.modules[name] = None\n"
+    result = subprocess.run(
+        [sys.executable, "-c", blocked + "import custom_components.storybox_plus"],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

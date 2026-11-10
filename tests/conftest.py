@@ -839,9 +839,7 @@ def fetcher_app(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> Gen
     hass.config.components.add("hassio")
     supervisor = MagicMock()
     supervisor.addons.list = AsyncMock(side_effect=lambda: fake.addons())
-    with patch(
-        "custom_components.storybox_plus.fetcher.get_supervisor_client", return_value=supervisor
-    ):
+    with patch("homeassistant.components.hassio.get_supervisor_client", return_value=supervisor):
         yield fake
 
 

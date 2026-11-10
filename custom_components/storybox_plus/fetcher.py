@@ -16,11 +16,8 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from aiohasupervisor import SupervisorError
-from aiohasupervisor.models import AddonState
 import aiohttp
 
-from homeassistant.components.hassio import get_supervisor_client, hostname_from_addon_slug
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.hassio import is_hassio
@@ -115,6 +112,13 @@ async def async_find(hass: HomeAssistant) -> Fetcher | None:
     """
     if not is_hassio(hass):
         return None
+    # Only an installation with the Supervisor has these packages; elsewhere the
+    # integration must load without them
+    from aiohasupervisor import SupervisorError
+    from aiohasupervisor.models import AddonState
+
+    from homeassistant.components.hassio import get_supervisor_client, hostname_from_addon_slug
+
     try:
         addons = await get_supervisor_client(hass).addons.list()
     except SupervisorError as err:
