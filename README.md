@@ -19,7 +19,7 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes with their live state; the Toniebox 2 with its battery and the charge history, made up for these pictures:
 
-<img src="docs/screenshots/boxes.png" alt="Boxes tab: a Toniebox 2 playing chapter 3 of a figure, with volume, sleep timer and battery; a classic box last seen two hours ago" width="700">
+<img src="docs/screenshots/boxes.png" alt="Boxes tab with the header's stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, sleep timer and battery; a classic box last seen two hours ago" width="700">
 
 The figures of the household; a bought figure opened, with its favourite chapters and the switch that steers the box:
 
@@ -151,6 +151,8 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 - **Boxes**: every box with its live state; a Toniebox 2 with volume, sleep timer, what plays, and its battery with the charge history.
 - **Figures**: the library with search over names and chapters, a filter by kind, which figure stands on a box, the chapters with their lengths, favourites for bought figures and the tools for creative ones.
 - **Listening**: the most played figures, the total, a chart per day (per week over long spans) and the sums per box, for 7, 30 or 365 days or since the setup.
+
+The header carries, as on every page of the shared standard, when the open tab's data came ("As of 14:53:23", left out on a phone), a refresh button that asks the integration again without reloading the page and spins while it waits, and a settings button to the integration's page under **Settings → Devices & services**. The boxes tab asks again every 10 seconds by itself, and the stamp follows.
 
 At the bottom it shows the version of the integration. On a phone the tabs move to the bottom.
 
@@ -303,7 +305,7 @@ scripts/check.sh
 
 The cloud access lives in `custom_components/storybox_plus/cloud/` and imports nothing from Home Assistant, so it can be tested on its own; its README collects what is known about the API. Endpoints and payloads were learned from the official app and from the community project [HA-Toniebox](https://github.com/git4sim/HA-Toniebox) (MIT); the code here is written from scratch.
 
-The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays, a classic box, invented figures, listening times and charges). They drive the page in a headless browser (boxes, charge history, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
+The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays, a classic box, invented figures, listening times and charges). They drive the page in a headless browser (boxes, charge history, the header's stamp, refresh on every tab and settings button, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
 
 ```bash
 uv venv --python 3.14 .venv-panel && uv pip install --python .venv-panel/bin/python -r requirements_panel.txt

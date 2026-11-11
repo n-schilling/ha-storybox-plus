@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the versions
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-11
+
+### Added
+
+- The page's header has the shared standard's three actions on every tab: a stamp of when the tab's data came ("As of HH:MM:SS", hidden at phone width), the refresh button, which now spins while the integration answers, and a settings button that opens the integration's page in Home Assistant.
+- The page checks test the three on every tab: the stamp, a refresh that asks the integration again and moves the stamp, and the settings button opening the integration's page without a reload.
+
 ## [0.2.0] - 2026-11-10
 
 ### Added
@@ -52,5 +59,6 @@ First version, for the private test phase.
 - Favourite chapters of bought figures: stars on the page and a switch per figure; while it is on, a Toniebox 2 is steered past every other chapter, backwards to the previous favourite, and paused after the last one.
 - Diagnostics without tokens, names, addresses or listening data.
 
+[0.3.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.3.0
 [0.2.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.2.0
 [0.1.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.1.0

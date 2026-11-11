@@ -14,6 +14,7 @@ if (!customElements.get("storybox-plus-panel")) {
     boxes: "M12,12A3,3 0 0,0 9,15A3,3 0 0,0 12,18A3,3 0 0,0 15,15A3,3 0 0,0 12,12M12,20A5,5 0 0,1 7,15A5,5 0 0,1 12,10A5,5 0 0,1 17,15A5,5 0 0,1 12,20M12,4A2,2 0 0,1 14,6A2,2 0 0,1 12,8C10.89,8 10,7.1 10,6C10,4.89 10.89,4 12,4M17,2H7C5.89,2 5,2.89 5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4C19,2.89 18.1,2 17,2Z",
     figures: "M12,3V13.55C11.41,13.21 10.73,13 10,13A4,4 0 0,0 6,17A4,4 0 0,0 10,21A4,4 0 0,0 14,17V7H18V3H12Z",
     listening: "M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z",
+    cog: "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10M10,22C9.75,22 9.54,21.82 9.5,21.58L9.13,18.93C8.5,18.68 7.96,18.34 7.44,17.94L4.95,18.95C4.73,19.03 4.46,18.95 4.34,18.73L2.34,15.27C2.21,15.05 2.27,14.78 2.46,14.63L4.57,12.97L4.5,12L4.57,11L2.46,9.37C2.27,9.22 2.21,8.95 2.34,8.73L4.34,5.27C4.46,5.05 4.73,4.96 4.95,5.05L7.44,6.05C7.96,5.66 8.5,5.32 9.13,5.07L9.5,2.42C9.54,2.18 9.75,2 10,2H14C14.25,2 14.46,2.18 14.5,2.42L14.87,5.07C15.5,5.32 16.04,5.66 16.56,6.05L19.05,5.05C19.27,4.96 19.54,5.05 19.66,5.27L21.66,8.73C21.79,8.95 21.73,9.22 21.54,9.37L19.43,11L19.5,12L19.43,13L21.54,14.63C21.73,14.78 21.79,15.05 21.66,15.27L19.66,18.73C19.54,18.95 19.27,19.04 19.05,18.95L16.56,17.95C16.04,18.34 15.5,18.68 14.87,18.93L14.5,21.58C14.46,21.82 14.25,22 14,22H10M11.25,4L10.88,6.61C9.68,6.86 8.62,7.5 7.85,8.39L5.44,7.35L4.69,8.65L6.8,10.2C6.4,11.37 6.4,12.64 6.8,13.8L4.68,15.36L5.43,16.66L7.86,15.62C8.63,16.5 9.68,17.14 10.87,17.38L11.24,20H12.76L13.13,17.39C14.32,17.14 15.37,16.5 16.14,15.62L18.57,16.66L19.32,15.36L17.2,13.81C17.6,12.64 17.6,11.37 17.2,10.2L19.31,8.65L18.56,7.35L16.15,8.39C15.38,7.5 14.32,6.86 13.12,6.62L12.75,4H11.25Z",
     refresh: "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
     lock: "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",
     chevron: "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,15.41L6,9.41L7.41,8.58Z",
@@ -51,7 +52,7 @@ if (!customElements.get("storybox-plus-panel")) {
   const TEXTS = {
     en: {
       tabBoxes: "Boxes", tabFigures: "Figures", tabListening: "Listening",
-      refresh: "Refresh", retry: "Try again", loading: "Loading …",
+      refresh: "Refresh", settings: "Settings", asOf: "As of {t}", retry: "Try again", loading: "Loading …",
       about: "Storybox Plus {version}", aboutCommit: "Storybox Plus {version} · commit {commit}",
       failed: "The data could not be read",
       noEntry: "No account is set up. Add one under Settings → Devices & services.",
@@ -96,7 +97,7 @@ if (!customElements.get("storybox-plus-panel")) {
     },
     de: {
       tabBoxes: "Boxen", tabFigures: "Figuren", tabListening: "Hörzeit",
-      refresh: "Aktualisieren", retry: "Erneut versuchen", loading: "Lädt …",
+      refresh: "Aktualisieren", settings: "Einstellungen", asOf: "Stand {t}", retry: "Erneut versuchen", loading: "Lädt …",
       about: "Storybox Plus {version}", aboutCommit: "Storybox Plus {version} · Commit {commit}",
       failed: "Die Daten ließen sich nicht lesen",
       noEntry: "Kein Konto eingerichtet. Unter Einstellungen → Geräte & Dienste hinzufügen.",
@@ -185,6 +186,8 @@ if (!customElements.get("storybox-plus-panel")) {
       this._library = null;
       this._stats = {};
       this._errors = {};
+      // When each kind of data last came from the integration, for the stamp in the header
+      this._stamps = {};
       this._busy = new Set();
       this._query = "";
       this._kind = "all";
@@ -294,8 +297,10 @@ if (!customElements.get("storybox-plus-panel")) {
     async _fetch(key, msg, keep) {
       if (!this._hass || this._busy.has(key)) return;
       this._busy.add(key);
+      this._header();
       try {
         keep(await this._hass.callWS(msg));
+        this._stamps[key] = new Date();
         delete this._errors[key];
       } catch (err) {
         this._errors[key] = err?.message || String(err);
@@ -310,6 +315,14 @@ if (!customElements.get("storybox-plus-panel")) {
 
     _loadLibrary() {
       return this._fetch("library", { type: "storybox_plus/library" }, (d) => { this._library = d; });
+    }
+
+    // The data the open tab shows, by the key of _fetch: the stamp and the spinning
+    // refresh button in the header are about these
+    get _dataKey() {
+      if (this._tab === "figures") return "library";
+      if (this._tab === "listening") return `stats:${this._range}`;
+      return "overview";
     }
 
     _loadStats(range) {
@@ -371,6 +384,7 @@ if (!customElements.get("storybox-plus-panel")) {
         if (!target || target.tagName === "HA-SWITCH" || target.hasAttribute("disabled")) return;
         const act = target.dataset.act;
         if (act === "refresh" || act === "retry") this._ensure();
+        else if (act === "settings") this._settings();
         else this._chapterAction(act);
       });
       // The fold heads are rows, as in Home Assistant's lists: Enter and Space open them
@@ -413,6 +427,24 @@ if (!customElements.get("storybox-plus-panel")) {
       }, true);
     }
 
+    // Home Assistant's page of the integration, opened inside the app as its own links do
+    _settings() {
+      window.history.pushState(null, "", "/config/integrations/integration/storybox_plus");
+      window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+    }
+
+    // The stamp says when the open tab's data came; the refresh button spins while they load
+    _header() {
+      const root = this.shadowRoot;
+      const stamp = root.getElementById("stamp");
+      if (!stamp) return;
+      const at = this._stamps[this._dataKey];
+      stamp.textContent = at
+        ? fill(this._t.asOf, { t: at.toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) })
+        : "";
+      root.getElementById("refresh")?.classList.toggle("spin", this._busy.has(this._dataKey));
+    }
+
     // Only the list under the filters is redrawn, so the search field keeps its focus
     _refreshList() {
       const list = this.shadowRoot.getElementById("figlist");
@@ -437,6 +469,7 @@ if (!customElements.get("storybox-plus-panel")) {
         this._hydrate(sheet);
         this._tick();
       }
+      this._header();
     }
 
     // Home Assistant's forms take their schema, data and labels as properties
@@ -467,7 +500,9 @@ if (!customElements.get("storybox-plus-panel")) {
         <ha-top-app-bar-fixed class="${this._narrow ? "" : "with-tabs"}">
           <ha-menu-button slot="navigationIcon"></ha-menu-button>
           <div slot="title">Storybox Plus</div>
-          ${iconButton("refresh", t.refresh, 'slot="actionItems" data-act="refresh"')}
+          <span class="stamp" id="stamp" slot="actionItems"></span>
+          ${iconButton("refresh", t.refresh, 'slot="actionItems" id="refresh" data-act="refresh"')}
+          ${iconButton("cog", t.settings, 'slot="actionItems" data-act="settings"')}
           <div class="app${this._narrow ? " narrow" : ""}">
             ${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}
             <div class="content"><div class="sheet" id="sheet"></div></div>
@@ -1272,6 +1307,12 @@ if (!customElements.get("storybox-plus-panel")) {
   ha-icon-button.star.on { color: var(--state-active-color, var(--amber-color, #ffc107)); }
   ha-icon-button.danger:hover { color: var(--error-color); }
   ha-icon-button[slot="actionItems"] { --mdc-icon-button-size: 48px; --mdc-icon-size: 24px; color: inherit; }
+  /* The header's stamp: when the open tab's data came; no room for it on a phone */
+  .stamp { color: var(--secondary-text-color); font-size: var(--ha-font-size-s, 12px); white-space: nowrap;
+    font-variant-numeric: tabular-nums; margin-inline-end: 4px; }
+  @media (max-width: 600px) { .stamp { display: none; } }
+  ha-icon-button.spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .chip.fav { background: color-mix(in srgb, var(--amber-color, #ffc107) 22%, transparent); color: var(--primary-text-color); }
   .tip { display: inline-flex; }
   .ch-tools { display: inline-flex; flex: none; gap: 0; margin-right: -8px; }

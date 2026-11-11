@@ -631,6 +631,77 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     await checks.run("listening times with the note, ranking and chart", listening)
 
+    async def header() -> None:
+        # Every message the page sends is noted and the integration's answers are held
+        # back a little, so the spinning refresh button can be seen
+        await page.evaluate(
+            """() => {
+              const conn = document.querySelector("home-assistant").hass.connection;
+              window.__sent = [];
+              if (conn.__wrapped) return;
+              conn.__wrapped = true;
+              const send = conn.sendMessagePromise.bind(conn);
+              conn.sendMessagePromise = async (msg) => {
+                window.__sent.push(msg.type);
+                if (String(msg.type).startsWith("storybox_plus/")) {
+                  await new Promise((r) => setTimeout(r, 700));
+                }
+                return send(msg);
+              };
+            }"""
+        )
+        bar = page.locator(f"{PANEL} ha-top-app-bar-fixed")
+        stamp = bar.locator("#stamp")
+        refresh = bar.locator("ha-icon-button#refresh")
+        for tab, what, message in (
+            ("boxes", ".tile", "storybox_plus/overview"),
+            ("figures", ".figure", "storybox_plus/library"),
+            ("listening", ".chart", "storybox_plus/analytics"),
+        ):
+            await page.locator(f"{PANEL} nav.tabs a[data-tab={tab}]").click()
+            await _ready(page, what)
+            items = await bar.evaluate(
+                """(bar) => [...bar.querySelectorAll(":scope > [slot=actionItems]")].map((el) =>
+                     el.id === "stamp" ? "stamp" : el.getAttribute("path"))"""
+            )
+            icons = {_mdi("refresh"): "refresh", _mdi("cog"): "cog"}
+            order = [icons.get(item, item[:24]) for item in items]
+            expect(
+                order == ["stamp", "refresh", "cog"],
+                f"{tab}: the header is not stamp, refresh, settings: {order}",
+            )
+            await _until(lambda: _stamped(stamp), f"{tab}: the stamp", seconds=10)
+            before = (await stamp.inner_text()).strip()
+            # The stamp shows seconds; a second later a new one differs
+            await page.wait_for_timeout(1100)
+            await page.evaluate("window.__sent = []")
+            await refresh.click()
+            await _until(
+                lambda: refresh.evaluate("(el) => el.classList.contains('spin')"),
+                f"{tab}: the refresh button to spin",
+                seconds=2,
+            )
+            await _until(
+                lambda before=before: _stamp_after(stamp, before),
+                f"{tab}: a new stamp after the refresh",
+            )
+            sent = await page.evaluate("window.__sent")
+            expect(message in sent, f"{tab}: {message} not asked again: {sent}")
+            # The boxes' own poll may spin it once more; it stops when that is in too
+            await _until(
+                lambda: refresh.evaluate("(el) => !el.classList.contains('spin')"),
+                f"{tab}: the refresh button to stop spinning",
+                seconds=5,
+            )
+        # Settings: Home Assistant's page of the integration, in the app without a reload
+        await page.evaluate("window.__kept = true")
+        await bar.locator("ha-icon-button[data-act=settings]").click()
+        await page.wait_for_url("**/config/integrations/integration/storybox_plus")
+        await page.locator("ha-config-integration-page").wait_for(timeout=20000)
+        expect(await page.evaluate("window.__kept === true"), "the settings button reloaded")
+
+    await checks.run("header: stamp, refresh on every tab, settings opens the integration", header)
+
     async def no_page_for_users() -> None:
         token = await api.login(*USER)
         for message in (
@@ -680,6 +751,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             }"""
         )
         expect(wide == [False, False], f"the page scrolls sideways: {wide}")
+        bar = phone.locator(f"{PANEL} ha-top-app-bar-fixed")
+        expect(not await bar.locator("#stamp").is_visible(), "the stamp shows on a phone")
+        for button in ("#refresh", "[data-act=settings]"):
+            expect(await bar.locator(f"ha-icon-button{button}").is_visible(), f"{button} hidden")
         background = await phone.evaluate(
             "() => getComputedStyle(document.documentElement).getPropertyValue('--primary-background-color').trim()"
         )
@@ -691,6 +766,22 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     await checks.run("phone width in dark mode: tabs at the bottom, nothing sideways", phone_dark)
     await phone.context.close()
     return checks
+
+
+def _mdi(name: str) -> str:
+    """An icon path as the page has it."""
+    script = (INTEGRATION / "frontend" / "storybox-plus-panel.js").read_text()
+    start = script.index(f'    {name}: "') + len(f'    {name}: "')
+    return script[start : script.index('"', start)]
+
+
+async def _stamped(locator: Any) -> bool:
+    text = (await locator.inner_text()).strip()
+    return text.startswith("As of ") and len(text) == len("As of 00:00:00")
+
+
+async def _stamp_after(locator: Any, before: str) -> bool:
+    return await _stamped(locator) and (await locator.inner_text()).strip() != before
 
 
 async def _text_is(locator: Any, text: str) -> bool:
