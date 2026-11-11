@@ -437,6 +437,56 @@ def _version() -> str:
     return str(json.loads((INTEGRATION / "manifest.json").read_text())["version"])
 
 
+async def _brand_loaded(page: Page) -> bool:
+    return bool(
+        await page.locator(PANEL).evaluate(
+            "el => (el.shadowRoot.querySelector('img.brand')?.naturalWidth || 0) > 0"
+        )
+    )
+
+
+async def _header_row(page: Page, *, tabs: bool) -> None:
+    """One header row: the integration's icon, the name, the tabs right after it."""
+    await _until(lambda: _brand_loaded(page), "the integration icon in the header", seconds=10)
+    row = await page.locator(PANEL).evaluate(
+        """el => {
+          const root = el.shadowRoot;
+          const box = (x) => x.getBoundingClientRect();
+          const img = root.querySelector('[slot=title] img.brand');
+          const name = box(root.querySelector('[slot=title] .name'));
+          const nav = root.querySelector('[slot=title] nav.tabs');
+          return {
+            brand: { shown: box(img).width, top: box(img).top, bottom: box(img).bottom,
+              right: box(img).right },
+            name: { top: name.top, bottom: name.bottom, left: name.left, right: name.right },
+            tabs: nav ? { top: box(nav).top, bottom: box(nav).bottom, left: box(nav).left,
+              count: nav.querySelectorAll('a.tab').length,
+              active: nav.querySelectorAll('a.tab.active').length } : null,
+            second: !!root.querySelector('.app > nav.tabs'),
+          };
+        }"""
+    )
+    middle = (row["name"]["top"] + row["name"]["bottom"]) / 2
+    icon = row["brand"]
+    expect(icon["shown"] == 24, f"icon {icon['shown']} px wide")
+    expect(icon["right"] <= row["name"]["left"], "the icon is not left of the name")
+    expect(abs((icon["top"] + icon["bottom"]) / 2 - middle) <= 2, "icon and name not in one row")
+    expect(not row["second"], "a second header row for the tabs")
+    if tabs:
+        nav = row["tabs"]
+        expect(nav is not None, "no tabs in the header row")
+        expect(
+            nav["count"] == 3 and nav["active"] == 1, f"{nav['count']} tabs, {nav['active']} active"
+        )
+        expect(nav["left"] >= row["name"]["right"], "the tabs are not right of the name")
+        expect(
+            abs((nav["top"] + nav["bottom"]) / 2 - middle) <= 2,
+            f"tabs {nav['top']}-{nav['bottom']} not in the name's row {row['name']}",
+        )
+    else:
+        expect(row["tabs"] is None, "tabs in the header")
+
+
 async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path | None) -> Checks:
     page = await _open(browser, instance, ADMIN)
 
@@ -461,10 +511,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         expect("Living room" in living and "Last seen" in living, living)
         about = await page.locator(f"{PANEL} .about").inner_text()
         expect(about.startswith(f"Storybox Plus {_version()} · commit "), about)
-        title = await page.locator(f"{PANEL} ha-top-app-bar-fixed [slot=title]").inner_text()
+        title = await page.locator(f"{PANEL} ha-top-app-bar-fixed [slot=title] .name").inner_text()
         expect(title == "Storybox Plus", title)
+        await _header_row(page, tabs=True)
 
-    await checks.run("boxes with live state, battery, version and header", boxes)
+    await checks.run(
+        "boxes with live state, battery, version and one header row: icon, name, tabs", boxes
+    )
 
     async def built_from_home_assistant() -> None:
         defined = await page.evaluate(
@@ -660,6 +713,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         ):
             await page.locator(f"{PANEL} nav.tabs a[data-tab={tab}]").click()
             await _ready(page, what)
+            await _header_row(page, tabs=True)
             items = await bar.evaluate(
                 """(bar) => [...bar.querySelectorAll(":scope > [slot=actionItems]")].map((el) =>
                      el.id === "stamp" ? "stamp" : el.getAttribute("path"))"""
@@ -738,6 +792,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await phone.locator(f"{PANEL} .bottom-tabs .tab").count() == 3, "no tabs at the bottom"
         )
         expect(await phone.locator(f"{PANEL} nav.tabs").count() == 0, "tabs at the top on a phone")
+        await _header_row(phone, tabs=False)
         await phone.locator(f"{PANEL} ha-menu-button[slot=navigationIcon]").wait_for()
         wide = await phone.evaluate(
             """() => {

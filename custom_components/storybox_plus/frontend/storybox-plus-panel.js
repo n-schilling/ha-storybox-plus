@@ -213,8 +213,22 @@ if (!customElements.get("storybox-plus-panel")) {
         this._ensure();
         this._syncTimers();
         this._render();
+        this._loadBrand();
       }
       for (const el of this.shadowRoot.querySelectorAll("ha-menu-button, ha-form")) el.hass = hass;
+    }
+
+    // The integration's icon from its brand folder, as Home Assistant serves it to
+    // the frontend: an image link needs the brands access token
+    async _loadBrand() {
+      try {
+        const { token } = await this._hass.callWS({ type: "brands/access_token" });
+        this._brandSrc = `/api/brands/integration/storybox_plus/icon.png?token=${encodeURIComponent(token)}`;
+        const img = this.shadowRoot.getElementById("brand");
+        if (img) img.src = this._brandSrc;
+      } catch {
+        // Without the icon the name still says which page this is
+      }
     }
 
     set narrow(narrow) {
@@ -488,7 +502,8 @@ if (!customElements.get("storybox-plus-panel")) {
       }
     }
 
-    // The parts that stay while the page is open: top app bar and tabs (at the
+    // The parts that stay while the page is open: one header row with the
+    // integration's icon, its name and the tabs right after it (the tabs at the
     // bottom on a phone), as on Home Assistant's own pages
     _frame() {
       const t = this._t;
@@ -497,14 +512,13 @@ if (!customElements.get("storybox-plus-panel")) {
         `${this._narrow ? icon(ic) : ""}<span>${esc(t[label])}</span></a>`).join("");
       this.shadowRoot.innerHTML = `
         <style>${STYLE}</style>
-        <ha-top-app-bar-fixed class="${this._narrow ? "" : "with-tabs"}">
+        <ha-top-app-bar-fixed>
           <ha-menu-button slot="navigationIcon"></ha-menu-button>
-          <div slot="title">Storybox Plus</div>
+          <div slot="title" class="head"><img class="brand" id="brand" alt="" width="24" height="24"${this._brandSrc ? ` src="${esc(this._brandSrc)}"` : ""}><span class="name">Storybox Plus</span>${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}</div>
           <span class="stamp" id="stamp" slot="actionItems"></span>
           ${iconButton("refresh", t.refresh, 'slot="actionItems" id="refresh" data-act="refresh"')}
           ${iconButton("cog", t.settings, 'slot="actionItems" data-act="settings"')}
           <div class="app${this._narrow ? " narrow" : ""}">
-            ${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}
             <div class="content"><div class="sheet" id="sheet"></div></div>
             ${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}
           </div>
@@ -1172,13 +1186,15 @@ if (!customElements.get("storybox-plus-panel")) {
     --app-header-background-color: var(--sidebar-background-color, var(--card-background-color));
     --app-header-text-color: var(--sidebar-text-color, var(--primary-text-color));
     --app-header-border-bottom: 1px solid var(--divider-color); }
-  /* The tabs continue the header; the line moves below them */
-  ha-top-app-bar-fixed.with-tabs { --app-header-border-bottom: none; }
+  /* One header row: icon, name, tabs; the tabs fill the bar's height for their line */
+  .head { display: flex; align-items: center; height: var(--header-height, 56px); min-width: 0; }
+  .brand { width: 24px; height: 24px; flex: none; margin-inline-end: 12px; object-fit: contain; }
+  .name { flex: none; white-space: nowrap; }
   .app { display: flex; flex-direction: column;
     height: calc(100vh - var(--header-height, 56px) - var(--safe-area-inset-top, 0px));
     height: calc(100dvh - var(--header-height, 56px) - var(--safe-area-inset-top, 0px)); }
-  .tabs { display: flex; flex: none; height: 48px; padding: 0 12px; overflow-x: auto; scrollbar-width: none;
-    background: var(--sidebar-background-color, var(--card-background-color)); border-bottom: 1px solid var(--divider-color); }
+  .tabs { display: flex; flex: 0 1 auto; min-width: 0; height: 100%; margin-inline-start: 24px; overflow-x: auto; scrollbar-width: none;
+    font-size: var(--ha-font-size-m, 14px); line-height: 1.5; }
   .tab { display: flex; align-items: center; justify-content: center; height: 100%; padding: 0 20px; position: relative;
     color: var(--sidebar-text-color, var(--primary-text-color)); text-decoration: none; font-weight: var(--ha-font-weight-medium, 500);
     white-space: nowrap; opacity: 0.8; }
