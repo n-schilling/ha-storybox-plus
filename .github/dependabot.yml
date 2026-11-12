@@ -19,3 +19,7 @@ updates:
     ignore:
       # Follows the version Home Assistant pins (hassio manifest); moves with pytest-homeassistant
       - dependency-name: aiohasupervisor
+      # Home Assistant itself, its frontend and test harness: moved by hand with each HA release
+      - dependency-name: homeassistant
+      - dependency-name: home-assistant-frontend
+      - dependency-name: pytest-homeassistant
