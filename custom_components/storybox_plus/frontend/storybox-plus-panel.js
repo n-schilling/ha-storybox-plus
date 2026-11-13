@@ -42,6 +42,7 @@ if (!customElements.get("storybox-plus-panel")) {
     shuffle: "M14.83,13.41L13.42,14.82L16.55,17.95L14.5,20H20V14.5L17.96,16.54L14.83,13.41M14.5,4L16.54,6.04L4,18.59L5.41,20L17.96,7.46L20,9.5V4M10.59,9.17L5.41,4L4,5.41L9.17,10.58L10.59,9.17Z",
     star: "M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z",
     starOff: "M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z",
+    text: "M18.5,4L19.66,8.35L18.7,8.61C18.25,7.74 17.79,6.87 17.26,6.43C16.73,6 16.11,6 15.5,6H13V16.5C13,17 13,17.5 13.33,17.75C13.67,18 14.33,18 15,18V19H9V18C9.67,18 10.33,18 10.67,17.75C11,17.5 11,17 11,16.5V6H8.5C7.89,6 7.27,6 6.74,6.43C6.21,6.87 5.75,7.74 5.3,8.61L4.34,8.35L5.5,4H18.5Z",
     link: "M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z",
   };
   // How often a creative figure is read again while the cloud converts its chapters (ms)
@@ -66,9 +67,15 @@ if (!customElements.get("storybox-plus-panel")) {
       prefVoucher: "Tunes voucher", voucherCode: "Voucher code", voucherRedeem: "Redeem",
       voucherDone: "Redeemed: {n} Tunes added.", voucherNone: "Redeemed, but the cloud names no new Tune.", voucherFailed: "Redeeming failed: {e}",
       voucherHint: "A voucher can be redeemed once; the Tunes then show on the figures they fit.",
+      fromText: "From text", textTitle: "Title (optional)", textBody: "Text to be spoken",
+      textHint: "Piper, the local voice of Home Assistant, speaks the text; the recording becomes a chapter. The text stays in the house.",
+      speechMissing: "Needs a Piper voice in Home Assistant: set up the Wyoming integration with Piper.",
+      textBusy: "Piper speaks the text and it goes to the cloud …", textFailed: "Adding from text failed: {e}",
       fromCode: "From a code", codePlaceholder: "Content code", codeHint: "Ready-made content from a code (for example on a card) is added to the figure; the cloud then converts it.",
       codeFailed: "Adding from the code failed: {e}",
       prefHousehold: "Household", householdName: "Name of the household", householdSaved: "Saved", householdFailed: "Renaming failed: {e}",
+      prefListening: "Listening time", prefAnalytics: "Count listening time",
+      prefAnalyticsHint: "Keeps sums per day, figure, box, chapter and hour for the listening tab, never single plays. Switching it off deletes the sums.",
       prefFigures: "Figures", prefAutoLock: "Lock new figures and discs to the household",
       prefAutoLockHint: "A bought figure or disc that is new in the account is locked once, so it cannot be claimed into another household. Unlocked on its page or in the app, it stays unlocked.",
       prefNotices: "Notifications", prefMarkRead: "Mark notifications as read in the cloud once passed on",
@@ -93,7 +100,7 @@ if (!customElements.get("storybox-plus-panel")) {
       sleepUntil: "Sleep timer until {t}", sleepOn: "Sleep timer active", firmware: "Firmware",
       classicNote: "The classic box reports no live data.", lastSeen: "Last seen {t}", never: "never",
       battery: "Battery", perFull: "about {h} h per full charge", perFullProjected: "about {h} h per full charge, projected",
-      charge1: "1 charge", chargesN: "{n} charges", nowSince: "now {t} since {p} %", noCycles: "no discharge recorded yet",
+      remaining: "lasts about {h} more", charge1: "1 charge", chargesN: "{n} charges", nowSince: "now {t} since {p} %", noCycles: "no discharge recorded yet",
       history: "Charge history", colDay: "Day", colOn: "Run time", colLevel: "Level", colPerFull: "Per full charge",
       playing: "Playing", paused: "Paused", placed: "Figure placed", nothing: "Nothing on the box",
       chapter: "Chapter", unknownFigure: "Unknown figure", search: "Search figures and chapters",
@@ -104,7 +111,7 @@ if (!customElements.get("storybox-plus-panel")) {
       chapter1: "1 chapter", chaptersN: "{n} chapters", noChapters: "No chapters yet.",
       onBox: "on {box}", locked: "Locked", transcoding: "converting", free: "Free: {t} h",
       edit: "Edit", save: "Save", cancel: "Cancel", upload: "Upload", dismiss: "Dismiss",
-      moveUp: "Move up", moveDown: "Move down", remove: "Remove",
+      moveUp: "Move up", moveDown: "Move down", remove: "Remove", renameChapter: "Rename", chapterName: "Name of the chapter", apply: "Apply",
       sortTitle: "Sort A–Z", shuffle: "Shuffle", figureName: "Name of the figure", clearAll: "Remove all chapters",
       c_name: "Name of the figure", c_live: "Live mode: the newest chapter plays first",
       liveChip: "live",
@@ -131,11 +138,12 @@ if (!customElements.get("storybox-plus-panel")) {
       range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All",
       lastDays: "last {n} days", since: "since {d}", sinceSetup: "since the setup",
       total: "Listening time", top: "Most played", perDay: "Per day", perWeek: "Per week", perBox: "Per box",
-      weekOf: "Week of {d}", topChapters: "Most played chapters", whenListened: "When it is listened to",
+      weekOf: "Week of {d}", allBoxes: "All boxes", vsBefore: "{p} compared with the {n} days before",
+      topChapters: "Most played chapters", whenListened: "When it is listened to",
       whenHint: "Summed over the period, per weekday and hour of the day; no single plays are kept.",
       noteLocalTitle: "Counted locally",
       noteLocal: "Home Assistant counts the listening time itself, from what a Toniebox 2 reports live. It does not come from the manufacturer's cloud and so cannot be complete: it starts with the setup, the classic Toniebox is missing, and so is anything played while Home Assistant was not running.",
-      disabled: "Counting is switched off in the integration's options.", noStats: "Nothing was counted yet.",
+      disabled: "Counting is switched off on the settings tab.", noStats: "Nothing was counted yet.",
       bedtimes: "Bedtimes", addSchedule: "Add", scheduleNew: "New bedtime", scheduleUnnamed: "Bedtime",
       noSchedules: "No bedtime yet. A bedtime with an alarm wakes the child on the chosen days.",
       schedulesUnknown: "The bedtimes could not be read yet.",
@@ -171,9 +179,15 @@ if (!customElements.get("storybox-plus-panel")) {
       prefVoucher: "Tunes-Gutschein", voucherCode: "Gutscheincode", voucherRedeem: "Einlösen",
       voucherDone: "Eingelöst: {n} Tunes hinzugefügt.", voucherNone: "Eingelöst, die Cloud nennt aber keinen neuen Tune.", voucherFailed: "Einlösen fehlgeschlagen: {e}",
       voucherHint: "Ein Gutschein lässt sich einmal einlösen; die Tunes erscheinen danach bei den Figuren, zu denen sie passen.",
+      fromText: "Aus Text", textTitle: "Titel (optional)", textBody: "Text zum Vorlesen",
+      textHint: "Piper, die lokale Stimme von Home Assistant, spricht den Text; die Aufnahme wird ein Kapitel. Der Text bleibt im Haus.",
+      speechMissing: "Dafür wird eine Piper-Stimme in Home Assistant gebraucht: die Wyoming-Integration mit Piper einrichten.",
+      textBusy: "Piper spricht den Text, er geht in die Cloud …", textFailed: "Hinzufügen aus Text fehlgeschlagen: {e}",
       fromCode: "Per Code", codePlaceholder: "Inhaltscode", codeHint: "Fertige Inhalte zu einem Code (etwa von einer Karte) kommen auf die Figur; die Cloud wandelt sie danach um.",
       codeFailed: "Hinzufügen per Code fehlgeschlagen: {e}",
       prefHousehold: "Haushalt", householdName: "Name des Haushalts", householdSaved: "Gespeichert", householdFailed: "Umbenennen fehlgeschlagen: {e}",
+      prefListening: "Hörzeit", prefAnalytics: "Hörzeit zählen",
+      prefAnalyticsHint: "Speichert Summen je Tag, Figur, Box, Kapitel und Stunde für den Hörzeit-Tab, nie einzelne Wiedergaben. Ausgeschaltet werden die Summen gelöscht.",
       prefFigures: "Figuren", prefAutoLock: "Neue Figuren und Discs für den Haushalt sperren",
       prefAutoLockHint: "Eine gekaufte Figur oder Disc, die neu im Konto ist, wird einmal gesperrt, damit sie nicht in einen anderen Haushalt übernommen werden kann. Auf ihrer Seite oder in der App entsperrt, bleibt sie entsperrt.",
       prefNotices: "Benachrichtigungen", prefMarkRead: "Benachrichtigungen nach dem Weiterreichen in der Cloud als gelesen markieren",
@@ -198,7 +212,7 @@ if (!customElements.get("storybox-plus-panel")) {
       sleepUntil: "Schlaf-Timer bis {t}", sleepOn: "Schlaf-Timer aktiv", firmware: "Firmware",
       classicNote: "Die klassische Box meldet keine Live-Daten.", lastSeen: "Zuletzt gesehen {t}", never: "nie",
       battery: "Akku", perFull: "etwa {h} h pro Ladung", perFullProjected: "voraussichtlich etwa {h} h pro Ladung",
-      charge1: "1 Ladung", chargesN: "{n} Ladungen", nowSince: "jetzt {t} seit {p} %", noCycles: "noch kein Entladezyklus erfasst",
+      remaining: "reicht noch etwa {h}", charge1: "1 Ladung", chargesN: "{n} Ladungen", nowSince: "jetzt {t} seit {p} %", noCycles: "noch kein Entladezyklus erfasst",
       history: "Ladungsverlauf", colDay: "Tag", colOn: "Laufzeit", colLevel: "Ladestand", colPerFull: "Pro Ladung",
       playing: "Spielt", paused: "Pausiert", placed: "Figur aufgestellt", nothing: "Nichts auf der Box",
       chapter: "Kapitel", unknownFigure: "Unbekannte Figur", search: "Figuren und Kapitel suchen",
@@ -209,7 +223,7 @@ if (!customElements.get("storybox-plus-panel")) {
       chapter1: "1 Kapitel", chaptersN: "{n} Kapitel", noChapters: "Noch keine Kapitel.",
       onBox: "auf {box}", locked: "Gesperrt", transcoding: "wird umgewandelt", free: "Frei: {t} h",
       edit: "Bearbeiten", save: "Speichern", cancel: "Abbrechen", upload: "Hochladen", dismiss: "Schließen",
-      moveUp: "Nach oben", moveDown: "Nach unten", remove: "Entfernen",
+      moveUp: "Nach oben", moveDown: "Nach unten", remove: "Entfernen", renameChapter: "Umbenennen", chapterName: "Name des Kapitels", apply: "Übernehmen",
       sortTitle: "A–Z sortieren", shuffle: "Mischen", figureName: "Name der Figur", clearAll: "Alle Kapitel entfernen",
       c_name: "Name der Figur", c_live: "Live-Modus: das neueste Kapitel spielt zuerst",
       liveChip: "live",
@@ -236,11 +250,12 @@ if (!customElements.get("storybox-plus-panel")) {
       range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles",
       lastDays: "letzte {n} Tage", since: "seit {d}", sinceSetup: "seit der Einrichtung",
       total: "Hörzeit", top: "Meistgehört", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Pro Box",
-      weekOf: "Woche vom {d}", topChapters: "Meistgehörte Kapitel", whenListened: "Wann gehört wird",
+      weekOf: "Woche vom {d}", allBoxes: "Alle Boxen", vsBefore: "{p} gegenüber den {n} Tagen davor",
+      topChapters: "Meistgehörte Kapitel", whenListened: "Wann gehört wird",
       whenHint: "Über den Zeitraum summiert, je Wochentag und Stunde; einzelne Wiedergaben werden nicht gespeichert.",
       noteLocalTitle: "Lokal mitgezählt",
       noteLocal: "Home Assistant zählt die Hörzeit selbst mit, aus dem, was eine Toniebox 2 live meldet. Sie stammt nicht aus der Hersteller-Cloud und ist deshalb nicht vollständig: Sie beginnt mit der Einrichtung, die klassische Toniebox fehlt, und Zeiten, in denen Home Assistant nicht lief, fehlen ebenso.",
-      disabled: "Das Zählen ist in den Optionen der Integration ausgeschaltet.", noStats: "Noch nichts gezählt.",
+      disabled: "Das Zählen ist im Einstellungen-Tab ausgeschaltet.", noStats: "Noch nichts gezählt.",
       bedtimes: "Schlafenszeiten", addSchedule: "Hinzufügen", scheduleNew: "Neue Schlafenszeit", scheduleUnnamed: "Schlafenszeit",
       noSchedules: "Noch keine Schlafenszeit. Eine Schlafenszeit mit Wecker weckt das Kind an den gewählten Tagen.",
       schedulesUnknown: "Die Schlafenszeiten ließen sich noch nicht lesen.",
@@ -507,6 +522,12 @@ if (!customElements.get("storybox-plus-panel")) {
           this._go(tab.dataset.tab);
           return;
         }
+        const heat = el.closest?.("[data-heatbox]");
+        if (heat) {
+          this._heatBox = heat.dataset.heatbox || null;
+          this._render();
+          return;
+        }
         const range = el.closest?.("[data-range]");
         if (range) {
           this._range = range.dataset.range;
@@ -567,6 +588,11 @@ if (!customElements.get("storybox-plus-panel")) {
         const value = e.detail?.value || {};
         if (form.dataset.form === "link" && this._link) this._link.url = value.url || "";
         if (form.dataset.form === "code" && this._code) this._code.token = value.token || "";
+        if (form.dataset.form === "speak" && this._speak) {
+          this._speak.title = value.title || "";
+          this._speak.text = value.text || "";
+        }
+        if (form.dataset.form === "chname" && this._edit) this._edit.renameTitle = value.title || "";
         if (form.dataset.form === "figname" && this._edit) {
           this._edit.name = value.name || "";
           this._edit.live = !!value.live;
@@ -659,6 +685,12 @@ if (!customElements.get("storybox-plus-panel")) {
       const forms = {
         search: [[{ name: "query", selector: { text: { type: "search" } } }], { query: this._query }, () => t.search],
         link: [[{ name: "url", required: true, selector: { text: { type: "url" } } }], { url: this._link?.url || "" }, () => t.linkPlaceholder],
+        chname: [[{ name: "title", required: true, selector: { text: {} } }], { title: this._edit?.renameTitle ?? "" }, () => t.chapterName],
+        speak: [
+          [{ name: "title", selector: { text: {} } }, { name: "text", required: true, selector: { text: { multiline: true } } }],
+          { title: this._speak?.title || "", text: this._speak?.text || "" },
+          (f) => (f.name === "title" ? t.textTitle : t.textBody),
+        ],
         code: [[{ name: "token", required: true, selector: { text: {} } }], { token: this._code?.token || "" }, () => t.codePlaceholder],
         figname: [
           [{ name: "name", required: true, selector: { text: {} } }, { name: "live", selector: { boolean: {} } }],
@@ -775,6 +807,7 @@ if (!customElements.get("storybox-plus-panel")) {
         const body =
           `<div class="pref-head">${esc(t.prefHousehold)}</div>${homes}` +
           `<div class="pref-head">${esc(t.prefVoucher)}</div>${voucher}` +
+          `<div class="pref-head">${esc(t.prefListening)}</div>` + row(`panalytics:${e.entry_id}`, p.analytics, t.prefAnalytics, t.prefAnalyticsHint) +
           `<div class="pref-head">${esc(t.prefFigures)}</div>` + row(`pautolock:${e.entry_id}`, p.auto_lock, t.prefAutoLock, t.prefAutoLockHint) +
           `<div class="pref-head">${esc(t.prefNotices)}</div>` + row(`pmarkread:${e.entry_id}`, p.mark_read, t.prefMarkRead, t.prefMarkReadHint) +
           `<div class="pref-head">${esc(t.prefCloud)}</div>` + cloud;
@@ -801,6 +834,26 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       v.busy = false;
       this._render();
+    }
+
+    // Piper speaks in Home Assistant; the integration uploads the recording as a chapter
+    async _addFromText() {
+      const sp = this._speak;
+      const text = String(sp?.text || "").trim();
+      if (!sp || !text || sp.busy || !this._hass) return;
+      sp.busy = true;
+      sp.error = null;
+      this._refreshList();
+      const msg = { type: "storybox_plus/chapters/add_text", tonie_id: sp.id, text };
+      if (String(sp.title || "").trim()) msg.title = sp.title.trim();
+      try {
+        this._replaceTonie(await this._hass.callWS(msg));
+        if (this._speak === sp) this._speak = null;
+      } catch (err) {
+        sp.busy = false;
+        sp.error = err?.message || String(err);
+      }
+      this._refreshList();
     }
 
     async _redeemCode() {
@@ -846,6 +899,11 @@ if (!customElements.get("storybox-plus-panel")) {
       this._prefError = null;
       try {
         entry.preferences = await this._hass.callWS({ type: "storybox_plus/preferences/set", entry_id: entryId, [key]: !entry.preferences[key] });
+        if (key === "analytics") {
+          // The integration sets the account up anew; the counted sums change with it
+          this._stats = {};
+          window.setTimeout(() => this._loadOverview(), 4000);
+        }
       } catch (err) {
         this._prefError = err?.message || String(err);
       }
@@ -1129,6 +1187,7 @@ if (!customElements.get("storybox-plus-panel")) {
       else if (/^n(edit|save|cancel|on)(:|$)/.test(act)) this._nightAction(act);
       else if (act.startsWith("pautolock:")) this._setPreference(act.slice(10), "auto_lock");
       else if (act.startsWith("pmarkread:")) this._setPreference(act.slice(10), "mark_read");
+      else if (act.startsWith("panalytics:")) this._setPreference(act.slice(11), "analytics");
       else if (act.startsWith("lock:")) this._setLock(act.slice(5));
       else if (act.startsWith("swapshuffle:")) this._setShuffleOnSwap(act.slice(12));
       else if (act.startsWith("homesave:")) this._renameHousehold(act.slice(9));
@@ -1544,6 +1603,7 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       const cur = s.current;
       const parts = [];
+      if (Number.isFinite(b.battery_remaining_hours)) parts.push(fill(t.remaining, { h: hours(b.battery_remaining_hours) }));
       if (Number.isFinite(s.average_full_hours)) parts.push(fill(t.perFull, { h: this._num(s.average_full_hours) }));
       else if (Number.isFinite(cur?.per_full)) parts.push(fill(t.perFullProjected, { h: this._num(cur.per_full) }));
       if (s.count > 0) parts.push(fill(s.count === 1 ? t.charge1 : t.chargesN, { n: s.count }));
@@ -1677,6 +1737,7 @@ if (!customElements.get("storybox-plus-panel")) {
         const on = !!fav && fav.set.has(i);
         const tools = editing
           ? `<span class="ch-tools">` +
+            iconButton("pencil", t.renameChapter, `data-act="chrename:${i}"`) +
             iconButton("up", t.moveUp, `data-act="up:${i}"${i === 0 ? " disabled" : ""}`) +
             iconButton("down", t.moveDown, `data-act="down:${i}"${i === last ? " disabled" : ""}`) +
             iconButton("remove", t.remove, `class="danger" data-act="remove:${i}"`) + `</span>`
@@ -1739,6 +1800,11 @@ if (!customElements.get("storybox-plus-panel")) {
             `${this._btn("clearyes", yes, "remove", { attrs: 'variant="danger"' })}</div></div>`;
         }
         if (edit.error) html += this._alert(fill(t.saveFailed, { e: edit.error }), "error");
+        // One chapter at a time gets a new name, in a form above the list
+        if (Number.isInteger(edit.renaming) && edit.chapters[edit.renaming]) {
+          html += `<div class="link-form"><ha-form data-form="chname"></ha-form><div class="ch-bar">` +
+            this._btn("chrenameok", t.apply, "check", { look: "filled" }) + this._btn("chrenamecancel", t.cancel, "close") + `</div></div>`;
+        }
         return html + this._chapterList(edit.chapters, true);
       }
       const busy = !!up && !up.error;
@@ -1749,12 +1815,24 @@ if (!customElements.get("storybox-plus-panel")) {
       html += `<div class="ch-bar">` +
         this._btn(`upload:${f.id}`, t.upload, "upload", { disabled: busy }) +
         (app ? linkBtn : `<span class="tip" title="${esc(t.fetcherMissing)}">${linkBtn}</span>`) +
+        (this._library?.speech
+          ? this._btn(`text:${f.id}`, t.fromText, "text", { disabled: busy || this._speak?.id === f.id })
+          : `<span class="tip" title="${esc(t.speechMissing)}">${this._btn(`text:${f.id}`, t.fromText, "text", { disabled: true })}</span>`) +
         this._btn(`code:${f.id}`, t.fromCode, "plus", { disabled: busy || this._code?.id === f.id }) +
         this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) + `</div>`;
       if (link) {
         html += `<div class="link-form"><ha-form data-form="link"></ha-form>` +
           `<div class="ch-bar">${this._btn("linkadd", t.add, "check", { look: "filled" })}${this._btn("linkcancel", t.cancel, "close")}` +
           `<span class="muted small hint">${esc(t.linkHint)}</span></div></div>`;
+      }
+      if (this._speak?.id === f.id) {
+        const sp = this._speak;
+        html += sp.busy
+          ? `<div class="muted small busy">${esc(t.textBusy)}</div>`
+          : `<div class="link-form"><ha-form data-form="speak"></ha-form>` +
+            `<div class="ch-bar">${this._btn("speakadd", t.add, "check", { look: "filled" })}${this._btn("speakcancel", t.cancel, "close")}` +
+            `<span class="muted small hint">${esc(t.textHint)}</span></div></div>`;
+        if (sp.error) html += this._alert(fill(t.textFailed, { e: sp.error }), "error");
       }
       if (this._code?.id === f.id) {
         html += `<div class="link-form"><ha-form data-form="code"></ha-form>` +
@@ -1825,6 +1903,24 @@ if (!customElements.get("storybox-plus-panel")) {
           [edit.chapters[i], edit.chapters[j]] = [edit.chapters[j], edit.chapters[i]];
           break;
         }
+        case "chrename": {
+          if (!edit || edit.saving) return;
+          const i = Number(arg);
+          if (!edit.chapters[i]) return;
+          edit.renaming = i;
+          edit.renameTitle = edit.chapters[i].title || "";
+          break;
+        }
+        case "chrenameok": {
+          if (!edit || !Number.isInteger(edit.renaming)) return;
+          const title = String(edit.renameTitle || "").trim();
+          if (title) edit.chapters[edit.renaming] = { ...edit.chapters[edit.renaming], title };
+          edit.renaming = null;
+          break;
+        }
+        case "chrenamecancel":
+          if (edit) edit.renaming = null;
+          break;
         case "clearall":
           if (!edit || edit.saving || !edit.chapters.length) return;
           edit.clearStep = 1;
@@ -1879,6 +1975,17 @@ if (!customElements.get("storybox-plus-panel")) {
         case "code":
           this._code = { id: arg, token: "", busy: false, error: null };
           break;
+        case "text":
+          if (!this._library?.speech) return;
+          this._speak = { id: arg, title: "", text: "", busy: false, error: null };
+          break;
+        case "speakcancel":
+          if (this._speak?.busy) return;
+          this._speak = null;
+          break;
+        case "speakadd":
+          this._addFromText();
+          return;
         case "codecancel":
           if (this._code?.busy) return;
           this._code = null;
@@ -1942,8 +2049,13 @@ if (!customElements.get("storybox-plus-panel")) {
         if (before && edit.live !== !!before.live) update.live = edit.live;
         if (Object.keys(update).length > 2) this._replaceTonie(await this._hass.callWS(update));
         const ids = edit.chapters.map((c) => c.id);
-        if (!before || ids.join() !== before.chapters.map((c) => c.id).join()) {
-          this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/chapters/arrange", tonie_id: edit.id, chapters: ids }));
+        // Only the names that changed go along
+        const oldTitles = Object.fromEntries((before?.chapters || []).map((c) => [c.id, c.title]));
+        const titles = Object.fromEntries(edit.chapters.filter((c) => c.title && c.title !== oldTitles[c.id]).map((c) => [c.id, c.title]));
+        if (!before || ids.join() !== before.chapters.map((c) => c.id).join() || Object.keys(titles).length) {
+          const msg = { type: "storybox_plus/chapters/arrange", tonie_id: edit.id, chapters: ids };
+          if (Object.keys(titles).length) msg.titles = titles;
+          this._replaceTonie(await this._hass.callWS(msg));
         }
         if (this._edit === edit) this._edit = null;
       } catch (err) {
@@ -2089,7 +2201,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!s.enabled) html += this._alert(t.disabled);
       const label = s.days ? fill(t.lastDays, { n: s.days }) : s.first_day ? fill(t.since, { d: this._date(s.first_day, true) }) : t.sinceSetup;
       html += this._card("", `<div class="total"><span class="big">${esc(hm(s.total_seconds))}</span><span class="unit">h</span></div>` +
-        `<div class="muted">${esc(t.total)} · ${esc(label)}</div>`);
+        `<div class="muted">${esc(t.total)} · ${esc(label)}</div>` + this._comparison(s));
       if (!s.total_seconds && !s.top.length) return html + this._card("", `<div class="muted">${esc(t.noStats)}</div>`);
       const max = Math.max(...s.top.map((x) => x.seconds), 1);
       if (s.top.length) {
@@ -2113,10 +2225,22 @@ if (!customElements.get("storybox-plus-panel")) {
       return html;
     }
 
-    // Weekdays as rows, hours as columns; the shade is the share of the busiest cell
+    // The change against the window of the same length before, while that one was counted
+    _comparison(s) {
+      if (!s.days || !Number.isFinite(s.previous_total_seconds) || s.previous_total_seconds <= 0) return "";
+      const change = Math.round(((s.total_seconds - s.previous_total_seconds) / s.previous_total_seconds) * 100);
+      const p = `${change > 0 ? "+" : change < 0 ? "−" : "±"}${Math.abs(change)} %`;
+      const kind = change > 0 ? "ok" : change < 0 ? "warn" : "";
+      return `<div class="compare">${this._chip(fill(this._t.vsBefore, { p, n: s.days }), kind)}</div>`;
+    }
+
+    // Weekdays as rows, hours as columns; the shade is the share of the busiest cell.
+    // With several boxes, chips choose one or all of them
     _heatmap(s) {
       const t = this._t;
-      const grid = s.heatmap;
+      const boxes = Array.isArray(s.heatmap_boxes) ? s.heatmap_boxes : [];
+      const pick = boxes.find((b) => b.box_id === this._heatBox);
+      const grid = pick ? pick.grid : s.heatmap;
       if (!Array.isArray(grid) || !grid.flat().some((v) => v > 0)) return "";
       const max = Math.max(...grid.flat(), 1);
       const days = WEEKDAYS.map((d) => this._dayName(d));
@@ -2128,7 +2252,11 @@ if (!customElements.get("storybox-plus-panel")) {
         }).join("");
       });
       const scale = `<div></div>` + Array.from({ length: 24 }, (_, h) => `<div class="hm-hour">${h % 6 === 0 ? pad(h) : ""}</div>`).join("");
-      return this._card(esc(t.whenListened), `<div class="heatmap">${rows}${scale}</div><div class="muted small">${esc(t.whenHint)}</div>`);
+      const chips = boxes.length > 1
+        ? `<div class="chips heat-boxes">` + [["", t.allBoxes], ...boxes.map((b) => [b.box_id, b.name || b.box_id])].map(([id, name]) =>
+          `<button class="chip pick${(pick ? pick.box_id : "") === id ? " on" : ""}" data-heatbox="${esc(id)}" aria-pressed="${(pick ? pick.box_id : "") === id}">${esc(name)}</button>`).join("") + `</div>`
+        : "";
+      return this._card(esc(t.whenListened), `${chips}<div class="heatmap">${rows}${scale}</div><div class="muted small">${esc(t.whenHint)}</div>`);
     }
 
     // One bar per day of the window, per week when there are many; empty days stay empty
@@ -2343,6 +2471,8 @@ if (!customElements.get("storybox-plus-panel")) {
   .link-form ha-form { display: block; margin-bottom: 8px; }
   .switch-row { display: flex; align-items: center; gap: 12px; margin: 2px 0 8px; }
   .grow { flex: 1; }
+  .compare { margin-top: 8px; }
+  .heat-boxes { margin-bottom: 10px; }
   .heatmap { display: grid; grid-template-columns: auto repeat(24, minmax(0, 1fr)); gap: 2px; align-items: center; }
   .hm-day { font-size: var(--ha-font-size-xs, 12px); color: var(--secondary-text-color); padding-right: 6px; }
   .hm-cell { aspect-ratio: 1; border-radius: 2px; min-height: 8px;

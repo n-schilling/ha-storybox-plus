@@ -1,7 +1,9 @@
 """The account's preferences from the page's settings tab, and which figures were locked.
 
-Two preferences, each per account:
+Three preferences, each per account:
 
+- analytics (on by default): listening time is counted (daily sums for the
+  listening tab). Switched off, the sums are deleted; the entry reloads.
 - auto_lock (on by default): a bought figure or disc that is new in the
   account is locked to the household once, so it cannot be claimed into
   another one. Unlocking it on the page or in the app is final: a figure is
@@ -23,6 +25,7 @@ from homeassistant.helpers.storage import Store
 
 from .cloud import Tonie, TonieKind
 
+DEFAULT_ANALYTICS = True
 DEFAULT_AUTO_LOCK = True
 DEFAULT_MARK_READ = False
 LOCKABLE = frozenset({TonieKind.CONTENT, TonieKind.DISC})
@@ -34,6 +37,7 @@ class Preferences:
     def __init__(self, store: Store[dict[str, Any]]) -> None:
         """Start with the defaults; async_load reads the store."""
         self._store = store
+        self.analytics = DEFAULT_ANALYTICS
         self.auto_lock = DEFAULT_AUTO_LOCK
         self.mark_read = DEFAULT_MARK_READ
         self._known: set[str] = set()
@@ -45,6 +49,8 @@ class Preferences:
         raw = await self._store.async_load()
         if not isinstance(raw, dict):
             return
+        if isinstance(raw.get("analytics"), bool):
+            self.analytics = raw["analytics"]
         if isinstance(raw.get("auto_lock"), bool):
             self.auto_lock = raw["auto_lock"]
         if isinstance(raw.get("mark_read"), bool):
@@ -56,10 +62,21 @@ class Preferences:
 
     def as_dict(self) -> dict[str, Any]:
         """For the page."""
-        return {"auto_lock": self.auto_lock, "mark_read": self.mark_read}
+        return {
+            "analytics": self.analytics,
+            "auto_lock": self.auto_lock,
+            "mark_read": self.mark_read,
+        }
 
-    async def async_set(self, auto_lock: bool | None, mark_read: bool | None) -> None:
+    async def async_set(
+        self,
+        auto_lock: bool | None,
+        mark_read: bool | None,
+        analytics: bool | None = None,
+    ) -> None:
         """Change the given preferences."""
+        if analytics is not None:
+            self.analytics = analytics
         if auto_lock is not None:
             self.auto_lock = auto_lock
         if mark_read is not None:
@@ -97,6 +114,7 @@ class Preferences:
 
     def _data(self) -> dict[str, Any]:
         return {
+            "analytics": self.analytics,
             "auto_lock": self.auto_lock,
             "mark_read": self.mark_read,
             "known": sorted(self._known),

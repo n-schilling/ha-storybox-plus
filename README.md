@@ -136,7 +136,7 @@ sequenceDiagram
 
 A link that is no web address, or a video longer than the figure's free time, is refused before anything is fetched; playlists are not taken, one video at a time. Closing the page gives up a running fetch; reloading the integration ends it and tells the page.
 
-Creative figures are renamed in the same edit mode, where also the app's **live mode** lives: the newest chapter plays first when the figure is placed, made for greetings such as a good-night message from a grandparent. Neither makes the cloud convert anything, so they go first and the chapters only when they changed. Sorting by title and shuffling rearrange the list in the edit mode, saved like moving by hand. **Remove all chapters** asks twice before it empties the list: whether all of them should go, and whether the audio files are kept somewhere else, because the cloud keeps no copy once the change is saved. Until saved, cancelling brings them back. Bought figures and discs keep the names they came with.
+Each chapter is renamed in the edit mode too (the pencil on its row); a new name converts nothing. Creative figures are renamed in the same edit mode, where also the app's **live mode** lives: the newest chapter plays first when the figure is placed, made for greetings such as a good-night message from a grandparent. Neither makes the cloud convert anything, so they go first and the chapters only when they changed. Sorting by title and shuffling rearrange the list in the edit mode, saved like moving by hand. **Remove all chapters** asks twice before it empties the list: whether all of them should go, and whether the audio files are kept somewhere else, because the cloud keeps no copy once the change is saved. Until saved, cancelling brings them back. Bought figures and discs keep the names they came with.
 
 #### Shuffle on swap
 
@@ -229,7 +229,9 @@ flowchart LR
 
 ### Listening times and battery
 
-Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, and per hour of the day for all boxes and figures together; never single plays. The page ranks the most played figures and chapters and shows when is listened to as a grid of weekdays and hours. They start with the setup; the classic box and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is an option, on by default; switching it off deletes the sums.
+Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, and per hour of the day per box; never single plays. The page ranks the most played figures and chapters, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the classic box and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is switched on the settings tab, on by default; switching it off deletes the sums and sets the account up anew.
+
+How long a charge lasts from now shows on the card, by the past charges: the level times the average full charge.
 
 How long a charge lasts: every discharge from leaving the charger to the next charge, with the hours the box was switched on (only while the push channel tells so), the percent used and the projection for a full charge. Discharges shorter than 10 minutes or 5 percent are left out; the last 60 are kept.
 
@@ -239,6 +241,10 @@ How long a charge lasts: every discharge from leaving the charger to the next ch
 - No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data; the log never contains tokens or the password.
 - Changes to the account (chapters, favourites) are offered only on the page, which is for administrators only; the WebSocket commands refuse everybody else. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
 - A link is fetched by the Media Fetcher app inside your Home Assistant, which the integration finds through the Supervisor's list of apps and reaches in the app network without a token; only audio is taken from it, and the file is deleted from the app once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and the platform's terms; the integration does not check that.
+
+### Chapters from text
+
+A creative figure takes a chapter from text: the page takes a title (or the first words) and the text, Piper, the local voice of Home Assistant, speaks it, and the recording is uploaded as a chapter. The text never leaves the house. Like links, this is optional: without a Piper voice (the Wyoming integration with Piper) the button stays grey and says what is missing.
 
 ### The Media Fetcher app
 
@@ -250,7 +256,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 
 - **Boxes**: every box with its live state and its settings; a Toniebox 2 with volume, headphones, sleep timer, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), its bedtimes with the next alarm, and its battery with the charge history.
 - **Figures**: the library with search over names and chapters, a filter by kind, which figure stands on a box, the chapters with their lengths, favourites for bought figures and the tools for creative ones.
-- **Settings**: per account, the household's name, redeeming a Tunes voucher, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
+- **Settings**: per account, the household's name, redeeming a Tunes voucher, counting the listening time, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 - **Listening**: the most played figures and chapters, when is listened to (weekday and hour), the total, a chart per day (per week over long spans) and the sums per box, for 7, 30 or 365 days or since the setup.
 
 The header is one row: the integration's icon, its name and right after it the tabs. At its end it carries, as on every page of the shared standard, when the open tab's data came ("As of 14:53:23", left out on a phone), a refresh button that asks the integration again without reloading the page and spins while it waits, and a settings button to the integration's page under **Settings → Devices & services**. The boxes tab asks again every 10 seconds by itself, and the stamp follows.
@@ -350,6 +356,7 @@ IDs as created in English, for a box named "Kids room"; the unique IDs use the b
 | `binary_sensor.kids_room_connectivity` | `<box>_connectivity` | all | connected to the cloud; unknown while nothing tells |
 | `sensor.kids_room_battery` | `<box>_battery` | Toniebox 2 | battery in percent; unavailable while the box is switched off |
 | `binary_sensor.kids_room_charging` | `<box>_charging` | Toniebox 2 | charging |
+| `binary_sensor.<account>_live_channel` | `<entry>_live_channel` | the account's device, with a Toniebox 2 | the push channel is connected; live state and commands of every Toniebox 2 go through it |
 | `media_player.kids_room` | `<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length |
 | `event.kids_room_figure` | `<box>_figure` | Toniebox 2 | event types `placed`, `removed` with `tonie_id` and `tonie` (name) |
 | `event.<account>_cloud_notification` | `<entry>_notification` | the account's device | event type `notification` with `kind` (the cloud's type, `system` for a broadcast), `text`, `time`, `tonie_id`, `tonie`, `reason` (why a conversion failed) |
@@ -372,9 +379,10 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | Command | Parameters |
 |---|---|
 | `storybox_plus/overview` | none; boxes with their live state and the version |
-| `storybox_plus/library` | none; households and figures with chapters and favourites, the bought Tunes, whether links can be fetched |
+| `storybox_plus/library` | none; households and figures with chapters and favourites, the bought Tunes, whether links can be fetched and whether Piper can speak |
 | `storybox_plus/analytics` | `days` (or none for all), `limit` |
-| `storybox_plus/chapters/arrange` | `tonie_id`, `chapters` (IDs in the new order; the rest is removed) |
+| `storybox_plus/chapters/arrange` | `tonie_id`, `chapters` (IDs in the new order; the rest is removed), optional `titles` (chapter ID → new name) |
+| `storybox_plus/chapters/add_text` | `tonie_id`, `text` (up to 5000 characters), optional `title` (else the first words); Piper speaks it |
 | `storybox_plus/chapters/add` | `tonie_id`, `file_id` (from `/api/file_upload`), optional `title` |
 | `storybox_plus/chapters/add_link` | `tonie_id`, `url`; a subscription that reports the stages |
 | `storybox_plus/favourites/set` | `tonie_id`, `chapters` (positions from 0), `active` |
@@ -387,7 +395,7 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | `storybox_plus/voucher/redeem` | `entry_id`, `code`; answers with how many Tunes it brought and the Tunes |
 | `storybox_plus/figure/redeem_token` | `tonie_id` (a creative figure), `token`; answers with the figure |
 | `storybox_plus/figure/lock` | `tonie_id` (a bought figure or disc), `locked` |
-| `storybox_plus/preferences/set` | `entry_id` and `auto_lock` and/or `mark_read` |
+| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`; switching `analytics` sets the account up anew |
 | `storybox_plus/figure/volume` | `tonie_id`, `level` (1 to 13, or null for the box's own volume) |
 | `storybox_plus/bedtime/save` | `box_id`, optional `schedule_id` (none: a new bedtime, which needs `sleep_time`, `wakeup_time`, `days`), `name`, `sleep_time` and `wakeup_time` (`HH:MM`), `days` (`monday` … `sunday`), `enabled`, `alarm_enabled`, `alarm_volume` (0 to 100), `alarm_morning_light`; answers with the box |
 | `storybox_plus/bedtime/delete` | `box_id`, `schedule_id`; answers with the box |
@@ -407,7 +415,7 @@ For administrators only; the page uses them. Their answers serve the page and ar
 
 Requires Home Assistant 2026.11 or later. Without the Marketplace, copy `custom_components/storybox_plus` into the `custom_components` folder of your configuration directory and restart.
 
-**Settings → Devices & services → Storybox Plus → Configure** has one option: **Count listening time** (on). Switching it off deletes the sums.
+The integration has no options of its own; what can be chosen sits on the page's settings tab.
 
 ### Removal
 

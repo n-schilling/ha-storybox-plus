@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the versions
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-13
+
+### Added
+
+- Chapters renamed one by one in the edit mode of a creative figure.
+- A chapter from text: Piper, the local voice of Home Assistant, speaks it; without a Piper voice the button stays grey, like the link button without the Media Fetcher app.
+- How long the battery lasts from now, on the card of a Toniebox 2.
+- The listening tab compares the period with the one before and shows the weekday and hour grid per box; hours are kept per box.
+- A sensor of the account tells whether the live channel is connected, for an automation that tells the admin.
+
+### Changed
+
+- Counting the listening time is switched on the settings tab; the integration has no options flow any more.
+- Listening hours are kept per box; hours counted before for all boxes together are left out.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added

@@ -21,14 +21,7 @@ from homeassistant.util.ssl import client_context
 from .analytics import Analytics, AnalyticsData
 from .battery import BatteryStats
 from .cloud import Auth, CloudAuthError, CloudClient, CloudError, PushClient, PushEvent, TokenSet
-from .const import (
-    CONF_ANALYTICS,
-    CONF_REFRESH_TOKEN,
-    CONF_USER_ID,
-    DEFAULT_ANALYTICS,
-    DOMAIN,
-    STORAGE_VERSION,
-)
+from .const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN, STORAGE_VERSION
 from .coordinator import RuntimeData, StoryboxConfigEntry, StoryboxCoordinator
 from .favourites import FavouriteChapters
 from .frontend import async_register_frontend, async_unregister_panel
@@ -121,8 +114,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
         ) from err
     client = CloudClient(session, auth)
 
+    preferences = Preferences(preferences_store(hass, entry.entry_id))
+    await preferences.async_load()
+    # Counting is a preference of the settings tab; switching it off deletes the sums
     analytics: Analytics | None = None
-    if entry.options.get(CONF_ANALYTICS, DEFAULT_ANALYTICS):
+    if preferences.analytics:
         analytics = Analytics(analytics_store(hass, entry.entry_id), dt_util.now)
         await analytics.async_load()
     else:
@@ -155,8 +151,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
     await volumes.async_load()
     notices = CloudNotices(notices_store(hass, entry.entry_id))
     await notices.async_load()
-    preferences = Preferences(preferences_store(hass, entry.entry_id))
-    await preferences.async_load()
     shuffles = ShuffleOnSwap(shuffle_store(hass, entry.entry_id))
     await shuffles.async_load()
     coordinator = StoryboxCoordinator(

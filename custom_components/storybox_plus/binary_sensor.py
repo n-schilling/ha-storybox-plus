@@ -1,4 +1,4 @@
-"""Whether a box is online, and whether a Toniebox 2 charges."""
+"""Whether a box is online, whether a Toniebox 2 charges, and whether the live channel is up."""
 
 from __future__ import annotations
 
@@ -8,9 +8,10 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
-from .entity import BoxEntity, async_follow_boxes
+from .entity import BoxEntity, account_device_info, async_follow_boxes
 
 PARALLEL_UPDATES = 0
 
@@ -29,6 +30,9 @@ async def async_setup_entry(
         return entities
 
     async_follow_boxes(entry, async_add_entities, _factory)
+    # Only a Toniebox 2 uses the live channel; without one it stays closed for good
+    if any(b.box.live for b in entry.runtime_data.coordinator.data.boxes.values()):
+        async_add_entities([LiveChannelSensor(entry)])
 
 
 class ConnectivitySensor(BoxEntity, BinarySensorEntity):
@@ -77,3 +81,27 @@ class ChargingSensor(BoxEntity, BinarySensorEntity):
         """Return whether the box charges."""
         battery = self.box_state.battery if self.box_state else None
         return battery.charging if battery else None
+
+
+class LiveChannelSensor(CoordinatorEntity[StoryboxCoordinator], BinarySensorEntity):
+    """Whether the push channel of the account is connected.
+
+    Live state of every Toniebox 2 and all commands to it go through it; an
+    automation can tell the admin when it stays down.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "live_channel"
+
+    def __init__(self, entry: StoryboxConfigEntry) -> None:
+        """Initialize for the account."""
+        super().__init__(entry.runtime_data.coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_live_channel"
+        self._attr_device_info = account_device_info(entry)
+
+    @property
+    def is_on(self) -> bool:
+        """Return whether the channel is connected."""
+        return self.coordinator.data.push_connected

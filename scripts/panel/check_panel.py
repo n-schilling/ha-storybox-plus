@@ -113,7 +113,7 @@ def _analytics(today: date) -> dict[str, Any]:
         key = day.isoformat()
         days[key] = {demo_cloud.KIDS_BOX: sums}
         chapters[key] = per_chapter
-        hours[key] = per_hour
+        hours[key] = {demo_cloud.KIDS_BOX: per_hour}
     return {"days": days, "chapters": chapters, "hours": hours}
 
 
@@ -817,7 +817,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         # Without the Media Fetcher app the link button stays off and says why
         link = empty.get_by_role("button", name="From YouTube")
         expect(await link.is_disabled(), "the link button works without the app")
-        hint = await empty.locator(".tip").get_attribute("title")
+        hint = await empty.locator(".tip:has(ha-button[data-act^='link:'])").get_attribute("title")
         expect(hint is not None and "Media Fetcher" in hint, str(hint))
 
     await checks.run("an uploaded file becomes a chapter; links need the app", upload)
@@ -863,6 +863,38 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             return f["name"] == "Renamed figure" and titles == sorted(titles, key=str.lower)
 
         await _until(saved, "the new name and order", seconds=5)
+        # A chapter renamed in the edit mode
+        await figure.locator("ha-button[data-act^='edit:']").click()
+        await figure.locator("ha-icon-button[data-act='chrename:0']").click()
+        chapter_name = figure.locator("ha-form[data-form=chname] input")
+        await chapter_name.wait_for()
+        await chapter_name.fill("Renamed chapter")
+        await page.wait_for_timeout(300)
+        await figure.locator("ha-button[data-act=chrenameok]").click()
+        await figure.locator("ha-button[data-act=save]").click()
+
+        async def chapter_renamed() -> bool:
+            f = (await _library(api, instance))[creative["id"]]
+            return any(c["title"] == "Renamed chapter" for c in f["chapters"])
+
+        await _until(chapter_renamed, "the chapter renamed", seconds=5)
+        # Back to its name, for the pictures
+        renamed = (await _library(api, instance))[creative["id"]]["chapters"]
+        original = next(c for c in creative["chapters"] if c["id"] == renamed[0]["id"])
+        await api.ws(
+            instance.token,
+            {
+                "type": "storybox_plus/chapters/arrange",
+                "tonie_id": creative["id"],
+                "chapters": [c["id"] for c in renamed],
+                "titles": {original["id"]: original["title"]},
+            },
+        )
+        # Without Piper the text button is grey and says why
+        text_button = figure.locator("ha-button[data-act^='text:']")
+        expect(await text_button.get_attribute("disabled") is not None, "text button not grey")
+        tip = await figure.locator(".tip:has(ha-button[data-act^='text:'])").get_attribute("title")
+        expect("Piper" in (tip or ""), f"no hint at Piper: {tip}")
         # Live mode switched on in the edit mode, shuffling on swap outside it
         await figure.locator("ha-button[data-act^='edit:']").click()
         live = figure.locator("ha-form[data-form=figname] ha-switch").first
@@ -1035,6 +1067,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         note = page.locator(f"{PANEL} ha-alert[alert-type='info'][title='Counted locally']")
         expect(await note.count() == 1, "the note on where the numbers come from is missing")
         expect("The Clever Fox" in text, "the most played figure is missing")
+        compare = await page.locator(f"{PANEL} .compare").inner_text()
+        expect("compared with the 30 days before" in compare, f"no comparison: {compare}")
         cells = await page.locator(f"{PANEL} .heatmap .hm-cell").count()
         expect(cells == 7 * 24, f"the heatmap has {cells} cells")
         bars = await page.locator(f"{PANEL} .chart rect.fill").count()
@@ -1054,7 +1088,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         # Headphones and the player's buttons on the card of the Toniebox 2
         await go("boxes", ".tile")
         kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
-        expect("Headphones 80 %" in await kids.inner_text(), "headphones missing on the card")
+        card = await kids.inner_text()
+        expect("Headphones 80 %" in card, "headphones missing on the card")
+        expect("asts about" in card, f"battery remaining missing: {card}")
         controls = kids.locator(".controls")
         for act in ("previous", "pause", "next", "volume:8", "volume:10"):
             expect(
@@ -1174,6 +1210,26 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         expect(await page.evaluate("window.__kept === true"), "the settings button reloaded")
 
     await checks.run("header: stamp, refresh on every tab, settings opens the integration", header)
+
+    async def counting() -> None:
+        # Last: switching counting off deletes the listening times the other checks use
+        await go("preferences", ".pref-head")
+        # Counting switched off and on again: the account reloads in between
+        counting = page.locator(f"{PANEL} ha-switch[data-act^='panalytics:']")
+        await counting.click()
+
+        async def counts(on: bool) -> bool:
+            reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+            entry = reply["result"]["entries"][0]
+            return entry.get("preferences", {}).get("analytics") is on
+
+        await _until(lambda: counts(False), "counting switched off", seconds=15)
+        await page.wait_for_timeout(5000)
+        await counting.click()
+        await _until(lambda: counts(True), "counting switched on", seconds=15)
+        await page.wait_for_timeout(5000)
+
+    await checks.run("counting switched off and on again on the settings tab", counting)
 
     async def no_page_for_users() -> None:
         token = await api.login(*USER)

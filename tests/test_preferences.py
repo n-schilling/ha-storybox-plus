@@ -41,7 +41,7 @@ async def test_to_lock(hass: HomeAssistant) -> None:
     store: Store[dict[str, Any]] = Store(hass, 1, "storybox_plus.test.settings")
     prefs = Preferences(store)
     await prefs.async_load()
-    assert prefs.as_dict() == {"auto_lock": True, "mark_read": False}
+    assert prefs.as_dict() == {"analytics": True, "auto_lock": True, "mark_read": False}
     assert prefs.to_lock([_tonie("old"), _tonie("c", TonieKind.CREATIVE)]) == []
     new, locked_already, disc = (
         _tonie("new"),
@@ -61,7 +61,7 @@ async def test_to_lock(hass: HomeAssistant) -> None:
     await prefs.async_save()
     again = Preferences(Store(hass, 1, "storybox_plus.test.settings"))
     await again.async_load()
-    assert again.as_dict() == {"auto_lock": True, "mark_read": True}
+    assert again.as_dict() == {"analytics": True, "auto_lock": True, "mark_read": True}
     assert again.to_lock([_tonie("old"), _tonie("later"), _tonie("newest")]) == [_tonie("newest")]
 
 
@@ -147,7 +147,7 @@ async def test_preferences_set(
         {"type": f"{DOMAIN}/preferences/set", "entry_id": config_entry.entry_id, "mark_read": True}
     )
     result = await client.receive_json()
-    assert result["result"] == {"auto_lock": True, "mark_read": True}
+    assert result["result"] == {"analytics": True, "auto_lock": True, "mark_read": True}
     await client.send_json_auto_id(
         {"type": f"{DOMAIN}/preferences/set", "entry_id": "nope", "auto_lock": False}
     )

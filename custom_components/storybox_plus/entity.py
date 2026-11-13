@@ -6,7 +6,12 @@ from collections.abc import Callable
 
 from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo, format_mac
+from homeassistant.helpers.device_registry import (
+    CONNECTION_NETWORK_MAC,
+    DeviceEntryType,
+    DeviceInfo,
+    format_mac,
+)
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -49,6 +54,17 @@ class BoxEntity(CoordinatorEntity[StoryboxCoordinator]):
     def available(self) -> bool:
         """Return whether the cloud answers and the box is still in the account."""
         return super().available and self.box_state is not None
+
+
+def account_device_info(entry: StoryboxConfigEntry) -> DeviceInfo:
+    """Return the device of the account: its notifications and its live channel."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer=MANUFACTURER,
+        model="Cloud account",
+        entry_type=DeviceEntryType.SERVICE,
+    )
 
 
 @callback

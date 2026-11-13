@@ -37,18 +37,6 @@
       "wrong_account": "Das ist ein anderes Konto als das eingerichtete."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "data": {
-          "analytics": "Hörzeit zählen"
-        },
-        "data_description": {
-          "analytics": "Hält Tagessummen je Figur und Box für die Seite fest, sonst nichts. Ausschalten löscht die Summen."
-        }
-      }
-    }
-  },
   "entity": {
     "binary_sensor": {
       "connectivity": {
@@ -56,6 +44,9 @@
       },
       "charging": {
         "name": "Lädt"
+      },
+      "live_channel": {
+        "name": "Live-Kanal"
       }
     },
     "sensor": {

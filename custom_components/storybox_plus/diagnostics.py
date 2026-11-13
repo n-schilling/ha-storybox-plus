@@ -70,7 +70,6 @@ async def async_get_config_entry_diagnostics(
     analytics = runtime.analytics
     return {
         "entry": async_redact_data(dict(entry.data), TO_REDACT),
-        "options": dict(entry.options),
         "tokens": {
             "access_expires_in_s": int(tokens.access_expires_in()) if tokens else None,
             "refresh_expires_in_s": (

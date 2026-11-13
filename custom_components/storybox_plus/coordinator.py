@@ -21,7 +21,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from . import bedtime, fetcher, night
+from . import bedtime, fetcher, night, speech
 from .analytics import Analytics
 from .battery import BatteryStats
 from .cloud import (
@@ -60,6 +60,7 @@ from .cloud.models import (
     STEPPED_SETTINGS,
     VOLUME_STEPS,
 )
+from .cloud.rest import CHAPTER_TITLE_MAX
 from .const import (
     CLASSIC_ONLINE_WINDOW,
     CLOUD_INFO_INTERVAL,
@@ -1170,8 +1171,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             raise ChapterError("not_creative")
         return tonie
 
-    async def async_arrange_chapters(self, tonie_id: str, chapter_ids: list[str]) -> Tonie:
+    async def async_arrange_chapters(
+        self, tonie_id: str, chapter_ids: list[str], titles: dict[str, str] | None = None
+    ) -> Tonie:
         """Keep only the named chapters of a creative figure, in the given order.
+
+        titles renames chapters by their ID; a new title converts nothing.
 
         Order and deletions go to the cloud in one request, because every
         change makes the cloud convert the whole figure again.
@@ -1180,9 +1185,14 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         by_id = {c.id: c for c in tonie.chapters}
         if len(set(chapter_ids)) != len(chapter_ids) or any(c not in by_id for c in chapter_ids):
             raise ChapterError("unknown_chapter")
-        answer = await self.client.async_set_chapters(
-            tonie.household_id, tonie_id, [by_id[c] for c in chapter_ids]
-        )
+        titles = titles or {}
+        if any(c not in by_id for c in titles):
+            raise ChapterError("unknown_chapter")
+        chapters = [
+            replace(by_id[c], title=titles[c][:CHAPTER_TITLE_MAX]) if c in titles else by_id[c]
+            for c in chapter_ids
+        ]
+        answer = await self.client.async_set_chapters(tonie.household_id, tonie_id, chapters)
         return await self._async_take_creative(tonie, answer)
 
     async def async_update_figure(self, tonie_id: str, fields: dict[str, Any]) -> Tonie:
@@ -1257,6 +1267,26 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             data,
             f"{video.id}.{fetcher.FORMAT}",
             job.content_type or fetcher.CONTENT_TYPE,
+        )
+
+    async def async_add_chapter_from_text(self, tonie_id: str, text: str, title: str) -> Tonie:
+        """Let Piper speak a text and append it as a chapter of a creative figure.
+
+        Refused when no Piper voice is set up, before anything is spoken.
+        """
+        tonie = self._creative(tonie_id)
+        engine = speech.find_piper(self.hass)
+        if engine is None:
+            raise ChapterError("speech_missing")
+        try:
+            extension, data = await speech.async_speak(self.hass, engine, text)
+        except speech.SpeechError as err:
+            raise ChapterError("speech_failed", f"Piper could not speak the text: {err}") from err
+        content_type = {"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg"}.get(
+            extension, "audio/mpeg"
+        )
+        return await self.async_add_chapter(
+            tonie.id, title, data, f"text.{extension}", content_type
         )
 
     async def async_refresh_creative(self, tonie_id: str) -> Tonie:

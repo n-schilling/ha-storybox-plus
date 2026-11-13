@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 import re
+from typing import Any
 
 from pytest_homeassistant.common import MockConfigEntry
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.storybox_plus.const import CONF_ANALYTICS
 from custom_components.storybox_plus.diagnostics import async_get_config_entry_diagnostics
 
 from .conftest import (
@@ -27,6 +27,7 @@ from .conftest import (
     USER_ID,
     FakeCloud,
     PushChannels,
+    counting_off,
     entry_for,
 )
 
@@ -69,7 +70,6 @@ async def test_diagnostics_hold_nothing_personal(
     assert not re.search(r"\d{4}-\d{2}-\d{2}", text)
 
     assert diag["entry"] == {"refresh_token": "**REDACTED**", "user_id": "**REDACTED**"}
-    assert diag["options"] == {}
     assert diag["tokens"]["offline_token"] is True
     assert diag["tokens"]["refresh_expires_in_s"] is None
     assert 0 < diag["tokens"]["access_expires_in_s"] <= 300
@@ -121,17 +121,21 @@ async def test_diagnostics_hold_nothing_personal(
 
 
 async def test_diagnostics_without_counting_and_with_a_session_token(
-    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    hass_storage: dict[str, Any],
 ) -> None:
     """Switched-off statistics and an expiring refresh token are shown as such."""
     cloud.main.offline_tokens = False
-    entry = entry_for(cloud.main, options={CONF_ANALYTICS: False})
+    entry = entry_for(cloud.main)
+    counting_off(hass_storage, entry)
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     diag = await async_get_config_entry_diagnostics(hass, entry)
-    assert diag["options"] == {CONF_ANALYTICS: False}
+    assert diag["preferences"]["analytics"] is False
     assert diag["analytics"] is None
     assert diag["tokens"]["offline_token"] is False
     assert 1700 < diag["tokens"]["refresh_expires_in_s"] <= 1800

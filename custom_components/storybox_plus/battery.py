@@ -185,6 +185,22 @@ class BatteryStats:
 
     # ------------------------------------------------------------ queries
 
+    def remaining_hours(self, box_id: str, percent: int | None) -> float | None:
+        """Return how long the battery lasts from the given level, by the past charges.
+
+        The average of the last full-charge projections counts; while there
+        is none yet, the running discharge's projection. None without either.
+        """
+        if percent is None:
+            return None
+        summary = self.summary(box_id)
+        per_full = summary["average_full_hours"]
+        if per_full is None and summary["current"] is not None:
+            per_full = summary["current"]["per_full"]
+        if not isinstance(per_full, int | float):
+            return None
+        return round(per_full * max(0, min(100, percent)) / 100, 1)
+
     def summary(self, box_id: str) -> dict[str, Any]:
         """Return what the page shows for one box."""
         now = self._now()

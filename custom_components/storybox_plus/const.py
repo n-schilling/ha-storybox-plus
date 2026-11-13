@@ -11,10 +11,6 @@ MANUFACTURER = "tonies"
 CONF_REFRESH_TOKEN = "refresh_token"
 CONF_USER_ID = "user_id"
 
-# Options
-CONF_ANALYTICS = "analytics"
-DEFAULT_ANALYTICS = True
-
 # The REST API is read every 5 minutes: it tells about new figures, chapters,
 # names and the classic box; the live state of the Toniebox 2 comes by push.
 UPDATE_INTERVAL = timedelta(minutes=5)

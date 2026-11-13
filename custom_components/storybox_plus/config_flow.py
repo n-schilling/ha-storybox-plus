@@ -7,20 +7,13 @@ from typing import Any
 
 import probatio
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
-from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import (
-    BooleanSelector,
-    TextSelector,
-    TextSelectorConfig,
-    TextSelectorType,
-)
+from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .cloud import Auth, CloudAuthError, CloudClient, CloudConnectionError, CloudError
-from .const import CONF_ANALYTICS, CONF_REFRESH_TOKEN, CONF_USER_ID, DEFAULT_ANALYTICS, DOMAIN
-from .coordinator import StoryboxConfigEntry
+from .const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN
 
 LOGIN_SCHEMA = probatio.Schema(
     {
@@ -107,30 +100,4 @@ class StoryboxConfigFlow(ConfigFlow, domain=DOMAIN):
                 LOGIN_SCHEMA, {CONF_EMAIL: (user_input or {}).get(CONF_EMAIL)}
             ),
             errors=errors,
-        )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: StoryboxConfigEntry) -> OptionsFlowHandler:
-        """Return the options flow."""
-        return OptionsFlowHandler()
-
-
-class OptionsFlowHandler(OptionsFlowWithReload):
-    """Whether listening time is counted."""
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Show the options."""
-        if user_input is not None:
-            return self.async_create_entry(data={CONF_ANALYTICS: bool(user_input[CONF_ANALYTICS])})
-        return self.async_show_form(
-            step_id="init",
-            data_schema=probatio.Schema(
-                {
-                    probatio.Required(
-                        CONF_ANALYTICS,
-                        default=self.config_entry.options.get(CONF_ANALYTICS, DEFAULT_ANALYTICS),
-                    ): BooleanSelector()
-                }
-            ),
         )

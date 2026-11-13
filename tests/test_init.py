@@ -18,7 +18,6 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.storybox_plus.cloud import CloudAuthError
 from custom_components.storybox_plus.const import (
-    CONF_ANALYTICS,
     CONF_REFRESH_TOKEN,
     DOMAIN,
     RETRY_INTERVAL,
@@ -34,6 +33,7 @@ from .conftest import (
     MAC,
     FakeCloud,
     PushChannels,
+    counting_off,
     device,
     entity_id,
     entry_for,
@@ -78,6 +78,7 @@ async def test_setup_creates_devices_and_entities(
         f"{BOX_ID}_figure",
         f"{CLASSIC_BOX_ID}_connectivity",
         f"{setup_entry.entry_id}_notification",
+        f"{setup_entry.entry_id}_live_channel",
     }
     assert hass.states.get(entity_id(hass, "binary_sensor", f"{BOX_ID}_connectivity")).name == (
         "Kinderzimmer Connectivity"
@@ -284,7 +285,8 @@ async def test_analytics_option_off_removes_store(
     hass_storage: dict[str, Any],
 ) -> None:
     """With the option off nothing is counted and old sums are deleted."""
-    entry = entry_for(cloud.main, options={CONF_ANALYTICS: False})
+    entry = entry_for(cloud.main)
+    counting_off(hass_storage, entry)
     key = _analytics_key(entry)
     hass_storage[key] = {
         "version": 1,

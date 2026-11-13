@@ -1,8 +1,8 @@
 """Listening time, as daily sums.
 
 Kept are sums only, never single plays: per day how long which figure played
-on which box, how long each chapter of a figure played, and how long anything
-played in each hour of the day (for all boxes and figures together). The
+on which box, how long each chapter of a figure played, and how long each box
+played in each hour of the day (for all figures together). The
 sums live in the integration's own store, not in the recorder, and count
 from the setup on; the cloud has no history. Only a Toniebox 2 reports
 playback, so only its listening is counted.
@@ -23,13 +23,13 @@ SAVE_DELAY = 60
 
 type DaySums = dict[str, dict[str, int]]  # box_id -> tonie_id -> seconds
 type ChapterSums = dict[str, dict[str, int]]  # tonie_id -> chapter index (from 0) -> seconds
-type HourSums = dict[str, int]  # hour of the day (0 to 23) -> seconds
+type HourSums = dict[str, dict[str, int]]  # box_id -> hour of the day (0 to 23) -> seconds
 
 
 class AnalyticsData(TypedDict, total=False):
     days: dict[str, DaySums]  # ISO date -> sums
     chapters: dict[str, ChapterSums]  # ISO date -> sums per chapter
-    hours: dict[str, HourSums]  # ISO date -> sums per hour
+    hours: dict[str, HourSums]  # ISO date -> sums per box and hour
 
 
 class Analytics:
@@ -67,8 +67,13 @@ class Analytics:
             }
         if data and isinstance(data.get("hours"), dict):
             self._hours = {
-                day: {hour: int(seconds) for hour, seconds in hours.items()}
-                for day, hours in data["hours"].items()
+                day: {
+                    box: {hour: int(seconds) for hour, seconds in hours.items()}
+                    for box, hours in boxes.items()
+                    if isinstance(hours, dict)
+                }
+                for day, boxes in data["hours"].items()
+                if isinstance(boxes, dict)
             }
         self._prune()
 
@@ -106,7 +111,7 @@ class Analytics:
                 key = start.date().isoformat()
                 box = self._days.setdefault(key, {}).setdefault(box_id, {})
                 box[tonie_id] = box.get(tonie_id, 0) + seconds
-                hours = self._hours.setdefault(key, {})
+                hours = self._hours.setdefault(key, {}).setdefault(box_id, {})
                 hours[str(start.hour)] = hours.get(str(start.hour), 0) + seconds
                 if chapter is not None:
                     chapters = self._chapters.setdefault(key, {}).setdefault(tonie_id, {})
@@ -192,17 +197,47 @@ class Analytics:
                     result[key] = result.get(key, 0) + seconds
         return result
 
-    def per_weekday_hour(self, days: int | None = None) -> list[list[int]]:
-        """Return seconds per weekday (Monday first) and hour of the day over the last days."""
+    def per_weekday_hour(
+        self, days: int | None = None, box_id: str | None = None
+    ) -> list[list[int]]:
+        """Return seconds per weekday (Monday first) and hour over the last days, of one box or all."""
         first = None if days is None else self._first_key(days)
         grid = [[0] * 24 for _ in range(7)]
-        for day, hours in self._hours.items():
+        for day, boxes in self._hours.items():
             if first is not None and day < first:
                 continue
             weekday = date.fromisoformat(day).weekday()
-            for hour, seconds in hours.items():
-                grid[weekday][int(hour)] += seconds
+            for box, hours in boxes.items():
+                if box_id is not None and box != box_id:
+                    continue
+                for hour, seconds in hours.items():
+                    grid[weekday][int(hour)] += seconds
         return grid
+
+    def hour_boxes(self, days: int | None = None) -> set[str]:
+        """Return the boxes with hours counted over the last days."""
+        first = None if days is None else self._first_key(days)
+        return {
+            box
+            for day, boxes in self._hours.items()
+            if first is None or day >= first
+            for box in boxes
+        }
+
+    def total_before(self, days: int) -> int | None:
+        """Return the seconds of the window of the same length right before the last days.
+
+        None while counting did not cover that whole window: a comparison
+        with a window that was only partly counted would mislead.
+        """
+        start, end = self._first_key(2 * days), self._first_key(days)
+        if not self._days or min(self._days) > start:
+            return None
+        return sum(
+            sum(sum(t.values()) for t in boxes.values())
+            for day, boxes in self._days.items()
+            if start <= day < end
+        )
 
     def _first_key(self, days: int) -> str:
         return (self._now().date() - timedelta(days=days - 1)).isoformat()

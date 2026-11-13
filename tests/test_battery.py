@@ -581,3 +581,17 @@ async def test_lost_push_channel_stops_the_clock(
     channel.battery(90, "discharging")
     freezer.tick(timedelta(hours=1))
     assert stats.summary(BOX_ID)["current"]["hours"] == 2.0
+
+
+async def test_remaining_hours(store: Mock, clock: Clock) -> None:
+    """The remaining time scales the average full charge by the level; else the running estimate."""
+    stored = [{"day": "2026-10-01", "hours": 6.0, "from": 100, "to": 50, "per_full": 12.0}]
+    stats = await _loaded(store, clock, {"cycles": {"box1": stored}})
+    assert stats.remaining_hours("box1", 50) == 6.0
+    assert stats.remaining_hours("box1", 150) == 12.0
+    assert stats.remaining_hours("box1", None) is None
+    assert stats.remaining_hours("box2", 50) is None
+    stats.observe("box2", 100, False, True)
+    clock.advance(HOUR)
+    stats.observe("box2", 100 - MIN_USED_PERCENT, False, True)
+    assert stats.remaining_hours("box2", 50) == 10.0

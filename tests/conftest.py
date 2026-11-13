@@ -1065,15 +1065,20 @@ def push() -> Generator[PushChannels]:
         yield channels
 
 
-def entry_for(account: Account, options: dict[str, Any] | None = None) -> MockConfigEntry:
+def entry_for(account: Account) -> MockConfigEntry:
     """Return a config entry as the config flow would have created it."""
     return MockConfigEntry(
         domain=DOMAIN,
         title=HOUSEHOLD_NAME,
         unique_id=account.user_id,
         data={CONF_REFRESH_TOKEN: account.refresh_token, CONF_USER_ID: account.user_id},
-        options=options,
     )
+
+
+def counting_off(hass_storage: dict[str, Any], entry: MockConfigEntry) -> None:
+    """Switch counting the listening time off, as the settings tab would, before the setup."""
+    key = f"{DOMAIN}.{entry.entry_id}.settings"
+    hass_storage[key] = {"version": 1, "minor_version": 1, "key": key, "data": {"analytics": False}}
 
 
 @pytest.fixture

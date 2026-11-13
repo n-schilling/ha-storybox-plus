@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.storybox_plus import fetcher
-from custom_components.storybox_plus.const import CONF_ANALYTICS, DOMAIN
+from custom_components.storybox_plus.const import DOMAIN
 from custom_components.storybox_plus.websocket import _content_type
 
 from .conftest import (
@@ -41,6 +41,7 @@ from .conftest import (
     FakeFetcher,
     PushChannels,
     content_tonie,
+    counting_off,
     entry_for,
     tb2_box,
 )
@@ -82,7 +83,7 @@ async def test_overview(
             "title": HOUSEHOLD_NAME,
             "loaded": True,
             "households": [{"id": "hh1", "name": HOUSEHOLD_NAME}],
-            "preferences": {"auto_lock": True, "mark_read": False},
+            "preferences": {"analytics": True, "auto_lock": True, "mark_read": False},
             "cloud": {
                 "version": BACKEND_VERSION,
                 "release": "v2026.11.10",
@@ -111,6 +112,7 @@ async def test_overview(
         "headphones": None,
         "sleep_timer": {"state": "on", "alarm": False, "until": "2026-11-04T20:00:00+00:00"},
         "battery_stats": {"current": None, "cycles": [], "count": 0, "average_full_hours": None},
+        "battery_remaining_hours": None,
         "bedtime": {"schedules": [], "next_alarm": None},
         "settings": {"values": {"max_volume": 10}, "offline_mode": None, "applied": None},
         "night": {"mode": None, "phase": None},
@@ -293,6 +295,11 @@ async def test_analytics(
     heatmap = result["result"].pop("heatmap")
     assert len(heatmap) == 7
     assert sum(map(sum, heatmap)) == 150
+    boxes = result["result"].pop("heatmap_boxes")
+    assert [(b["box_id"], b["name"], sum(map(sum, b["grid"]))) for b in boxes] == [
+        (BOX_ID, BOX_NAME, 150)
+    ]
+    assert result["result"].pop("previous_total_seconds") is None
     assert result["result"].pop("top_chapters") == [
         {
             "tonie_id": TONIE_ID,
@@ -347,9 +354,11 @@ async def test_analytics_switched_off(
     cloud: FakeCloud,
     push: PushChannels,
     hass_ws_client: WebSocketGenerator,
+    hass_storage: dict[str, Any],
 ) -> None:
     """Without counting the statistics say so and are empty."""
-    entry = entry_for(cloud.main, options={CONF_ANALYTICS: False})
+    entry = entry_for(cloud.main)
+    counting_off(hass_storage, entry)
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -363,6 +372,8 @@ async def test_analytics_switched_off(
         "top": [],
         "top_chapters": [],
         "heatmap": [[0] * 24 for _ in range(7)],
+        "heatmap_boxes": [],
+        "previous_total_seconds": None,
         "per_day": [],
         "per_box": [],
     }

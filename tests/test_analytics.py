@@ -230,7 +230,7 @@ def test_save_soon_writes_once_per_change(analytics: Analytics, clock: Clock, st
     assert data_func() == {
         "days": {TODAY: {"box1": {"t1": 10}}},
         "chapters": {},
-        "hours": {TODAY: {"10": 10}},
+        "hours": {TODAY: {"box1": {"10": 10}}},
     }
     clock.advance(5)
     analytics.tick()
@@ -244,7 +244,11 @@ async def test_async_save_books_what_plays(analytics: Analytics, clock: Clock, s
     clock.advance(42)
     await analytics.async_save()
     store.async_save.assert_awaited_once_with(
-        {"days": {TODAY: {"box1": {"t1": 42}}}, "chapters": {}, "hours": {TODAY: {"10": 42}}}
+        {
+            "days": {TODAY: {"box1": {"t1": 42}}},
+            "chapters": {},
+            "hours": {TODAY: {"box1": {"10": 42}}},
+        }
     )
     clock.advance(8)
     await analytics.async_save()
@@ -271,7 +275,7 @@ async def test_with_the_real_store(
     assert hass_storage[key]["data"] == {
         "days": {TODAY: {"box1": {"t1": 30}}},
         "chapters": {TODAY: {"t1": {"2": 30}}},
-        "hours": {TODAY: {"10": 30}},
+        "hours": {TODAY: {"box1": {"10": 30}}},
     }
 
     again = Analytics(Store(hass, 1, key), clock.now)
@@ -299,3 +303,40 @@ def test_chapters_and_hours(analytics: Analytics, clock: Clock) -> None:
     clock.advance(3 * 86400)
     assert analytics.per_chapter(1) == {}
     assert sum(map(sum, analytics.per_weekday_hour(1))) == 0
+
+
+def test_hours_per_box_and_the_window_before(analytics: Analytics, clock: Clock) -> None:
+    """Hours are kept per box; the window before counts only once it was counted in full."""
+    analytics.observe("box1", "t1", True)
+    clock.advance(600)
+    analytics.observe("box1", None, False)
+    analytics.observe("box2", "t2", True)
+    clock.advance(300)
+    analytics.observe("box2", None, False)
+    weekday = START.weekday()
+    assert analytics.per_weekday_hour(7, "box1")[weekday][10] == 600
+    assert analytics.per_weekday_hour(7, "box2")[weekday][10] == 300
+    assert analytics.per_weekday_hour(7)[weekday][10] == 900
+    assert analytics.hour_boxes(7) == {"box1", "box2"}
+    assert analytics.hour_boxes() == {"box1", "box2"}
+    # Counted for one day only: the 7 days before were not counted
+    assert analytics.total_before(7) is None
+    # 13 days later the 7 days before begin with the first counted day
+    clock.advance(13 * 86400)
+    assert analytics.total_before(7) == 900
+    assert analytics.total_before(1) == 0
+    assert analytics.hour_boxes(1) == set()
+
+
+async def test_hours_of_another_shape_are_left_out(store: Mock, clock: Clock) -> None:
+    """Hours stored without boxes are not read; the rest still is."""
+    store.async_load = AsyncMock(
+        return_value={
+            "days": {TODAY: {"box1": {"t1": 60}}},
+            "hours": {TODAY: {"10": 60}, YESTERDAY: "x"},
+        }
+    )
+    counter = Analytics(store, clock.now)
+    await counter.async_load()
+    assert counter.per_tonie() == {"t1": 60}
+    assert sum(map(sum, counter.per_weekday_hour())) == 0

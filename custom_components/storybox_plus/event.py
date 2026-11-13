@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -16,14 +15,12 @@ from .const import (
     ATTR_TIME,
     ATTR_TONIE,
     ATTR_TONIE_ID,
-    DOMAIN,
     EVENT_FIGURE_PLACED,
     EVENT_FIGURE_REMOVED,
     EVENT_NOTICE,
-    MANUFACTURER,
 )
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
-from .entity import BoxEntity, async_follow_boxes
+from .entity import BoxEntity, account_device_info, async_follow_boxes
 
 PARALLEL_UPDATES = 0
 
@@ -94,13 +91,7 @@ class NoticeEvent(EventEntity):
         """Initialize for the account."""
         self._coordinator = entry.runtime_data.coordinator
         self._attr_unique_id = f"{entry.entry_id}_notification"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=entry.title,
-            manufacturer=MANUFACTURER,
-            model="Cloud account",
-            entry_type=DeviceEntryType.SERVICE,
-        )
+        self._attr_device_info = account_device_info(entry)
 
     async def async_added_to_hass(self) -> None:
         """Take the notifications, those that came before the entity first."""

@@ -14,12 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
 
 from custom_components.storybox_plus.cloud.auth import CLIENT_ID
-from custom_components.storybox_plus.const import (
-    CONF_ANALYTICS,
-    CONF_REFRESH_TOKEN,
-    CONF_USER_ID,
-    DOMAIN,
-)
+from custom_components.storybox_plus.const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN
 
 from .conftest import EMAIL, HOUSEHOLD_NAME, PASSWORD, USER_ID, FakeCloud, PushChannels
 
@@ -172,37 +167,3 @@ async def test_reauth_with_another_account(
     assert result["reason"] == "wrong_account"
     assert setup_entry.data == before
     assert setup_entry.unique_id == USER_ID
-
-
-async def test_options(
-    hass: HomeAssistant,
-    cloud: FakeCloud,
-    push: PushChannels,
-    setup_entry: MockConfigEntry,
-    hass_storage: dict[str, Any],
-) -> None:
-    """Counting can be switched off, which deletes the sums, and on again."""
-    assert setup_entry.runtime_data.analytics is not None
-    result = await hass.config_entries.options.async_init(setup_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["data_schema"]({}) == {CONF_ANALYTICS: True}
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_ANALYTICS: False}
-    )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    assert setup_entry.options == {CONF_ANALYTICS: False}
-    assert setup_entry.state is ConfigEntryState.LOADED
-    assert setup_entry.runtime_data.analytics is None
-    assert f"{DOMAIN}.{setup_entry.entry_id}.analytics" not in hass_storage
-
-    result = await hass.config_entries.options.async_init(setup_entry.entry_id)
-    assert result["data_schema"]({}) == {CONF_ANALYTICS: False}
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_ANALYTICS: True}
-    )
-    await hass.async_block_till_done()
-    assert setup_entry.options == {CONF_ANALYTICS: True}
-    assert setup_entry.runtime_data.analytics is not None

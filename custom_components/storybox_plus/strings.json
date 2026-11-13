@@ -37,18 +37,6 @@
       "wrong_account": "This is a different account than the one set up."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "data": {
-          "analytics": "Count listening time"
-        },
-        "data_description": {
-          "analytics": "Keeps daily sums per figure and box for the page, nothing else. Switching it off deletes the sums."
-        }
-      }
-    }
-  },
   "entity": {
     "binary_sensor": {
       "connectivity": {
@@ -56,6 +44,9 @@
       },
       "charging": {
         "name": "Charging"
+      },
+      "live_channel": {
+        "name": "Live channel"
       }
     },
     "sensor": {

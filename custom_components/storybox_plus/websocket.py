@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.loader import async_get_integration
 from homeassistant.util.hass_dict import HassKey
 
-from . import bedtime, fetcher
+from . import bedtime, fetcher, speech
 from .cloud import (
     SLEEP_TIMER_MAX_MINUTES,
     VOLUME_LEVELS,
@@ -82,6 +82,7 @@ _CHAPTER_MESSAGES = {
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
     "fetcher_missing": "The Media Fetcher app is not installed or not running",
+    "speech_missing": "No Piper voice is set up in Home Assistant",
     "invalid_url": "Only web links (http or https) can be fetched",
     "not_bought": "Favourites are for bought figures; the chapters of creative figures are arranged instead",
     "not_lockable": "Only bought figures and discs are locked to a household",
@@ -103,6 +104,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_arrange_chapters)
     async_register_command(hass, websocket_add_chapter)
     async_register_command(hass, websocket_add_link)
+    async_register_command(hass, websocket_add_text)
     async_register_command(hass, websocket_refresh_figure)
     async_register_command(hass, websocket_set_favourites)
     async_register_command(hass, websocket_update_figure)
@@ -270,6 +272,15 @@ def _box_dict(
         ),
         "playback": playback,
         "battery_stats": coordinator.battery_stats.summary(box.id) if box.live else None,
+        # How long the battery lasts from now, by the past charges; not while charging
+        "battery_remaining_hours": (
+            coordinator.battery_stats.remaining_hours(box.id, box_state.battery.percent)
+            if box.live
+            and box_state.battery is not None
+            and not box_state.battery.charging
+            and box_state.online is not False
+            else None
+        ),
         "bedtime": _bedtime_dict(coordinator, box_state),
         "settings": _settings_dict(box_state),
         "night": _night_dict(coordinator, box_state),
@@ -444,8 +455,10 @@ async def websocket_library(
             "households": households,
             "tonies": tonies,
             "tunes": tunes,
-            # The page offers links only while the Media Fetcher app is there
+            # The page offers links only while the Media Fetcher app is there,
+            # chapters from text only while a Piper voice is
             "fetcher": await fetcher.async_find(hass) is not None,
+            "speech": speech.find_piper(hass) is not None,
         },
     )
 
@@ -480,6 +493,9 @@ async def _answer_with_figure(
         probatio.Required("type"): f"{DOMAIN}/chapters/arrange",
         probatio.Required("tonie_id"): str,
         probatio.Required("chapters"): [str],
+        probatio.Optional("titles"): {
+            str: probatio.All(str, probatio.Strip, probatio.Length(min=1, max=128))
+        },
     }
 )
 @async_response
@@ -496,7 +512,7 @@ async def websocket_arrange_chapters(
         connection,
         msg,
         coordinator,
-        coordinator.async_arrange_chapters(msg["tonie_id"], msg["chapters"]),
+        coordinator.async_arrange_chapters(msg["tonie_id"], msg["chapters"], msg.get("titles")),
     )
 
 
@@ -549,6 +565,37 @@ async def websocket_add_chapter(
         msg,
         coordinator,
         coordinator.async_add_chapter(msg["tonie_id"], title, data, filename, content_type),
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/chapters/add_text",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("text"): probatio.All(
+            str, probatio.Strip, probatio.Length(min=1, max=speech.TEXT_MAX)
+        ),
+        probatio.Optional("title"): probatio.All(str, probatio.Strip, probatio.Length(max=128)),
+    }
+)
+@async_response
+async def websocket_add_text(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Let Piper speak a text and append it as a chapter; named after its title or first words."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    text: str = msg["text"]
+    title = msg.get("title") or " ".join(text.split()[:6])
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_figure(
+        connection,
+        msg,
+        coordinator,
+        coordinator.async_add_chapter_from_text(msg["tonie_id"], text, title),
     )
 
 
@@ -1120,6 +1167,7 @@ async def websocket_rename_household(
         probatio.Required("entry_id"): str,
         probatio.Optional("auto_lock"): bool,
         probatio.Optional("mark_read"): bool,
+        probatio.Optional("analytics"): bool,
     }
 )
 @async_response
@@ -1132,8 +1180,12 @@ async def websocket_preferences(
         connection.send_error(msg["id"], "unknown_entry", "The account is not loaded")
         return
     preferences = entry.runtime_data.preferences
-    await preferences.async_set(msg.get("auto_lock"), msg.get("mark_read"))
+    counting = preferences.analytics
+    await preferences.async_set(msg.get("auto_lock"), msg.get("mark_read"), msg.get("analytics"))
     connection.send_result(msg["id"], preferences.as_dict())
+    if preferences.analytics != counting:
+        # Counting starts or ends with the entry: it is set up anew
+        hass.config_entries.async_schedule_reload(entry.entry_id)
 
 
 @require_admin
@@ -1236,6 +1288,8 @@ def websocket_analytics(
     top = sorted(per_tonie.items(), key=lambda item: (-item[1], item[0]))[:limit]
     per_chapter: dict[tuple[str, int], int] = {}
     heatmap = [[0] * 24 for _ in range(7)]
+    heatmap_boxes: list[dict[str, Any]] = []
+    previous: int | None = 0 if days else None
     for entry in _loaded_entries(hass):
         analytics = entry.runtime_data.analytics
         if analytics is None:
@@ -1245,6 +1299,17 @@ def websocket_analytics(
         for weekday, hours in enumerate(analytics.per_weekday_hour(days)):
             for hour, seconds in enumerate(hours):
                 heatmap[weekday][hour] += seconds
+        heatmap_boxes.extend(
+            {
+                "box_id": box_id,
+                "name": box_names.get(box_id),
+                "grid": analytics.per_weekday_hour(days, box_id),
+            }
+            for box_id in sorted(analytics.hour_boxes(days))
+        )
+        if days and previous is not None:
+            before = analytics.total_before(days)
+            previous = None if before is None else previous + before
     top_chapters = sorted(per_chapter.items(), key=lambda item: (-item[1], item[0]))[:limit]
     connection.send_result(
         msg["id"],
@@ -1274,8 +1339,11 @@ def websocket_analytics(
                 }
                 for (tonie_id, index), seconds in top_chapters
             ],
-            # Monday first, 24 hours each
+            # Monday first, 24 hours each; all boxes, and each box on its own
             "heatmap": heatmap,
+            "heatmap_boxes": heatmap_boxes,
+            # The window of the same length right before, while it was counted in full
+            "previous_total_seconds": previous if enabled else None,
             "per_day": [{"day": d, "seconds": s} for d, s in sorted(per_day.items())],
             "per_box": [
                 {"box_id": b, "name": box_names.get(b), "seconds": s}
