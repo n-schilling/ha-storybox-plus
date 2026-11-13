@@ -56,6 +56,7 @@ _CONTENT_TONIE_NODE_FIELDS = (
 # The Tunes the account bought, as the web app's audio library asks for them
 _TUNE_FIELDS = (
     "id title thumbnail series { name } contentInfo { seconds } allCreativeTonies "
+    "compatibleTonies { id } "
     "myTune { id assignCountRemaining assignedTonies { id tonieType householdId } "
     "suitableTonies { id tonieType householdId } }"
 )

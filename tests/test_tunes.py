@@ -135,3 +135,29 @@ async def test_tune_cloud_error_and_failed_read(
     assert coordinator.last_update_success
     assert coordinator.tunes is not None
     assert len(coordinator.tunes) == 1
+
+
+async def test_tune_fits_by_compatible_figures(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The cloud's old list is empty; compatible figures and all creative ones count."""
+    item = tune(suitable=())
+    item["compatibleTonies"] = [{"id": TONIE_ID}, {"id": "not-in-the-account"}]
+    cloud.main.tunes = [item]
+    await _setup(hass, cloud, config_entry)
+    client = await hass_ws_client(hass)
+    library = await _call(client, {"type": f"{DOMAIN}/library"})
+    assert library["result"]["tunes"][0]["suitable"] == [CREATIVE_ID, TONIE_ID]
+    item["allCreativeTonies"] = False
+    await config_entry.runtime_data.coordinator.async_refresh()
+    library = await _call(client, {"type": f"{DOMAIN}/library"})
+    assert library["result"]["tunes"][0]["suitable"] == [TONIE_ID]
+    result = await _call(
+        client, {"type": f"{DOMAIN}/figure/tune", "tonie_id": TONIE_ID, "tune_id": "my-tune-1"}
+    )
+    assert result["success"], result
+    assert result["result"]["tunes"][0]["suitable"] == []

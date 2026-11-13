@@ -1282,6 +1282,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!edit) return [];
       const box = this._overview?.boxes.find((x) => x.id === edit.box);
       const values = box?.settings?.values || {};
+      const live = box?.generation === "toniebox_2";
       const pick = (options) => ({ select: { mode: "dropdown", options } });
       const sides = [["left", t.v_left], ["right", t.v_right]].map(([value, label]) => ({ value, label }));
       const percent = (min) => ({ number: { min, max: 100, step: 1, mode: "slider", unit_of_measurement: "%" } });
@@ -1295,8 +1296,9 @@ if (!customElements.get("storybox-plus-panel")) {
       };
       const withCurrent = (list, current) => (current && !list.includes(current) ? [...list, current] : list);
       const fields = {
-        max_volume: pick(volumes),
-        max_headphone_volume: pick(volumes),
+        // A Toniebox 2 takes any percent, a classic box the four steps
+        max_volume: live ? percent(1) : pick(volumes),
+        max_headphone_volume: live ? percent(1) : pick(volumes),
         lightring_brightness: percent(0),
         bedtime_lightring_brightness: percent(0),
         bedtime_max_volume: percent(1),
@@ -1324,7 +1326,7 @@ if (!customElements.get("storybox-plus-panel")) {
           if (!box?.settings || this._boxEdit || this._sched || this._nightEdit) return;
           // The volume choices are a list of words for the form; the integration wants numbers
           const data = { name: box.name, ...box.settings.values };
-          for (const k of ["max_volume", "max_headphone_volume"]) if (k in data) data[k] = String(data[k]);
+          if (box.generation !== "toniebox_2") for (const k of ["max_volume", "max_headphone_volume"]) if (k in data) data[k] = String(data[k]);
           this._boxEdit = { box: boxId, data, orig: { ...data }, saving: false, error: null };
           break;
         }
@@ -1351,7 +1353,7 @@ if (!customElements.get("storybox-plus-panel")) {
         if (k === "name") {
           if (!String(v).trim()) return;
           msg.name = String(v).trim();
-        } else if (k === "max_volume" || k === "max_headphone_volume") msg[k] = Number(v);
+        } else if (k === "max_volume" || k === "max_headphone_volume") msg[k] = Math.round(Number(v));
         else if (typeof edit.orig[k] === "number") msg[k] = Math.round(Number(v));
         else msg[k] = v;
       }

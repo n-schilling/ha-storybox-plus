@@ -103,12 +103,14 @@ class TonieDetails:
 
 
 # The settings of a box the API takes, by our name: the API's name and the values it allows
-# (a tuple of choices, a (min, max) range, or bool). The volumes are documented as
-# 25/50/75/100 only; the light ring and the bedtime limits as percent.
+# (a tuple of choices, a (min, max) range, or bool). The maximum volumes are
+# documented as 25/50/75/100; a classic box keeps to that, a Toniebox 2 takes
+# any percent (a real one reported 74 and 60).
 VOLUME_STEPS = (25, 50, 75, 100)
+STEPPED_SETTINGS = frozenset({"max_volume", "max_headphone_volume"})
 SETTING_FIELDS: dict[str, tuple[str, Any]] = {
-    "max_volume": ("maxVolume", VOLUME_STEPS),
-    "max_headphone_volume": ("maxHeadphoneVolume", VOLUME_STEPS),
+    "max_volume": ("maxVolume", (1, 100)),
+    "max_headphone_volume": ("maxHeadphoneVolume", (1, 100)),
     "lightring_brightness": ("lightringBrightness", (0, 100)),
     "bedtime_lightring_brightness": ("bedtimeLightringBrightness", (0, 100)),
     "bedtime_max_volume": ("bedtimeMaxVolume", (1, 100)),
@@ -294,7 +296,9 @@ class Tune:
     """A Tune the account bought: an audio play that can be laid on fitting figures.
 
     id is the account's own copy (myTune), which laying it on a figure names;
-    assigned are the figures it lies on, suitable those it can be laid on.
+    assigned are the figures it lies on. Which ones it fits, the cloud names
+    as compatible figures (bought ones) and with all_creative for every
+    creative figure; suitable is the older, now mostly empty list of the copy.
     """
 
     id: str
@@ -305,6 +309,8 @@ class Tune:
     remaining: int | None = None
     assigned: tuple[str, ...] = ()
     suitable: tuple[str, ...] = ()
+    compatible: tuple[str, ...] = ()
+    all_creative: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -767,6 +773,8 @@ def parse_tune(data: dict[str, Any]) -> Tune | None:
         remaining=_integer(mine.get("assignCountRemaining")),
         assigned=_tonie_ids(mine.get("assignedTonies")),
         suitable=_tonie_ids(mine.get("suitableTonies")),
+        compatible=_tonie_ids(data.get("compatibleTonies")),
+        all_creative=data.get("allCreativeTonies") is True,
     )
 
 

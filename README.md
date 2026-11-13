@@ -144,7 +144,7 @@ A creative figure with several chapters can be shuffled whenever another figure 
 
 ### Tunes
 
-Tunes are audio plays bought in the app that can be laid on fitting figures, a creative figure in particular. The page lists them per figure: one that lies on it, with a button to take it off, or the bought ones that fit, to lay one on. While a Tune lies on a creative figure, the figure keeps its own chapters; taken off, they play again. How often a Tune may still be laid on, the cloud decides; the page shows it.
+Tunes are audio plays bought in the app that can be laid on fitting figures: the bought figures the cloud names as compatible, and every creative figure when the Tune fits them all. The page lists them per figure: one that lies on it, with a button to take it off, or the bought ones that fit, to lay one on. While a Tune lies on a creative figure, the figure keeps its own chapters; taken off, they play again. How often a Tune may still be laid on, the cloud decides; the page shows it.
 
 ### Volume per figure
 
@@ -188,7 +188,7 @@ The page shows the settings each box has, as the cloud names them, and changes t
 
 | Setting | Toniebox 2 | Classic box |
 |---|---|---|
-| name, maximum volume and maximum headphone volume (25, 50, 75 or 100 %) | yes | yes |
+| name, maximum volume and maximum headphone volume | yes, any percent | yes, 25, 50, 75 or 100 % |
 | light ring brightness; at bedtime: light ring, maximum volume and maximum headphone volume (percent) | yes | |
 | skipping chapters by tapping, the ear that skips forward, winding by tilting | yes | |
 | tilt and tap, tap direction, LED (on, dimmed, off) | | yes |
@@ -392,7 +392,7 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | `storybox_plus/bedtime/save` | `box_id`, optional `schedule_id` (none: a new bedtime, which needs `sleep_time`, `wakeup_time`, `days`), `name`, `sleep_time` and `wakeup_time` (`HH:MM`), `days` (`monday` … `sunday`), `enabled`, `alarm_enabled`, `alarm_volume` (0 to 100), `alarm_morning_light`; answers with the box |
 | `storybox_plus/bedtime/delete` | `box_id`, `schedule_id`; answers with the box |
 | `storybox_plus/night/set` | `box_id`, `enabled`, `start` and `end` (`HH:MM`, not the same), `night` and `day` (0 to 100); a Toniebox 2 only; answers with the box |
-| `storybox_plus/box/settings` | `box_id` and any of `name`, `max_volume`, `max_headphone_volume` (25, 50, 75, 100), `lightring_brightness`, `bedtime_lightring_brightness` (0 to 100), `bedtime_max_volume`, `bedtime_max_headphone_volume` (1 to 100), `skipping_enabled`, `skipping_direction` and `tap_direction` (`left`, `right`), `scrubbing_enabled`, `accelerometer_enabled`, `led_level` (`on`, `dimmed`, `off`), `age_mode`, `language`; a setting the box does not have is refused; answers with the box |
+| `storybox_plus/box/settings` | `box_id` and any of `name`, `max_volume`, `max_headphone_volume` (1 to 100; a classic box only 25, 50, 75, 100), `lightring_brightness`, `bedtime_lightring_brightness` (0 to 100), `bedtime_max_volume`, `bedtime_max_headphone_volume` (1 to 100), `skipping_enabled`, `skipping_direction` and `tap_direction` (`left`, `right`), `scrubbing_enabled`, `accelerometer_enabled`, `led_level` (`on`, `dimmed`, `off`), `age_mode`, `language`; a setting the box does not have is refused; answers with the box |
 
 ### Stores
 

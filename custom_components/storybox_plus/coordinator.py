@@ -52,7 +52,14 @@ from .cloud import (
     Tune,
     Volume,
 )
-from .cloud.models import CLASSIC_SETTINGS, FEATURE_SETTINGS, LIVE_SETTINGS, SETTING_FIELDS
+from .cloud.models import (
+    CLASSIC_SETTINGS,
+    FEATURE_SETTINGS,
+    LIVE_SETTINGS,
+    SETTING_FIELDS,
+    STEPPED_SETTINGS,
+    VOLUME_STEPS,
+)
 from .const import (
     CLASSIC_ONLINE_WINDOW,
     CLOUD_INFO_INTERVAL,
@@ -337,6 +344,13 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         except CloudError as err:
             _LOGGER.debug("Tunes not read: %s", err)
 
+    def tune_fits(self, tune: Tune) -> list[str]:
+        """Return the figures a Tune can be laid on now: those it fits and does not lie on."""
+        fits = set(tune.suitable) | set(tune.compatible)
+        if tune.all_creative:
+            fits |= {t.id for t in self.data.tonies.values() if t.kind is TonieKind.CREATIVE}
+        return sorted(t for t in fits if t in self.data.tonies and t not in tune.assigned)
+
     def tune_on(self, tonie_id: str) -> Tune | None:
         """Return the Tune that lies on a figure, if any."""
         return next((t for t in self.tunes or () if tonie_id in t.assigned), None)
@@ -372,7 +386,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             tune = next((t for t in self.tunes or () if t.id == tune_id), None)
             if tune is None:
                 raise ChapterError("unknown_tune")
-            if tonie_id not in tune.suitable and tonie_id not in tune.assigned:
+            if tonie_id not in self.tune_fits(tune) and tonie_id not in tune.assigned:
                 raise ChapterError("unsuitable_tune")
             await self.client.async_assign_tune(tonie, tune_id)
         await self._async_read_tunes()
@@ -954,6 +968,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 continue
             if not setting_supported(box, name):
                 raise BoxError("not_supported")
+            if name in STEPPED_SETTINGS and not box.live and value not in VOLUME_STEPS:
+                raise BoxError("invalid_value")
             fields[SETTING_FIELDS[name][0]] = value
         answer = await self.client.async_update_box(box, fields)
         if answer is None:

@@ -12,7 +12,7 @@ All notable changes to this project are documented here. The format follows
 - The alarm of a bedtime is set on the box by the integration every evening, as soon as the box is online, because the app sets it only once; the page shows the next alarm and whether the box has it. An alarm of the integration that no bedtime wants any more is cleared.
 - The diagnostics name a box's feature flags, whether it has a time zone, how many bedtimes it has and whether its timer carries an alarm.
 - Page checks for the bedtimes: the alarm set on the box, a switch, a new bedtime through the form and deleting it.
-- Settings of a box on the page, as the cloud names them, changed through a form: name and maximum volumes for every box; light ring, the limits at bedtime, skipping and winding on a Toniebox 2; tilt and tap, tap direction and LED on a classic box; age mode and language where the box has the feature. The page shows whether the box has taken them and whether it is in offline mode.
+- Settings of a box on the page, as the cloud names them, changed through a form: name and maximum volumes for every box (any percent on a Toniebox 2, the four steps on a classic box); light ring, the limits at bedtime, skipping and winding on a Toniebox 2; tilt and tap, tap direction and LED on a classic box; age mode and language where the box has the feature. The page shows whether the box has taken them and whether it is in offline mode.
 - Page checks for the settings: the summary per generation and renaming a box through the form.
 - A chapter of the figure on a Toniebox 2 can be picked from the media browser and played from its start (`media_player.play_media`).
 - Creative figures are renamed in the edit mode, where their chapters can also be sorted by title or shuffled.

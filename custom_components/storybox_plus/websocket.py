@@ -169,7 +169,7 @@ def _tonie_dict(
     }
 
 
-def _tune_dict(tune: Tune) -> dict[str, Any]:
+def _tune_dict(tune: Tune, coordinator: StoryboxCoordinator) -> dict[str, Any]:
     return {
         "id": tune.id,
         "title": tune.title,
@@ -178,7 +178,7 @@ def _tune_dict(tune: Tune) -> dict[str, Any]:
         "seconds": tune.seconds,
         "remaining": tune.remaining,
         "assigned": list(tune.assigned),
-        "suitable": list(tune.suitable),
+        "suitable": coordinator.tune_fits(tune),
     }
 
 
@@ -435,7 +435,8 @@ async def websocket_library(
             }
             for t in data.tonies.values()
         )
-        tunes.extend(_tune_dict(t) for t in entry.runtime_data.coordinator.tunes or ())
+        coordinator = entry.runtime_data.coordinator
+        tunes.extend(_tune_dict(t, coordinator) for t in coordinator.tunes or ())
     tonies.sort(key=lambda t: str(t["name"]).lower())
     connection.send_result(
         msg["id"],
@@ -657,6 +658,7 @@ _BOX_MESSAGES = {
     "no_alarm": "This box has no bedtime schedules",
     "unknown_schedule": "The box has no such bedtime schedule",
     "not_supported": "This box does not have that setting",
+    "invalid_value": "A classic box takes 25, 50, 75 or 100 percent",
     "unknown_household": "The account has no such household",
     "alarm_due": "The alarm of a bedtime is due; the sleep timer would cancel it",
     "nothing_plays": "No figure is on the box",
@@ -670,7 +672,7 @@ def _setting_schema() -> dict[Any, Any]:
     for name, (_api, allowed) in SETTING_FIELDS.items():
         if allowed is bool:
             check: Any = bool
-        elif name in ("max_volume", "max_headphone_volume") or isinstance(allowed[0], str):
+        elif isinstance(allowed[0], str):
             check = probatio.In(allowed)
         else:
             check = probatio.All(int, probatio.Range(min=allowed[0], max=allowed[1]))
@@ -969,7 +971,7 @@ async def websocket_figure_tune(
         connection.send_result(
             msg["id"],
             {
-                "tunes": [_tune_dict(t) for t in coordinator.tunes or ()],
+                "tunes": [_tune_dict(t, coordinator) for t in coordinator.tunes or ()],
                 "figure": _figure_answer(coordinator, tonie) if tonie else None,
             },
         )
@@ -1002,7 +1004,10 @@ async def websocket_redeem_voucher(
     else:
         connection.send_result(
             msg["id"],
-            {"count": count, "tunes": [_tune_dict(t) for t in coordinator.tunes or ()]},
+            {
+                "count": count,
+                "tunes": [_tune_dict(t, coordinator) for t in coordinator.tunes or ()],
+            },
         )
 
 

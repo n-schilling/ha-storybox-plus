@@ -154,7 +154,7 @@ async def test_change_settings(
             "type": f"{DOMAIN}/box/settings",
             "box_id": BOX_ID,
             "name": "  Sleeping room ",
-            "max_volume": 50,
+            "max_volume": 74,
             "lightring_brightness": 20,
             "skipping_enabled": False,
         },
@@ -165,7 +165,7 @@ async def test_change_settings(
             BOX_ID,
             {
                 "name": "Sleeping room",
-                "maxVolume": 50,
+                "maxVolume": 74,
                 "lightringBrightness": 20,
                 "skippingEnabled": False,
             },
@@ -173,7 +173,7 @@ async def test_change_settings(
     ]
     box = result["result"]
     assert box["name"] == "Sleeping room"
-    assert box["settings"]["values"]["max_volume"] == 50
+    assert box["settings"]["values"]["max_volume"] == 74
     coordinator = config_entry.runtime_data.coordinator
     assert coordinator.data.boxes[BOX_ID].box.settings.lightring_brightness == 20
 
@@ -204,7 +204,8 @@ async def test_change_settings_without_answer_reads_the_box(
         ({"box_id": CLASSIC_BOX_ID, "lightring_brightness": 10}, "not_supported"),
         ({"box_id": CLASSIC_BOX_ID, "language": "de"}, "not_supported"),
         ({"box_id": BOX_ID}, "invalid_format"),
-        ({"box_id": BOX_ID, "max_volume": 60}, "invalid_format"),
+        ({"box_id": CLASSIC_BOX_ID, "max_volume": 60}, "invalid_value"),
+        ({"box_id": BOX_ID, "max_volume": 0}, "invalid_format"),
         ({"box_id": BOX_ID, "lightring_brightness": 101}, "invalid_format"),
         ({"box_id": BOX_ID, "bedtime_max_volume": 0}, "invalid_format"),
         ({"box_id": BOX_ID, "skipping_direction": "up"}, "invalid_format"),
