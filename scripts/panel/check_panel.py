@@ -880,6 +880,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await go("figures", ".figure")
         empty = page.locator(f"{PANEL} .figure", has_text="Creative figure")
         await empty.locator("[data-fold]").click()
+        # Without chapters there is nothing to edit
+        await empty.get_by_role("button", name="Upload").wait_for()
+        expect(await empty.locator("ha-button[data-act^='edit:']").count() == 0, "edit on empty")
         async with page.expect_file_chooser() as chooser:
             await empty.get_by_role("button", name="Upload").click()
         await (await chooser.value).set_files(
@@ -892,6 +895,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
         await _until(added, "the uploaded chapter in the integration")
         await empty.get_by_text("Morning song").wait_for()
+        await empty.locator("ha-button[data-act^='edit:']").wait_for()
         # Without the Media Fetcher app the link button stays off and says why
         link = empty.get_by_role("button", name="From YouTube")
         expect(await link.is_disabled(), "the link button works without the app")

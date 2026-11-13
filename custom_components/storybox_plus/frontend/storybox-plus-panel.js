@@ -2156,7 +2156,8 @@ if (!customElements.get("storybox-plus-panel")) {
           ? this._btn(`text:${f.id}`, t.fromText, "text", { disabled: busy || this._speak?.id === f.id })
           : `<span class="tip" title="${esc(t.speechMissing)}">${this._btn(`text:${f.id}`, t.fromText, "text", { disabled: true })}</span>`) +
         this._btn(`code:${f.id}`, t.fromCode, "plus", { disabled: busy || this._code?.id === f.id }) +
-        this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) + `</div>`;
+        // Without chapters there is nothing to edit: name and live mode sit behind the cog
+        (f.chapters.length ? this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) : "") + `</div>`;
       // Link, text and code open their form in the overlay
       if (up) {
         html += up.error
