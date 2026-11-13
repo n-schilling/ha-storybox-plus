@@ -654,6 +654,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             if placed is not None:
                 # Placed anew: the box may know now what it did not before
                 self._lengths_asked.pop(placed, None)
+                if self.analytics is not None and self.counts_box(box_state.box.id):
+                    self.analytics.placed(box_state.box.id, placed)
+                    self.analytics.save_soon()
             if placed is not None and self._needs_lengths(self.data.tonies.get(placed)):
                 self.config_entry.async_create_background_task(
                     self.hass,

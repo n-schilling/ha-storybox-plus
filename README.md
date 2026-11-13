@@ -30,7 +30,7 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes with their live state; the Toniebox 2 with its bedtimes, its battery and the charge history, made up for these pictures:
 
-<img src="docs/screenshots/boxes.png" alt="Boxes tab with the header row of icon, name and tabs, the stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a slim row, last seen two hours ago" width="700">
+<img src="docs/screenshots/boxes.png" alt="Boxes tab with the header row of icon, name and tabs, the stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
 
 The settings of a Toniebox 2 being changed; a Toniebox 1 shows its own:
 
@@ -98,7 +98,7 @@ The REST API is read every 5 minutes: households, boxes, figures and chapters, a
 | Device | What Home Assistant gets |
 |---|---|
 | Toniebox 2 | online state, battery, charging, media player, figure event, listening times, battery cycles, favourite chapters |
-| Toniebox 1 | online state only. The Toniebox 1 reports nothing live to the cloud; nothing is simulated or guessed. |
+| Toniebox 1 | no entities: the Toniebox 1 reports nothing live to the cloud, not even whether it is online; nothing is simulated or guessed. Its settings are on the page. |
 
 Both generations can be mixed in one account. Figures (bought figures, creative figures, discs) belong to the household, not to a box; the page shows them that way.
 
@@ -231,7 +231,7 @@ flowchart LR
 
 ### Listening times and battery
 
-Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, and per hour of the day per box; never single plays. The page ranks the most played figures and chapters, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is switched on the settings tab, on by default; switching it off deletes the sums and sets the account up anew.
+Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, per hour of the day per box, and how often each figure was placed; never single plays. The page ranks the most played figures and chapters and the figures placed most often, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is switched on the settings tab, on by default; switching it off deletes the sums and sets the account up anew.
 
 How long a charge lasts from now shows on the card, by the past charges: the level times the average full charge.
 
@@ -256,7 +256,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 
 **Storybox Plus** in the sidebar, for administrators, built from Home Assistant's own elements, in four tabs:
 
-- **Boxes**: every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), and the battery's level, which opens the charge history in an overlay. The sleep timer takes 30 or 60 minutes. The cog of a box opens its settings, the night mode of the light ring, its bedtimes and its firmware in an overlay. Next to a Toniebox 2, a Toniebox 1 is a slim row in a card of its own: online state, when it was last seen, its settings in one line and its cog.
+- **Boxes**: every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), and the battery's level, which opens the charge history in an overlay. The sleep timer takes 30 or 60 minutes. The cog of a box opens its settings, the night mode of the light ring, its bedtimes and its firmware in an overlay. Its card shows online or offline as a coloured dot. A Toniebox 1 gets a small card: its settings in one line, when it was last seen and its cog; the cloud reports no connection state for it.
 - **Figures**: the library with search over names and chapters, a filter by kind, which figure stands on a box, the chapters with their lengths, favourites for bought figures and the tools for creative ones. The cog of a figure opens its volume, lock, Tune and shuffling on swap in an overlay; adding a chapter from a link, a text or a code asks in an overlay too.
 - **Settings**: per account, the household's name and its members (shown only: name, email and role as the cloud shows them to the account, read once an hour; managed in the app), redeeming a Tunes voucher, counting the listening time, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 - **Listening**: the most played figures and chapters, when is listened to (weekday and hour), the total, a chart per day (per week over long spans) and the sums per box, for 7, 30 or 365 days or since the setup.
@@ -324,7 +324,7 @@ actions:
 
 ## Known limitations
 
-- The Toniebox 1 has no live data: no battery, no playback, no figure. Only its online state is shown, and only while the cloud tells when it was last seen.
+- The Toniebox 1 has no live data: no battery, no playback, no figure, not even whether it is online. It gets no device in Home Assistant; its settings are changed on the page.
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The box plays whatever figure stands on it; Home Assistant cannot choose a figure.
 - The listening times count from the setup on; the cloud offers no history.
@@ -355,7 +355,7 @@ IDs as created in English, for a box named "Kids room". Every unique ID starts w
 
 | Entity | Unique ID | Boxes | State |
 |---|---|---|---|
-| `binary_sensor.kids_room_connectivity` | `<entry>_<box>_connectivity` | all | connected to the cloud; unknown while nothing tells |
+| `binary_sensor.kids_room_connectivity` | `<entry>_<box>_connectivity` | Toniebox 2 | connected to the cloud; unknown while nothing tells |
 | `sensor.kids_room_battery` | `<entry>_<box>_battery` | Toniebox 2 | battery in percent; unavailable while the box is switched off |
 | `binary_sensor.kids_room_charging` | `<entry>_<box>_charging` | Toniebox 2 | charging |
 | `binary_sensor.<account>_live_channel` | `<entry>_live_channel` | the account's device, with a Toniebox 2 | the push channel is connected; live state and commands of every Toniebox 2 go through it |

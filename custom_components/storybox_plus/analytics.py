@@ -1,8 +1,9 @@
 """Listening time, as daily sums.
 
 Kept are sums only, never single plays: per day how long which figure played
-on which box, how long each chapter of a figure played, and how long each box
-played in each hour of the day (for all figures together). The
+on which box, how long each chapter of a figure played, how long each box
+played in each hour of the day (for all figures together), and how often
+each figure was placed on a box. The
 sums live in the integration's own store, not in the recorder, and count
 from the setup on; the cloud has no history. Only a Toniebox 2 reports
 playback, so only its listening is counted.
@@ -24,12 +25,14 @@ SAVE_DELAY = 60
 type DaySums = dict[str, dict[str, int]]  # box_id -> tonie_id -> seconds
 type ChapterSums = dict[str, dict[str, int]]  # tonie_id -> chapter index (from 0) -> seconds
 type HourSums = dict[str, dict[str, int]]  # box_id -> hour of the day (0 to 23) -> seconds
+type PlacementSums = dict[str, dict[str, int]]  # box_id -> tonie_id -> times placed
 
 
 class AnalyticsData(TypedDict, total=False):
     days: dict[str, DaySums]  # ISO date -> sums
     chapters: dict[str, ChapterSums]  # ISO date -> sums per chapter
     hours: dict[str, HourSums]  # ISO date -> sums per box and hour
+    placements: dict[str, PlacementSums]  # ISO date -> times placed per box and figure
 
 
 class Analytics:
@@ -42,6 +45,7 @@ class Analytics:
         self._days: dict[str, DaySums] = {}
         self._chapters: dict[str, ChapterSums] = {}
         self._hours: dict[str, HourSums] = {}
+        self._placements: dict[str, PlacementSums] = {}
         # box_id -> (tonie_id, chapter index or None, playing since)
         self._active: dict[str, tuple[str, int | None, datetime]] = {}
         self._dirty = False
@@ -75,9 +79,26 @@ class Analytics:
                 for day, boxes in data["hours"].items()
                 if isinstance(boxes, dict)
             }
+        if data and isinstance(data.get("placements"), dict):
+            self._placements = {
+                day: {
+                    box: {tonie: int(times) for tonie, times in tonies.items()}
+                    for box, tonies in boxes.items()
+                    if isinstance(tonies, dict)
+                }
+                for day, boxes in data["placements"].items()
+                if isinstance(boxes, dict)
+            }
         self._prune()
 
     # ------------------------------------------------------------ counting
+
+    def placed(self, box_id: str, tonie_id: str) -> None:
+        """Count a figure placed on a box."""
+        key = self._now().date().isoformat()
+        box = self._placements.setdefault(key, {}).setdefault(box_id, {})
+        box[tonie_id] = box.get(tonie_id, 0) + 1
+        self._dirty = True
 
     def observe(
         self, box_id: str, tonie_id: str | None, playing: bool, chapter: int | None = None
@@ -121,7 +142,7 @@ class Analytics:
 
     def _prune(self) -> None:
         oldest = (self._now().date() - timedelta(days=ANALYTICS_KEEP_DAYS)).isoformat()
-        for sums in (self._days, self._chapters, self._hours):
+        for sums in (self._days, self._chapters, self._hours, self._placements):
             for day in [d for d in sums if d < oldest]:
                 del sums[day]
                 self._dirty = True
@@ -141,7 +162,12 @@ class Analytics:
         await self._store.async_save(self._data_to_save())
 
     def _data_to_save(self) -> AnalyticsData:
-        return {"days": self._days, "chapters": self._chapters, "hours": self._hours}
+        return {
+            "days": self._days,
+            "chapters": self._chapters,
+            "hours": self._hours,
+            "placements": self._placements,
+        }
 
     # ------------------------------------------------------------ queries
 
@@ -195,6 +221,18 @@ class Analytics:
                 for index, seconds in chapters.items():
                     key = (tonie_id, int(index))
                     result[key] = result.get(key, 0) + seconds
+        return result
+
+    def placements_per_tonie(self, days: int | None = None) -> dict[str, int]:
+        """Return how often each figure was placed over the last days."""
+        first = None if days is None else self._first_key(days)
+        result: dict[str, int] = {}
+        for day, boxes in self._placements.items():
+            if first is not None and day < first:
+                continue
+            for tonies in boxes.values():
+                for tonie_id, times in tonies.items():
+                    result[tonie_id] = result.get(tonie_id, 0) + times
         return result
 
     def per_weekday_hour(

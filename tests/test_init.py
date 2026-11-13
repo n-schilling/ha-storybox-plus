@@ -56,7 +56,7 @@ async def _poll(hass: HomeAssistant, freezer: FrozenDateTimeFactory, interval: t
 async def test_setup_creates_devices_and_entities(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
 ) -> None:
-    """Every box becomes a device; only a Toniebox 2 gets battery, player and figure event."""
+    """A Toniebox 2 becomes a device; a Toniebox 1 reports nothing live and gets none."""
     assert setup_entry.state is ConfigEntryState.LOADED
     tb2 = device(hass, setup_entry, BOX_ID)
     assert tb2 is not None
@@ -65,10 +65,7 @@ async def test_setup_creates_devices_and_entities(
     assert tb2.model == "Toniebox 2"
     assert tb2.sw_version == "1.2.3"
     assert tb2.connections == {(dr.CONNECTION_NETWORK_MAC, "a1:b2:c3:d4:e5:f6")}
-    classic = device(hass, setup_entry, CLASSIC_BOX_ID)
-    assert classic is not None
-    assert classic.model == "Toniebox 1"
-    assert classic.connections == set()
+    assert device(hass, setup_entry, CLASSIC_BOX_ID) is None
 
     entities = er.async_entries_for_config_entry(er.async_get(hass), setup_entry.entry_id)
     assert {e.unique_id.removeprefix(f"{setup_entry.entry_id}_") for e in entities} == {
@@ -77,7 +74,6 @@ async def test_setup_creates_devices_and_entities(
         f"{BOX_ID}_charging",
         f"{BOX_ID}_battery",
         f"{BOX_ID}_figure",
-        f"{CLASSIC_BOX_ID}_connectivity",
         "notification",
         "live_channel",
     }
@@ -339,28 +335,32 @@ async def test_box_leaving_the_account_removes_its_device(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
 ) -> None:
     """A box missing from an hour of polls loses its device and entities; one poll is a hiccup."""
-    connectivity = entity_id(hass, "binary_sensor", f"{CLASSIC_BOX_ID}_connectivity")
-    removed = cloud.main.box(CLASSIC_BOX_ID)
-    cloud.main.remove_box(CLASSIC_BOX_ID)
+    cloud.main.boxes[HOUSEHOLD_ID].append(
+        tb2_box("box3", name="Bad", mac="0A1B2C3D4E5F", placed=None)
+    )
+    await _polls(hass, setup_entry, 1)
+    connectivity = entity_id(hass, "binary_sensor", f"{'box3'}_connectivity")
+    removed = cloud.main.box("box3")
+    cloud.main.remove_box("box3")
     # Missing for a while, then back: nothing is lost, the count starts over
     await _polls(hass, setup_entry, STALE_AFTER_POLLS - 1)
-    assert device(hass, setup_entry, CLASSIC_BOX_ID) is not None
+    assert device(hass, setup_entry, "box3") is not None
     assert hass.states.get(connectivity).state == STATE_UNAVAILABLE
     cloud.main.boxes[HOUSEHOLD_ID].append(removed)
     await _polls(hass, setup_entry, 1)
     assert hass.states.get(connectivity).state != STATE_UNAVAILABLE
-    cloud.main.remove_box(CLASSIC_BOX_ID)
+    cloud.main.remove_box("box3")
     await _polls(hass, setup_entry, STALE_AFTER_POLLS - 1)
-    assert device(hass, setup_entry, CLASSIC_BOX_ID) is not None
+    assert device(hass, setup_entry, "box3") is not None
     await _polls(hass, setup_entry, 1)
-    assert device(hass, setup_entry, CLASSIC_BOX_ID) is None
+    assert device(hass, setup_entry, "box3") is None
     assert device(hass, setup_entry, BOX_ID) is not None
     assert er.async_get(hass).async_get(connectivity) is None
     assert hass.states.get(connectivity) is None
     # Back in the account after all: the box gets its entities anew
     cloud.main.boxes[HOUSEHOLD_ID].append(removed)
     await _polls(hass, setup_entry, 1)
-    connectivity = entity_id(hass, "binary_sensor", f"{CLASSIC_BOX_ID}_connectivity")
+    connectivity = entity_id(hass, "binary_sensor", f"{'box3'}_connectivity")
     assert hass.states.get(connectivity) is not None
 
 
@@ -391,11 +391,15 @@ async def test_device_of_a_gone_box_can_be_removed_by_hand(
     hass_ws_client: WebSocketGenerator,
 ) -> None:
     """The user may remove the device of a box the account lacks, not of one it has."""
+    cloud.main.boxes[HOUSEHOLD_ID].append(
+        tb2_box("box3", name="Bad", mac="0A1B2C3D4E5F", placed=None)
+    )
+    await _polls(hass, setup_entry, 1)
     assert await async_setup_component(hass, "config", {})
-    cloud.main.remove_box(CLASSIC_BOX_ID)
+    cloud.main.remove_box("box3")
     await _polls(hass, setup_entry, 1)
     client = await hass_ws_client(hass)
-    for box_id, success in ((BOX_ID, False), (CLASSIC_BOX_ID, True)):
+    for box_id, success in ((BOX_ID, False), ("box3", True)):
         await client.send_json_auto_id(
             {
                 "type": "config/device_registry/remove_config_entry",
@@ -404,7 +408,7 @@ async def test_device_of_a_gone_box_can_be_removed_by_hand(
             }
         )
         assert (await client.receive_json())["success"] is success
-    assert device(hass, setup_entry, CLASSIC_BOX_ID) is None
+    assert device(hass, setup_entry, "box3") is None
 
 
 async def test_new_box_gets_entities(

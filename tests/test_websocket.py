@@ -301,6 +301,16 @@ async def test_analytics(
         (BOX_ID, BOX_NAME, 150)
     ]
     assert result["result"].pop("previous_total_seconds") is None
+    # The figure already on the box at the start was not placed; the next one was
+    assert result["result"].pop("top_placed") == [
+        {
+            "tonie_id": "unknown-figure",
+            "name": None,
+            "image_url": None,
+            "kind": None,
+            "times": 1,
+        }
+    ]
     assert result["result"].pop("top_chapters") == [
         {
             "tonie_id": TONIE_ID,
@@ -371,6 +381,7 @@ async def test_analytics_switched_off(
         "first_day": None,
         "total_seconds": 0,
         "top": [],
+        "top_placed": [],
         "top_chapters": [],
         "heatmap": [[0] * 24 for _ in range(7)],
         "heatmap_boxes": [],

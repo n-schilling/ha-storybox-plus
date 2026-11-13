@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from freezegun.api import FrozenDateTimeFactory
 import probatio
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
@@ -43,7 +42,6 @@ from custom_components.storybox_plus.const import (
 
 from .conftest import (
     BOX_ID,
-    CLASSIC_BOX_ID,
     CREATIVE_ID,
     CREATIVE_NAME,
     MAC,
@@ -114,30 +112,6 @@ async def test_connectivity_unknown_without_online_state(
     assert _player(hass).state == STATE_UNKNOWN
     push.last.playback()
     assert _state(hass, "binary_sensor", f"{BOX_ID}_connectivity").state == STATE_ON
-
-
-async def test_classic_connectivity_follows_last_seen(
-    hass: HomeAssistant,
-    cloud: FakeCloud,
-    push: PushChannels,
-    config_entry: MockConfigEntry,
-    freezer: FrozenDateTimeFactory,
-) -> None:
-    """A classic box counts as online for 30 minutes after the cloud last saw it."""
-    freezer.move_to("2026-11-04T10:10:00+00:00")
-    classic = cloud.main.box(CLASSIC_BOX_ID)
-    classic["lastSeen"] = "2026-11-04T10:00:00Z"
-    await _setup(hass, config_entry)
-    connectivity = entity_id(hass, "binary_sensor", f"{CLASSIC_BOX_ID}_connectivity")
-    assert hass.states.get(connectivity).state == STATE_ON
-
-    freezer.move_to("2026-11-04T10:31:00+00:00")
-    await config_entry.runtime_data.coordinator.async_refresh()
-    assert hass.states.get(connectivity).state == STATE_OFF
-
-    del classic["lastSeen"]
-    await config_entry.runtime_data.coordinator.async_refresh()
-    assert hass.states.get(connectivity).state == STATE_UNKNOWN
 
 
 async def test_push_for_unknown_box_is_ignored(

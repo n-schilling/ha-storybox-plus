@@ -1300,6 +1300,7 @@ def websocket_analytics(
     per_tonie: dict[str, int] = {}
     per_box: dict[str, int] = {}
     per_day: dict[str, int] = {}
+    placements: dict[str, int] = {}
     names: dict[str, Any] = {}
     box_names: dict[str, str] = {}
     for entry in _loaded_entries(hass):
@@ -1320,7 +1321,10 @@ def websocket_analytics(
             per_box[box_id] = per_box.get(box_id, 0) + seconds
         for day, seconds in runtime.analytics.per_day(days).items():
             per_day[day] = per_day.get(day, 0) + seconds
+        for tonie_id, times in runtime.analytics.placements_per_tonie(days).items():
+            placements[tonie_id] = placements.get(tonie_id, 0) + times
     top = sorted(per_tonie.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    top_placed = sorted(placements.items(), key=lambda item: (-item[1], item[0]))[:limit]
     per_chapter: dict[tuple[str, int], int] = {}
     heatmap = [[0] * 24 for _ in range(7)]
     heatmap_boxes: list[dict[str, Any]] = []
@@ -1362,6 +1366,16 @@ def websocket_analytics(
                     "seconds": seconds,
                 }
                 for tonie_id, seconds in top
+            ],
+            "top_placed": [
+                {
+                    "tonie_id": tonie_id,
+                    "name": names[tonie_id].name if tonie_id in names else None,
+                    "image_url": names[tonie_id].image_url if tonie_id in names else None,
+                    "kind": names[tonie_id].kind.value if tonie_id in names else None,
+                    "times": times,
+                }
+                for tonie_id, times in top_placed
             ],
             "top_chapters": [
                 {

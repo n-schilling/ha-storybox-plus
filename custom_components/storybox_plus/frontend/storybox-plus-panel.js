@@ -15,6 +15,7 @@ if (!customElements.get("storybox-plus-panel")) {
     figures: "M12,3V13.55C11.41,13.21 10.73,13 10,13A4,4 0 0,0 6,17A4,4 0 0,0 10,21A4,4 0 0,0 14,17V7H18V3H12Z",
     listening: "M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z",
     cog: "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10M10,22C9.75,22 9.54,21.82 9.5,21.58L9.13,18.93C8.5,18.68 7.96,18.34 7.44,17.94L4.95,18.95C4.73,19.03 4.46,18.95 4.34,18.73L2.34,15.27C2.21,15.05 2.27,14.78 2.46,14.63L4.57,12.97L4.5,12L4.57,11L2.46,9.37C2.27,9.22 2.21,8.95 2.34,8.73L4.34,5.27C4.46,5.05 4.73,4.96 4.95,5.05L7.44,6.05C7.96,5.66 8.5,5.32 9.13,5.07L9.5,2.42C9.54,2.18 9.75,2 10,2H14C14.25,2 14.46,2.18 14.5,2.42L14.87,5.07C15.5,5.32 16.04,5.66 16.56,6.05L19.05,5.05C19.27,4.96 19.54,5.05 19.66,5.27L21.66,8.73C21.79,8.95 21.73,9.22 21.54,9.37L19.43,11L19.5,12L19.43,13L21.54,14.63C21.73,14.78 21.79,15.05 21.66,15.27L19.66,18.73C19.54,18.95 19.27,19.04 19.05,18.95L16.56,17.95C16.04,18.34 15.5,18.68 14.87,18.93L14.5,21.58C14.46,21.82 14.25,22 14,22H10M11.25,4L10.88,6.61C9.68,6.86 8.62,7.5 7.85,8.39L5.44,7.35L4.69,8.65L6.8,10.2C6.4,11.37 6.4,12.64 6.8,13.8L4.68,15.36L5.43,16.66L7.86,15.62C8.63,16.5 9.68,17.14 10.87,17.38L11.24,20H12.76L13.13,17.39C14.32,17.14 15.37,16.5 16.14,15.62L18.57,16.66L19.32,15.36L17.2,13.81C17.6,12.64 17.6,11.37 17.2,10.2L19.31,8.65L18.56,7.35L16.15,8.39C15.38,7.5 14.32,6.86 13.12,6.62L12.75,4H11.25Z",
+    song: "M16,9H13V14.5A2.5,2.5 0 0,1 10.5,17A2.5,2.5 0 0,1 8,14.5A2.5,2.5 0 0,1 10.5,12C11.07,12 11.58,12.19 12,12.5V7H16M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z",
     tune: "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z",
     refresh: "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
     lock: "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z",
@@ -124,6 +125,7 @@ if (!customElements.get("storybox-plus-panel")) {
       shuffleSwap: "Shuffle when another figure replaces it", shuffleSwapHint: "On a Toniebox 2: once another figure is placed after it, the chapters get a new order. Taking it off and putting it back keeps where it was. Every shuffle makes the cloud convert the figure anew.",
       shuffleFailed: "Saving failed: {e}",
       figSettings: "Settings of the figure", boxSettingsOf: "Settings of the box", dlgClose: "Close",
+      tuneOf: "Tune of the figure", renameFailed: "Saving failed: {e}",
       errConnection: "Home Assistant cannot be reached right now. Check the connection and try again.",
       errUnknown: "Something went wrong. Try again; if it keeps happening, the log of Home Assistant tells more.",
       err_cloud_error: "The Tonie cloud did not answer or refused the request. Try again in a moment.",
@@ -169,7 +171,7 @@ if (!customElements.get("storybox-plus-panel")) {
       reason_wrongFormat: "unsupported format", reason_tooLong: "more than 90 minutes in total", reason_unknownError: "unknown error",
       range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All",
       lastDays: "last {n} days", since: "since {d}", sinceSetup: "since the setup",
-      total: "Listening time", top: "Most played", perDay: "Per day", perWeek: "Per week", perBox: "Per box",
+      total: "Listening time", top: "Most played", topPlaced: "Placed most often", placedTimes: "{n}×", perDay: "Per day", perWeek: "Per week", perBox: "Per box",
       weekOf: "Week of {d}", allBoxes: "All boxes", vsBefore: "{p} compared with the {n} days before",
       topChapters: "Most played chapters", whenListened: "When it is listened to",
       whenHint: "Summed over the period, per weekday and hour of the day; no single plays are kept.",
@@ -269,6 +271,7 @@ if (!customElements.get("storybox-plus-panel")) {
       shuffleSwap: "Neu mischen, wenn eine andere Figur sie ersetzt", shuffleSwapHint: "Auf einer Toniebox 2: Sobald danach eine andere Figur aufgestellt wird, bekommen die Kapitel eine neue Reihenfolge. Abnehmen und wieder aufstellen behält die Stelle. Jedes Mischen lässt die Cloud die Figur neu umwandeln.",
       shuffleFailed: "Speichern fehlgeschlagen: {e}",
       figSettings: "Einstellungen der Figur", boxSettingsOf: "Einstellungen der Box", dlgClose: "Schließen",
+      tuneOf: "Tune der Figur", renameFailed: "Speichern fehlgeschlagen: {e}",
       errConnection: "Home Assistant ist gerade nicht erreichbar. Bitte Verbindung prüfen und noch einmal versuchen.",
       errUnknown: "Da ist etwas schiefgegangen. Bitte noch einmal versuchen; bleibt es dabei, steht mehr im Protokoll von Home Assistant.",
       err_cloud_error: "Die Tonie-Cloud hat nicht geantwortet oder die Anfrage abgelehnt. Bitte gleich noch einmal versuchen.",
@@ -314,7 +317,7 @@ if (!customElements.get("storybox-plus-panel")) {
       reason_wrongFormat: "nicht unterstütztes Format", reason_tooLong: "insgesamt mehr als 90 Minuten", reason_unknownError: "unbekannter Fehler",
       range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles",
       lastDays: "letzte {n} Tage", since: "seit {d}", sinceSetup: "seit der Einrichtung",
-      total: "Hörzeit", top: "Meistgehört", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Pro Box",
+      total: "Hörzeit", top: "Meistgehört", topPlaced: "Am häufigsten aufgelegt", placedTimes: "{n}×", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Pro Box",
       weekOf: "Woche vom {d}", allBoxes: "Alle Boxen", vsBefore: "{p} gegenüber den {n} Tagen davor",
       topChapters: "Meistgehörte Kapitel", whenListened: "Wann gehört wird",
       whenHint: "Über den Zeitraum summiert, je Wochentag und Stunde; einzelne Wiedergaben werden nicht gespeichert.",
@@ -667,9 +670,14 @@ if (!customElements.get("storybox-plus-panel")) {
           this._speak.text = value.text || "";
         }
         if (form.dataset.form === "chname" && this._edit) this._edit.renameTitle = value.title || "";
-        if (form.dataset.form === "figname" && this._edit) {
-          this._edit.name = value.name || "";
-          this._edit.live = !!value.live;
+        if (form.dataset.form === "figname" && this._figDialog) {
+          const before = this._figName?.id === this._figDialog ? this._figName : { id: this._figDialog };
+          this._figName = { ...before, name: value.name || "" };
+          // Only the button follows the typing; the field keeps its focus
+          const f = this._library?.tonies.find((x) => x.id === this._figDialog);
+          const btn = this.shadowRoot.querySelector(`#overlay ha-button[data-act="figrename:${CSS.escape(this._figDialog)}"]`);
+          const name = this._figName.name.trim();
+          if (btn) btn.disabled = !name || name === f?.name || !!this._figName.busy;
         }
         if (form.dataset.form.startsWith("voucher:")) {
           const id = form.dataset.form.slice(8);
@@ -776,8 +784,9 @@ if (!customElements.get("storybox-plus-panel")) {
       let body = "";
       if (this._tab === "figures" && this._library) {
         const find = (id) => this._library.tonies.find((x) => x.id === id);
-        const f = find(this._figDialog) || find(this._link?.id) || find(this._speak?.id) || find(this._code?.id);
+        const f = find(this._figDialog) || find(this._tuneDialog) || find(this._link?.id) || find(this._speak?.id) || find(this._code?.id);
         if (f && this._figDialog === f.id) [title, body] = [t.figSettings, this._figureSettings(f)];
+        else if (f && this._tuneDialog === f.id) [title, body] = [t.tuneOf, this._tuneRow(f)];
         else if (f && this._link?.id === f.id) [title, body] = [t.fromLink, this._linkBody()];
         else if (f && this._speak?.id === f.id) [title, body] = [t.fromText, this._speakBody()];
         else if (f && this._code?.id === f.id) [title, body] = [t.fromCode, this._codeBody()];
@@ -805,8 +814,10 @@ if (!customElements.get("storybox-plus-panel")) {
 
     // Closing drops what was open in it; a text being spoken or a code being redeemed waits
     _closeOverlay() {
-      if (this._speak?.busy || this._code?.busy || this._boxEdit?.saving || this._nightEdit?.saving || this._sched?.saving) return;
+      if (this._speak?.busy || this._code?.busy || this._boxEdit?.saving || this._nightEdit?.saving || this._sched?.saving || this._figName?.busy) return;
       this._figDialog = null;
+      this._tuneDialog = null;
+      this._figName = null;
       this._boxDialog = null;
       this._battDialog = null;
       this._link = null;
@@ -844,12 +855,22 @@ if (!customElements.get("storybox-plus-panel")) {
         `${this._btn("codeadd", t.add, "check", { look: "filled", disabled: !!c.busy })}</div>`;
     }
 
-    // What a figure has to set: its volume, the lock, a Tune, shuffling on swap
+    // What a figure has to set: a creative one its name and live mode, every one its
+    // volume; a bought one its lock, a creative one shuffling on swap. The Tune has its own.
     _figureSettings(f) {
       const t = this._t;
-      let html = this._volumeRow(f);
+      let html = "";
+      if (f.kind === "creative") {
+        const fn = this._figName?.id === f.id ? this._figName : null;
+        const name = String(fn?.name ?? f.name).trim();
+        html += `<div class="name-row"><ha-form data-form="figname"></ha-form>` +
+          this._btn(`figrename:${f.id}`, t.save, "check", { look: "filled", disabled: !name || name === f.name || !!fn?.busy }) + `</div>`;
+        if (fn?.error) html += this._alert(fill(t.renameFailed, { e: fn.error }), "error");
+        html += `<div class="switch-row"><ha-switch data-act="figlive:${esc(f.id)}"${f.live ? " checked" : ""}${fn?.busy ? " disabled" : ""} aria-label="${esc(t.c_live)}"></ha-switch>` +
+          `<div class="text"><span>${esc(t.c_live)}</span></div></div>`;
+      }
+      html += this._volumeRow(f);
       if (f.kind === "content" || f.kind === "disc") html += this._lockRow(f);
-      html += this._tuneRow(f);
       if (f.kind === "creative" && f.chapters.length > 1) {
         html += `<div class="switch-row"><ha-switch data-act="swapshuffle:${esc(f.id)}"${f.shuffle_on_swap ? " checked" : ""} aria-label="${esc(t.shuffleSwap)}"></ha-switch>` +
           `<div class="text"><span>${esc(t.shuffleSwap)}</span><span class="supporting wrap">${esc(t.shuffleSwapHint)}</span></div></div>`;
@@ -872,9 +893,9 @@ if (!customElements.get("storybox-plus-panel")) {
         ],
         code: [[{ name: "token", required: true, selector: { text: {} } }], { token: this._code?.token || "" }, () => t.codePlaceholder],
         figname: [
-          [{ name: "name", required: true, selector: { text: {} } }, { name: "live", selector: { boolean: {} } }],
-          { name: this._edit?.name || "", live: !!this._edit?.live },
-          (f) => t[`c_${f.name}`] || f.name,
+          [{ name: "name", required: true, selector: { text: {} } }],
+          { name: this._figName?.name ?? this._library?.tonies.find((x) => x.id === this._figDialog)?.name ?? "" },
+          () => t.c_name,
         ],
         schedule: [this._scheduleSchema(), this._sched?.data || {}, (f) => t[`f_${f.name}`] || f.name],
         settings: [this._settingsSchema(), this._boxEdit?.data || {}, (f) => t[`s_${f.name}`] || f.name],
@@ -1284,50 +1305,52 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!o.boxes.length) return html + this._card("", `<div class="muted">${esc(t.noBoxes)}</div>`);
       const households = new Set(o.boxes.map((b) => b.household).filter(Boolean));
       const many = households.size > 1;
-      // A Toniebox 1 reports nothing live: next to a Toniebox 2 it gets a slim row, not a card
+      // A Toniebox 1 reports nothing live: it gets a small card of its own, after the Toniebox 2
       const live = o.boxes.filter((b) => b.generation === "toniebox_2");
       const rest = o.boxes.filter((b) => b.generation !== "toniebox_2");
-      if (!live.length || !rest.length) return html + `<div class="grid">${o.boxes.map((b) => this._box(b, many)).join("")}</div>`;
-      // In the grid after the Toniebox 2 cards, so it fills the space beside them
-      return html + `<div class="grid">${live.map((b) => this._box(b, many)).join("")}` +
-        this._card(esc(t.classic), rest.map((b) => this._miniBox(b, many)).join(""), "mini-boxes") + `</div>`;
+      return html + `<div class="grid">${live.map((b) => this._box(b, many)).join("")}${rest.map((b) => this._miniBox(b, many)).join("")}</div>`;
     }
 
-    // A Toniebox 1 as one row: status, its settings in a sentence, the form on demand
-    _miniBox(b, showHousehold) {
+    // Online or offline as a small dot, the word in its tooltip
+    _dot(b) {
       const t = this._t;
       const [state, label] = b.online === true ? ["ok", t.online] : b.online === false ? ["err", t.offline] : ["", t.unknown];
+      const seen = b.online !== true && b.last_seen ? ` · ${fill(t.lastSeen, { t: this._relative(b.last_seen) })}` : "";
+      return `<span class="dot ${state}" role="img" title="${esc(label + seen)}" aria-label="${esc(label + seen)}"></span>`;
+    }
+
+    // A Toniebox 1 as a small card: its settings in a sentence and when it was last
+    // seen; the cloud knows no connection state of it, so it shows none
+    _miniBox(b, showHousehold) {
+      const t = this._t;
       const pic = safeUrl(b.image_url);
-      const seen = b.online !== true && b.last_seen ? fill(t.lastSeen, { t: this._relative(b.last_seen) }) : "";
+      const seen = b.last_seen ? fill(t.lastSeen, { t: this._relative(b.last_seen) }) : "";
       const st = b.settings;
       const chips = (showHousehold && b.household ? this._chip(b.household) : "") +
         (st?.applied === false ? this._chip(t.settingsPending, "warn") : "");
       const summary = st ? this._settingsSummary(st, true) : "";
       const cog = st ? iconButton("cog", t.boxSettingsOf, `data-act="boxset:${esc(b.id)}"`) : "";
-      return `<div class="mini-box"><div class="mini-head">` +
+      const lines = [summary, seen].filter(Boolean).map((x) => `<span class="supporting">${esc(x)}</span>`).join("");
+      return `<ha-card class="mini-box"><div class="mini-head">` +
         (pic ? `<img class="box-pic small" src="${esc(pic)}" alt="">` : "") +
-        `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>` +
-        `<span class="supporting">${esc(summary)}</span></div>` +
-        `<span class="status"><span class="dot ${state}"></span><span class="mini-status">${esc(label)}${seen ? `<span class="supporting">${esc(seen)}</span>` : ""}</span></span>` +
-        cog + `</div></div>`;
+        `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>${lines}</div>` +
+        cog + `</div></ha-card>`;
     }
 
     _box(b, showHousehold) {
       const t = this._t;
       const live = b.generation === "toniebox_2";
-      const [state, label] = b.online === true ? ["ok", t.online] : b.online === false ? ["err", t.offline] : ["", t.unknown];
-      const chips = this._chip(live ? t.toniebox2 : t.classic) + (showHousehold && b.household ? this._chip(b.household) : "");
+      const chips = showHousehold && b.household ? this._chip(b.household) : "";
       const pic = safeUrl(b.image_url);
       // Settings, night mode and bedtimes sit behind the box's cog
       const cog = b.settings || b.bedtime ? iconButton("cog", t.boxSettingsOf, `class="box-cog" data-act="boxset:${esc(b.id)}"`) : "";
-      const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span><span class="chips">${chips}</span>` +
-        `<span class="status"><span class="dot ${state}"></span>${esc(label)}</span>${cog}`;
+      // The battery's level sits in the head; the rest of the battery opens in the overlay
+      const batt = live && b.battery_stats
+        ? `<button class="fact fact-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}" aria-label="${esc(t.batteryDetails)}">${this._batteryLevel(b)}</button>`
+        : "";
+      const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span>${this._dot(b)}` +
+        `<span class="chips">${chips}</span><span class="status">${batt}</span>${cog}`;
       const facts = [];
-      // Only the level shows on the card; the rest of the battery opens in the overlay
-      if (live && b.battery_stats) {
-        facts.push(`<button class="fact fact-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}" aria-label="${esc(t.batteryDetails)}">` +
-          `${this._batteryLevel(b)}</button>`);
-      }
       if (Number.isFinite(b.volume)) {
         // The box's own percent once it reported the level; a level just sent shows as a level
         const sent = this._volSent?.box === b.id;
@@ -1351,7 +1374,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (live) body += this._playback(b.playback) + this._controls(b);
       else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
-      if ((!live || b.online !== true) && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
+      if (!live && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
       // The battery is a section of its own at the bottom of the card
       return this._card(title, body);
@@ -1447,17 +1470,20 @@ if (!customElements.get("storybox-plus-panel")) {
       else if (act.startsWith("pmarkread:")) this._setPreference(act.slice(10), "mark_read");
       else if (act.startsWith("panalytics:")) this._setPreference(act.slice(11), "analytics");
       else if (act === "dlgclose") this._closeOverlay();
-      else if (/^(fig|box|batt)set:/.test(act)) {
+      else if (/^(fig|box|batt|tune)set:/.test(act)) {
         this._closeOverlay();
         if (this._overlayHtml) return;
         const [kind, id] = act.split(/:(.*)/s);
         if (kind === "figset") this._figDialog = id;
+        else if (kind === "tuneset") this._tuneDialog = id;
         else if (kind === "boxset") this._boxDialog = id;
         else this._battDialog = id;
         this._render();
       }
       else if (act.startsWith("lock:")) this._setLock(act.slice(5));
       else if (act.startsWith("swapshuffle:")) this._setShuffleOnSwap(act.slice(12));
+      else if (act.startsWith("figrename:")) this._updateFigure(act.slice(10), "name");
+      else if (act.startsWith("figlive:")) this._updateFigure(act.slice(8), "live");
       else if (act.startsWith("homesave:")) this._renameHousehold(act.slice(9));
       else if (act.startsWith("voucher:")) this._redeemVoucher(act.slice(8));
       else if (act.startsWith("ctl:")) {
@@ -2033,7 +2059,10 @@ if (!customElements.get("storybox-plus-panel")) {
       return `<div class="figure${open ? " open" : ""}"><div class="fig-head" role="button" tabindex="0" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
         `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
         `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
-        `<span class="badges">${badges}</span>${iconButton("cog", t.figSettings, `class="fig-cog" data-act="figset:${esc(f.id)}"`)}` +
+        `<span class="badges">${badges}</span>` +
+        (this._tuneOn(f.id) || (this._library?.tunes || []).some((x) => x.suitable.includes(f.id) && !x.assigned.includes(f.id))
+          ? iconButton("song", t.tuneOf, `class="fig-cog" data-act="tuneset:${esc(f.id)}"`) : "") +
+        `${iconButton("cog", t.figSettings, `class="fig-cog" data-act="figset:${esc(f.id)}"`)}` +
         `${icon("chevron")}</div><div class="detail">${detail}</div></div>`;
     }
 
@@ -2092,7 +2121,6 @@ if (!customElements.get("storybox-plus-panel")) {
           this._btn("save", t.save, "check", { look: "filled", disabled: busy || !!edit.clearStep }) +
           this._btn("cancel", t.cancel, "close", { disabled: busy }) +
           `<span class="muted small hint">${esc(t.editHint)}</span></div>`;
-        html += `<ha-form class="figname" data-form="figname"></ha-form>`;
         if (edit.chapters.length) {
           html += `<div class="ch-bar">` +
             (edit.chapters.length > 1 ? this._btn("sorttitle", t.sortTitle, "sort", { disabled: busy }) + this._btn("shuffle", t.shuffle, "shuffle", { disabled: busy }) : "") +
@@ -2139,6 +2167,28 @@ if (!customElements.get("storybox-plus-panel")) {
       return html + this._chapterList(f.chapters);
     }
 
+    // The name or the live mode of a creative figure, from its settings
+    async _updateFigure(id, what) {
+      const f = this._library?.tonies.find((x) => x.id === id);
+      if (!f || !this._hass || this._figName?.busy) return;
+      const fn = this._figName?.id === id ? this._figName : { id, name: f.name };
+      const msg = { type: "storybox_plus/figure/update", tonie_id: id };
+      if (what === "name") {
+        const name = String(fn.name || "").trim();
+        if (!name || name === f.name) return;
+        msg.name = name;
+      } else msg.live = !f.live;
+      this._figName = { ...fn, busy: true, error: null };
+      this._refreshList();
+      try {
+        this._replaceTonie(await this._hass.callWS(msg));
+        this._figName = { id, name: undefined, busy: false, error: null };
+      } catch (err) {
+        this._figName = { ...fn, busy: false, error: this._errText(err) };
+      }
+      this._refreshList();
+    }
+
     async _setShuffleOnSwap(id) {
       const f = this._library?.tonies.find((x) => x.id === id);
       if (!f || !this._hass) return;
@@ -2169,7 +2219,7 @@ if (!customElements.get("storybox-plus-panel")) {
       switch (verb) {
         case "edit": {
           const f = tonie(arg);
-          if (f) this._edit = { id: f.id, name: f.name, live: !!f.live, chapters: f.chapters.map((c) => ({ ...c })), saving: false, error: null };
+          if (f) this._edit = { id: f.id, chapters: f.chapters.map((c) => ({ ...c })), saving: false, error: null };
           break;
         }
         case "cancel":
@@ -2327,15 +2377,9 @@ if (!customElements.get("storybox-plus-panel")) {
       edit.saving = true;
       edit.error = null;
       this._refreshList();
-      // The name goes first: it does not make the cloud convert the figure.
-      // The chapters go only when they changed, because every change does.
+      // The chapters go only when they changed, because every change makes the cloud convert
       const before = this._library?.tonies.find((x) => x.id === edit.id);
-      const name = String(edit.name || "").trim();
       try {
-        const update = { type: "storybox_plus/figure/update", tonie_id: edit.id };
-        if (name && before && name !== before.name) update.name = name;
-        if (before && edit.live !== !!before.live) update.live = edit.live;
-        if (Object.keys(update).length > 2) this._replaceTonie(await this._hass.callWS(update));
         const ids = edit.chapters.map((c) => c.id);
         // Only the names that changed go along
         const oldTitles = Object.fromEntries((before?.chapters || []).map((c) => [c.id, c.title]));
@@ -2490,12 +2534,18 @@ if (!customElements.get("storybox-plus-panel")) {
       const label = s.days ? fill(t.lastDays, { n: s.days }) : s.first_day ? fill(t.since, { d: this._date(s.first_day, true) }) : t.sinceSetup;
       html += this._card("", `<div class="total"><span class="big">${esc(hm(s.total_seconds))}</span><span class="unit">h</span></div>` +
         `<div class="muted">${esc(t.total)} · ${esc(label)}</div>` + this._comparison(s));
-      if (!s.total_seconds && !s.top.length) return html + this._card("", `<div class="muted">${esc(t.noStats)}</div>`);
+      if (!s.total_seconds && !s.top.length && !s.top_placed?.length) return html + this._card("", `<div class="muted">${esc(t.noStats)}</div>`);
       const max = Math.max(...s.top.map((x) => x.seconds), 1);
       if (s.top.length) {
         html += this._card(esc(t.top), `<ol class="top">${s.top.map((x, i) =>
           `<li><span class="rank">${i + 1}</span>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.name || t.unknownFigure)}</span>` +
           `<div class="bar"><div style="width:${((100 * x.seconds) / max).toFixed(1)}%"></div></div></div><span class="len">${esc(hm(x.seconds))}</span></li>`).join("")}</ol>`);
+      }
+      if (s.top_placed?.length) {
+        const pmax = Math.max(...s.top_placed.map((x) => x.times), 1);
+        html += this._card(esc(t.topPlaced), `<ol class="top placed">${s.top_placed.map((x, i) =>
+          `<li><span class="rank">${i + 1}</span>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.name || t.unknownFigure)}</span>` +
+          `<div class="bar"><div style="width:${((100 * x.times) / pmax).toFixed(1)}%"></div></div></div><span class="len">${esc(fill(t.placedTimes, { n: x.times }))}</span></li>`).join("")}</ol>`);
       }
       if (s.top_chapters?.length) {
         const cmax = Math.max(...s.top_chapters.map((x) => x.seconds), 1);
@@ -2676,6 +2726,7 @@ if (!customElements.get("storybox-plus-panel")) {
   .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--secondary-text-color); opacity: 0.6; }
   .dot.ok { background: var(--success-color); opacity: 1; }
   .dot.err { background: var(--error-color); opacity: 1; }
+  .card-header .dot { margin-left: 4px; }
   .facts { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 12px; }
   .fact { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
   .fact ha-svg-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
@@ -2747,7 +2798,6 @@ if (!customElements.get("storybox-plus-panel")) {
   .ch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 8px; }
   .ch-bar .hint { flex: 1 1 240px; margin: 0; }
   .link-form { margin: 2px 0 8px; }
-  ha-form.figname { display: block; margin: 4px 0 8px; }
   .clear-ask { margin: 4px 0 8px; }
   .clear-ask .ch-bar { margin-top: 8px; }
   .tune-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: 4px 0 8px; }
@@ -2780,18 +2830,17 @@ if (!customElements.get("storybox-plus-panel")) {
   .box-pic { width: 40px; height: 40px; object-fit: contain; flex: none; margin-right: 4px; }
   .box-pic.broken { display: none; }
   .box-pic.small { width: 32px; height: 32px; margin-right: 0; }
-  .mini-box { padding: 8px 0; border-bottom: 1px solid var(--divider-color); }
-  .mini-box:last-child { border-bottom: 0; padding-bottom: 0; }
-  .mini-box:first-child { padding-top: 0; }
+  .mini-box { padding: 16px; align-self: start; }
   .mini-head { display: flex; align-items: center; gap: 12px; }
   .mini-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
   .mini-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
   .mini-title .box-name { font-size: var(--ha-font-size-l, 16px); }
   .mini-text .supporting { white-space: normal; }
-  .mini-head .status { margin-left: 0; flex: none; }
-  .mini-status { display: flex; flex-direction: column; }
   .box-cog { margin: -6px -8px -6px 0; }
   .fig-head .fig-cog { margin: -6px 0; }
+  .name-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .name-row ha-form { flex: 1 1 auto; display: block; }
+  .ov-body .name-row ha-form { margin-bottom: 0; }
   .ov { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; padding: 24px; }
   .ov-back { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
   .ov-card { position: relative; width: min(640px, 100%); max-height: calc(100dvh - 48px); overflow: auto; outline: none;
@@ -2811,11 +2860,6 @@ if (!customElements.get("storybox-plus-panel")) {
   @media (max-width: 600px) {
     .ov { align-items: flex-end; padding: 0; }
     .ov-card { width: 100%; max-height: 92dvh; border-radius: 24px 24px 0 0; padding: 8px 16px 24px; }
-  }
-  @media (max-width: 600px) {
-    .mini-head { flex-wrap: wrap; }
-    .mini-text { flex-basis: calc(100% - 100px); }
-    .mini-head .status { order: 3; margin-left: 44px; }
   }
   .pref-head { font-weight: var(--ha-font-weight-medium, 500); margin: 12px 0 4px; }
   .pref-head:first-child { margin-top: 0; }

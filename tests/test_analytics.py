@@ -231,6 +231,7 @@ def test_save_soon_writes_once_per_change(analytics: Analytics, clock: Clock, st
         "days": {TODAY: {"box1": {"t1": 10}}},
         "chapters": {},
         "hours": {TODAY: {"box1": {"10": 10}}},
+        "placements": {},
     }
     clock.advance(5)
     analytics.tick()
@@ -248,6 +249,7 @@ async def test_async_save_books_what_plays(analytics: Analytics, clock: Clock, s
             "days": {TODAY: {"box1": {"t1": 42}}},
             "chapters": {},
             "hours": {TODAY: {"box1": {"10": 42}}},
+            "placements": {},
         }
     )
     clock.advance(8)
@@ -276,6 +278,7 @@ async def test_with_the_real_store(
         "days": {TODAY: {"box1": {"t1": 30}}},
         "chapters": {TODAY: {"t1": {"2": 30}}},
         "hours": {TODAY: {"box1": {"10": 30}}},
+        "placements": {},
     }
 
     again = Analytics(Store(hass, 1, key), clock.now)
@@ -340,3 +343,27 @@ async def test_hours_of_another_shape_are_left_out(store: Mock, clock: Clock) ->
     await counter.async_load()
     assert counter.per_tonie() == {"t1": 60}
     assert sum(map(sum, counter.per_weekday_hour())) == 0
+
+
+async def test_placements(store: Mock, clock: Clock) -> None:
+    """Every placing counts once per figure and day; the day filter counts back from today."""
+    week_ago = (START.date() - timedelta(days=7)).isoformat()
+    store.async_load = AsyncMock(
+        return_value={
+            "days": {},
+            "placements": {
+                week_ago: {"box1": {"t1": "4"}},
+                YESTERDAY: "broken",
+                TODAY: {"box1": {"t2": 1}, "box2": "x"},
+            },
+        }
+    )
+    counter = Analytics(store, clock.now)
+    await counter.async_load()
+    counter.placed("box1", "t2")
+    counter.placed("box2", "t1")
+    assert counter.placements_per_tonie(1) == {"t2": 2, "t1": 1}
+    assert counter.placements_per_tonie() == {"t1": 5, "t2": 2}
+    counter.save_soon()
+    data_func, _ = store.async_delay_save.call_args.args
+    assert data_func()["placements"][TODAY] == {"box1": {"t2": 2}, "box2": {"t1": 1}}

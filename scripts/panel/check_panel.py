@@ -87,6 +87,7 @@ def _analytics(today: date) -> dict[str, Any]:
     days: dict[str, Any] = {}
     chapters: dict[str, Any] = {}
     hours: dict[str, Any] = {}
+    placements: dict[str, Any] = {}
     counts = {"fig-fox": 8, "fig-dragon": 3, "fig-moon": 12, "fig-grandma": 4, "fig-sea": 5}
     for back in range(75):
         day = today - timedelta(days=back)
@@ -96,10 +97,13 @@ def _analytics(today: date) -> dict[str, Any]:
         sums: dict[str, int] = {}
         per_chapter: dict[str, dict[str, int]] = {}
         per_hour: dict[str, int] = {}
+        placed: dict[str, int] = {}
         for _ in range(rng.randint(2, 5 if weekend else 3)):
             figure = rng.choices(list(weights), weights=list(weights.values()))[0]
             seconds = rng.randint(4, 22) * 60
             sums[figure] = sums.get(figure, 0) + seconds
+            # The moon is placed often but for short
+            placed[figure] = placed.get(figure, 0) + (3 if figure == "fig-moon" else 1)
             # Early chapters more often than late ones
             index = str(min(int(rng.expovariate(0.6)), counts[figure] - 1))
             per_chapter.setdefault(figure, {})[index] = (
@@ -114,7 +118,8 @@ def _analytics(today: date) -> dict[str, Any]:
         days[key] = {demo_cloud.KIDS_BOX: sums}
         chapters[key] = per_chapter
         hours[key] = {demo_cloud.KIDS_BOX: per_hour}
-    return {"days": days, "chapters": chapters, "hours": hours}
+        placements[key] = {demo_cloud.KIDS_BOX: placed}
+    return {"days": days, "chapters": chapters, "hours": hours, "placements": placements}
 
 
 def _battery(today: date) -> dict[str, Any]:
@@ -526,11 +531,18 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     async def boxes() -> None:
         await _ready(page, ".fact-btn")
-        cards = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)")
+        cards = page.locator(f"{PANEL} .grid > ha-card:not(.mini-box)")
         expect(await cards.count() == 1, f"1 Toniebox 2 card expected, got {await cards.count()}")
         kids = await cards.nth(0).inner_text()
-        for part in ("Kids room", "Toniebox 2", "Online", "The Clever Fox", "Chapter 3 / 8"):
+        for part in ("Kids room", "The Clever Fox", "Chapter 3 / 8"):
             expect(part in kids, f"{part!r} missing on the box: {kids}")
+        # No generation chip and no status word: a dot with a tooltip, the battery in the head
+        for part in ("Toniebox 2", "Online"):
+            expect(part not in kids, f"{part!r} on the box: {kids}")
+        head = cards.nth(0).locator(".card-header")
+        dot = await head.locator(".dot.ok").get_attribute("title")
+        expect(dot == "Online", f"the dot's tooltip: {dot}")
+        expect(await head.locator(".fact-btn").count() == 1, "the battery not in the head")
         expect("The Frozen River" in kids and "Playing" in kids, kids)
         # The card names the battery's level only, and two sleep timers; no firmware
         expect("64 %" in kids and "per full charge" not in kids, f"battery on the card: {kids}")
@@ -551,14 +563,18 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             }"""
         )
         expect(free == ["30 min", "60 min"], f"sleep timers without an alarm: {free}")
-        # The Toniebox 1 is a slim row under the Toniebox 2, in a card of its own
-        minis = page.locator(f"{PANEL} ha-card.mini-boxes")
-        heading = await minis.locator(".card-header").inner_text()
-        expect(heading.strip() == "Toniebox 1", heading)
-        living = await minis.locator(".mini-box").inner_text()
+        # The Toniebox 1 is a small card of its own, without heading and connection state
+        minis = page.locator(f"{PANEL} .grid > ha-card.mini-box")
+        expect(await minis.count() == 1, f"{await minis.count()} small cards")
+        expect(
+            await minis.locator(".card-header, .dot").count() == 0,
+            "heading or dot on the small card",
+        )
+        living = await minis.inner_text()
         for part in ("Living room", "Last seen", "Max. 100 %", "headphones 75 %", "LED Dimmed"):
-            expect(part in living, f"{part!r} missing in the Toniebox 1 row: {living}")
-        expect("live data" not in living, "the row explains no live data")
+            expect(part in living, f"{part!r} missing in the Toniebox 1 card: {living}")
+        for part in ("live data", "Unknown", "Toniebox 1"):
+            expect(part not in living, f"{part!r} on the Toniebox 1 card: {living}")
         about = await page.locator(f"{PANEL} .about").inner_text()
         expect(about.startswith(f"Storybox Plus {_version()} · commit "), about)
         title = await page.locator(f"{PANEL} ha-top-app-bar-fixed [slot=title] .name").inner_text()
@@ -605,7 +621,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     async def bedtimes() -> None:
         # The card names the next alarm; the bedtimes sit behind the box's cog
-        card = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)").nth(0)
+        card = page.locator(f"{PANEL} .grid > ha-card:not(.mini-box)").nth(0)
         await _until(
             lambda: _has_text(card, "Next alarm"), "the next alarm on the card", seconds=10
         )
@@ -675,9 +691,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     )
 
     async def box_settings() -> None:
-        kids = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)").nth(0)
+        kids = page.locator(f"{PANEL} .grid > ha-card:not(.mini-box)").nth(0)
         # The row of the Toniebox 1 opens the same overlay with its own settings
-        living = page.locator(f"{PANEL} ha-card.mini-boxes .mini-box").first
+        living = page.locator(f"{PANEL} ha-card.mini-box").first
         overlay = await _open_overlay(page, living.locator("ha-icon-button[data-act^='boxset:']"))
         text = await overlay.inner_text()
         expect("Living room" in text and "LED Dimmed" in text, text)
@@ -912,22 +928,39 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             "the volume chip",
             seconds=5,
         )
-        await _close_overlay(page)
-        # Renamed and sorted by title in the edit mode, saved together
-        await figure.locator("ha-button[data-act^='edit:']").click()
-        name = figure.locator("ha-form[data-form=figname] input[name=name]")
+        # The name in the settings, saved by its own button; live mode by its switch
+        name = overlay.locator("ha-form[data-form=figname] input[name=name]")
         await name.wait_for()
         await name.fill("Renamed figure")
         await page.wait_for_timeout(300)
+        await overlay.locator("ha-button[data-act^='figrename:']").click()
+
+        async def named() -> bool:
+            return (await _library(api, instance))[creative["id"]]["name"] == "Renamed figure"
+
+        await _until(named, "the new name", seconds=5)
+        await overlay.locator("ha-switch[data-act^='figlive:']").click()
+
+        async def is_live() -> bool:
+            return (await _library(api, instance))[creative["id"]]["live"] is True
+
+        await _until(is_live, "the live mode saved", seconds=5)
+        await _close_overlay(page)
+        # The edit mode holds the chapters only
+        await figure.locator("ha-button[data-act^='edit:']").click()
+        await figure.locator("ha-button[data-act=sorttitle]").wait_for()
+        expect(
+            await figure.locator("ha-form[data-form=figname]").count() == 0, "name in the edit mode"
+        )
         await figure.locator("ha-button[data-act=sorttitle]").click()
         await figure.locator("ha-button[data-act=save]").click()
 
         async def saved() -> bool:
             f = (await _library(api, instance))[creative["id"]]
             titles = [c["title"] for c in f["chapters"]]
-            return f["name"] == "Renamed figure" and titles == sorted(titles, key=str.lower)
+            return titles == sorted(titles, key=str.lower)
 
-        await _until(saved, "the new name and order", seconds=5)
+        await _until(saved, "the new order", seconds=5)
         # A chapter renamed in the edit mode
         await figure.locator("ha-button[data-act^='edit:']").click()
         await figure.locator("ha-icon-button[data-act='chrename:0']").click()
@@ -960,18 +993,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         expect(await text_button.get_attribute("disabled") is not None, "text button not grey")
         tip = await figure.locator(".tip:has(ha-button[data-act^='text:'])").get_attribute("title")
         expect("Piper" in (tip or ""), f"no hint at Piper: {tip}")
-        # Live mode switched on in the edit mode, shuffling on swap outside it
-        await figure.locator("ha-button[data-act^='edit:']").click()
-        live = figure.locator("ha-form[data-form=figname] ha-switch").first
-        await live.wait_for()
-        await live.click()
-        await page.wait_for_timeout(300)
-        await figure.locator("ha-button[data-act=save]").click()
-
-        async def is_live() -> bool:
-            return (await _library(api, instance))[creative["id"]]["live"] is True
-
-        await _until(is_live, "the live mode saved", seconds=5)
+        # Shuffling on swap in the settings too
         overlay = await _figure_overlay(page, figure)
         swap = overlay.locator("ha-switch[data-act^='swapshuffle:']")
         await swap.wait_for()
@@ -1112,7 +1134,11 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await go("figures", ".figure")
         empty = page.locator(f"{PANEL} .figure", has_text="Creative figure")
         await empty.locator("[data-fold]").click()
-        overlay = await _figure_overlay(page, empty)
+        # The Tune has an overlay of its own, not in the settings
+        settings = await _figure_overlay(page, empty)
+        expect(await settings.locator(".tune-row").count() == 0, "the Tune in the settings")
+        await _close_overlay(page)
+        overlay = await _open_overlay(page, empty.locator("ha-icon-button[data-act^='tuneset:']"))
         await overlay.locator("ha-form[data-form^='tune:']").wait_for()
         await overlay.locator("ha-button[data-act^='tuneon:']").click()
 
@@ -1145,6 +1171,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             "Listening time",
             "Most played",
             "Most played chapters",
+            "Placed most often",
             "When it is listened to",
             "Per day",
             "Per box",
@@ -1153,6 +1180,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         note = page.locator(f"{PANEL} ha-alert[alert-type='info'][title='Counted locally']")
         expect(await note.count() == 1, "the note on where the numbers come from is missing")
         expect("The Clever Fox" in text, "the most played figure is missing")
+        placed = page.locator(f"{PANEL} ol.placed li")
+        expect(await placed.count() >= 3, f"{await placed.count()} figures placed")
+        first = await placed.first.inner_text()
+        expect("Moon" in first and "\u00d7" in first, f"most placed: {first}")
         compare = await page.locator(f"{PANEL} .compare").inner_text()
         expect("compared with the 30 days before" in compare, f"no comparison: {compare}")
         cells = await page.locator(f"{PANEL} .heatmap .hm-cell").count()
@@ -1423,7 +1454,7 @@ async def _close_overlay(page: Any) -> None:
 
 async def _box_overlay(page: Any) -> Any:
     """The overlay of the Toniebox 2's settings, night mode and bedtimes."""
-    card = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)").nth(0)
+    card = page.locator(f"{PANEL} .grid > ha-card:not(.mini-box)").nth(0)
     return await _open_overlay(page, card.locator("ha-icon-button[data-act^='boxset:']"))
 
 

@@ -1,4 +1,4 @@
-"""Whether a box is online, whether a Toniebox 2 charges, and whether the live channel is up."""
+"""Whether a Toniebox 2 is online and charges, and whether the live channel is up."""
 
 from __future__ import annotations
 
@@ -24,10 +24,13 @@ async def async_setup_entry(
     """Set up the binary sensors of the boxes."""
 
     def _factory(coordinator: StoryboxCoordinator, box_state: BoxState) -> list[Entity]:
-        entities: list[Entity] = [ConnectivitySensor(coordinator, box_state.box.id)]
-        if box_state.box.live:
-            entities.append(ChargingSensor(coordinator, box_state.box.id))
-        return entities
+        # A Toniebox 1 reports no connection state to the cloud: it gets no sensor
+        if not box_state.box.live:
+            return []
+        return [
+            ConnectivitySensor(coordinator, box_state.box.id),
+            ChargingSensor(coordinator, box_state.box.id),
+        ]
 
     async_follow_boxes(entry, async_add_entities, _factory)
     # Only a Toniebox 2 uses the live channel; without one it stays closed for good
@@ -36,11 +39,7 @@ async def async_setup_entry(
 
 
 class ConnectivitySensor(BoxEntity, BinarySensorEntity):
-    """Whether the box is connected to the cloud.
-
-    A Toniebox 2 reports it; the classic box counts as connected while the
-    cloud saw it in the last 30 minutes. Unknown stays unknown.
-    """
+    """Whether a Toniebox 2 is connected to the cloud, as it reports; unknown stays unknown."""
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
