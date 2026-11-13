@@ -479,7 +479,15 @@ if (!customElements.get("storybox-plus-panel")) {
         this._syncTimers();
         if (document.visibilityState === "visible") this._ensure();
       };
+      // Escape closes an open overlay wherever the focus is, also outside the page;
+      // a field or menu that uses the key itself stops it before it gets here
+      this._onKey = (e) => {
+        if (e.key !== "Escape" || !this._overlayHtml || e.defaultPrevented) return;
+        e.preventDefault();
+        this._closeOverlay();
+      };
       window.addEventListener("hashchange", this._onHash);
+      window.addEventListener("keydown", this._onKey);
       document.addEventListener("visibilitychange", this._onVisible);
       this._syncTimers();
       if (this._hass) this._ensure();
@@ -487,6 +495,7 @@ if (!customElements.get("storybox-plus-panel")) {
 
     disconnectedCallback() {
       window.removeEventListener("hashchange", this._onHash);
+      window.removeEventListener("keydown", this._onKey);
       document.removeEventListener("visibilitychange", this._onVisible);
       this._syncTimers();
     }
@@ -638,11 +647,6 @@ if (!customElements.get("storybox-plus-panel")) {
       });
       // The fold heads are rows, as in Home Assistant's lists: Enter and Space open them
       root.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && this._overlayHtml) {
-          e.preventDefault();
-          this._closeOverlay();
-          return;
-        }
         // Enter in the link field adds the link, as the button does
         if (e.key === "Enter" && e.target.closest?.('ha-form[data-form="link"]')) {
           e.preventDefault();

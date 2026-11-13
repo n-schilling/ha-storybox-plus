@@ -1274,6 +1274,52 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     await checks.run("player buttons, headphones, a voucher and content from a code", extras)
 
+    async def escape() -> None:
+        # Escape closes every overlay, wherever the focus is: in a field, on the page, nowhere
+        async def closes(opener: Any, field: str | None = None, blur: bool = False) -> None:
+            overlay = await _open_overlay(page, opener)
+            if field is not None:
+                box = overlay.locator(field).first
+                await box.wait_for()
+                await box.click()
+            if blur:
+                await page.evaluate("document.activeElement?.blur()")
+            await page.keyboard.press("Escape")
+            try:
+                await page.locator(OVERLAY).wait_for(state="detached", timeout=3000)
+            except Exception as err:
+                raise AssertionError(
+                    f"Escape left the overlay open ({field}, blur={blur})"
+                ) from err
+
+        await go("boxes", ".fact-btn")
+        kids = page.locator(f"{PANEL} .grid > ha-card:not(.mini-box)").nth(0)
+        await closes(kids.locator(".fact-btn"))
+        await closes(kids.locator(".fact-btn"), blur=True)
+        await closes(kids.locator("ha-icon-button[data-act^='boxset:']"))
+        # With the settings form open and a field in it focused
+        overlay = await _open_overlay(page, kids.locator("ha-icon-button[data-act^='boxset:']"))
+        await overlay.locator("ha-icon-button[data-act^='bedit:']").first.click()
+        name = overlay.locator("ha-form[data-form=settings] input").first
+        await name.wait_for()
+        await name.click()
+        await page.keyboard.press("Escape")
+        await page.locator(OVERLAY).wait_for(state="detached", timeout=3000)
+        await closes(page.locator(f"{PANEL} ha-card.mini-box ha-icon-button[data-act^='boxset:']"))
+        await go("figures", ".figure")
+        creative = page.locator(f"{PANEL} .figure:has([data-fold='fig-grandma'])")
+        await closes(
+            creative.locator("ha-icon-button[data-act^='figset:']"),
+            "ha-form[data-form=figname] input",
+        )
+        await closes(creative.locator("ha-icon-button[data-act^='figset:']"), blur=True)
+        empty = page.locator(f"{PANEL} .figure:has([data-fold='fig-empty'])")
+        await empty.locator("[data-fold]").click()
+        await closes(empty.locator("ha-icon-button[data-act^='tuneset:']"))
+        await closes(empty.locator("ha-button[data-act^='code:']"), "ha-form[data-form=code] input")
+
+    await checks.run("escape closes every overlay, wherever the focus is", escape)
+
     async def header() -> None:
         # Every message the page sends is noted and the integration's answers are held
         # back a little, so the spinning refresh button can be seen

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-13
+
+The last steps before 1.0.0: what is left are checks on a real box.
+
 ### Added
 
 - The listening tab ranks the figures placed most often on a Toniebox 2. Counted from now on, per day and box like the listening time; a figure already on the box when Home Assistant starts is not counted again.
@@ -26,6 +30,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Escape closes every overlay wherever the focus is; before, it did nothing once the focus had left the page, for instance after a click beside a field.
 - Pressing louder or quieter several times in a row on the page goes up or down a level each time; before, a press before the box's answer sent the same level again.
 
 ## [0.6.0] - 2026-11-13
