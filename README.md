@@ -30,9 +30,9 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes with their live state; the Toniebox 2 with its bedtimes, its battery and the charge history, made up for these pictures:
 
-<img src="docs/screenshots/boxes.png" alt="Boxes tab with the header row of icon, name and tabs, the stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; a classic box last seen two hours ago" width="700">
+<img src="docs/screenshots/boxes.png" alt="Boxes tab with the header row of icon, name and tabs, the stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a slim row, last seen two hours ago" width="700">
 
-The settings of a Toniebox 2 being changed; a classic box shows its own:
+The settings of a Toniebox 2 being changed; a Toniebox 1 shows its own:
 
 <img src="docs/screenshots/settings.png" alt="The settings form of a Toniebox 2: name, maximum volumes, light ring brightness, the limits at bedtime, skipping by tapping with its ear and winding by tilting" width="400">
 
@@ -91,14 +91,14 @@ flowchart LR
     entities --> automations["Your automations"]
 ```
 
-The REST API is read every 5 minutes: households, boxes, figures and chapters, and when the classic box was last seen. A Toniebox 2 reports live through the push channel: online state, battery, playback, volume, sleep timer. Everything to the right of the entities is up to your automations.
+The REST API is read every 5 minutes: households, boxes, figures and chapters, and when the Toniebox 1 was last seen. A Toniebox 2 reports live through the push channel: online state, battery, playback, volume, sleep timer. Everything to the right of the entities is up to your automations.
 
 ### Boxes
 
 | Device | What Home Assistant gets |
 |---|---|
 | Toniebox 2 | online state, battery, charging, media player, figure event, listening times, battery cycles, favourite chapters |
-| Toniebox (classic) | online state only. The classic box reports nothing live to the cloud; nothing is simulated or guessed. |
+| Toniebox 1 | online state only. The Toniebox 1 reports nothing live to the cloud; nothing is simulated or guessed. |
 
 Both generations can be mixed in one account. Figures (bought figures, creative figures, discs) belong to the household, not to a box; the page shows them that way.
 
@@ -188,7 +188,7 @@ A bought figure or disc that is locked cannot be claimed into another household,
 
 The page shows the settings each box has, as the cloud names them, and changes them in a form; only what changed is sent. Which ones a box has depends on its generation and its feature flags:
 
-| Setting | Toniebox 2 | Classic box |
+| Setting | Toniebox 2 | Toniebox 1 |
 |---|---|---|
 | name, maximum volume and maximum headphone volume | yes, any percent | yes, 25, 50, 75 or 100 % |
 | light ring brightness; at bedtime: light ring, maximum volume and maximum headphone volume (percent) | yes | |
@@ -231,7 +231,7 @@ flowchart LR
 
 ### Listening times and battery
 
-Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, and per hour of the day per box; never single plays. The page ranks the most played figures and chapters, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the classic box and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is switched on the settings tab, on by default; switching it off deletes the sums and sets the account up anew.
+Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, and per hour of the day per box; never single plays. The page ranks the most played figures and chapters, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is switched on the settings tab, on by default; switching it off deletes the sums and sets the account up anew.
 
 How long a charge lasts from now shows on the card, by the past charges: the level times the average full charge.
 
@@ -256,7 +256,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 
 **Storybox Plus** in the sidebar, for administrators, built from Home Assistant's own elements, in four tabs:
 
-- **Boxes**: every box with its live state and its settings; a Toniebox 2 with volume, headphones, sleep timer, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), its bedtimes with the next alarm, and its battery with the charge history.
+- **Boxes**: every box with its live state and its settings; a Toniebox 2 with volume, headphones, sleep timer, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), its bedtimes with the next alarm, and its battery with the charge history. Next to a Toniebox 2, a Toniebox 1 is a slim row in a card of its own: online state, when it was last seen, its settings in one line and the pencil to change them.
 - **Figures**: the library with search over names and chapters, a filter by kind, which figure stands on a box, the chapters with their lengths, favourites for bought figures and the tools for creative ones.
 - **Settings**: per account, the household's name and its members (shown only: name, email and role as the cloud shows them to the account, read once an hour; managed in the app), redeeming a Tunes voucher, counting the listening time, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 - **Listening**: the most played figures and chapters, when is listened to (weekday and hour), the total, a chart per day (per week over long spans) and the sums per box, for 7, 30 or 365 days or since the setup.
@@ -324,7 +324,7 @@ actions:
 
 ## Known limitations
 
-- The classic box has no live data: no battery, no playback, no figure. Only its online state is shown, and only while the cloud tells when it was last seen.
+- The Toniebox 1 has no live data: no battery, no playback, no figure. Only its online state is shown, and only while the cloud tells when it was last seen.
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The box plays whatever figure stands on it; Home Assistant cannot choose a figure.
 - The listening times count from the setup on; the cloud offers no history.
@@ -402,7 +402,7 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | `storybox_plus/bedtime/save` | `box_id`, optional `schedule_id` (none: a new bedtime, which needs `sleep_time`, `wakeup_time`, `days`), `name`, `sleep_time` and `wakeup_time` (`HH:MM`), `days` (`monday` … `sunday`), `enabled`, `alarm_enabled`, `alarm_volume` (0 to 100), `alarm_morning_light`; answers with the box |
 | `storybox_plus/bedtime/delete` | `box_id`, `schedule_id`; answers with the box |
 | `storybox_plus/night/set` | `box_id`, `enabled`, `start` and `end` (`HH:MM`, not the same), `night` and `day` (0 to 100); a Toniebox 2 only; answers with the box |
-| `storybox_plus/box/settings` | `box_id` and any of `name`, `max_volume`, `max_headphone_volume` (1 to 100; a classic box only 25, 50, 75, 100), `lightring_brightness`, `bedtime_lightring_brightness` (0 to 100), `bedtime_max_volume`, `bedtime_max_headphone_volume` (1 to 100), `skipping_enabled`, `skipping_direction` and `tap_direction` (`left`, `right`), `scrubbing_enabled`, `accelerometer_enabled`, `led_level` (`on`, `dimmed`, `off`), `age_mode`, `language`; a setting the box does not have is refused; answers with the box |
+| `storybox_plus/box/settings` | `box_id` and any of `name`, `max_volume`, `max_headphone_volume` (1 to 100; a Toniebox 1 only 25, 50, 75, 100), `lightring_brightness`, `bedtime_lightring_brightness` (0 to 100), `bedtime_max_volume`, `bedtime_max_headphone_volume` (1 to 100), `skipping_enabled`, `skipping_direction` and `tap_direction` (`left`, `right`), `scrubbing_enabled`, `accelerometer_enabled`, `led_level` (`on`, `dimmed`, `off`), `age_mode`, `language`; a setting the box does not have is refused; answers with the box |
 
 ### Stores
 
@@ -434,7 +434,7 @@ scripts/check.sh
 
 The cloud access lives in `custom_components/storybox_plus/cloud/` and imports nothing from Home Assistant, so it can be tested on its own; its README collects what is known about the API. Endpoints and payloads were learned from the official app and from the community project [HA-Toniebox](https://github.com/git4sim/HA-Toniebox) (MIT); the code here is written from scratch.
 
-The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays and confirms its alarm, a classic box, invented figures, bedtimes, listening times and charges). They drive the page in a headless browser (boxes, their settings and renaming one, the night mode set up through its form with the light ring following, a volume per figure, a creative figure renamed and sorted, the settings tab with the household's members, a figure unlocked and locked, the box's picture, a Tune laid on and taken off, the player's buttons and the headphones on the card, a voucher and content from a code, the most played chapters and the weekday and hour grid, live mode and shuffling on swap switched on, removing all chapters with its two questions, the household renamed, bedtimes with the alarm set on the box, their switches and the form to add and delete one, charge history, the header row with icon, name and tabs, the header's stamp, refresh on every tab and settings button, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
+The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays and confirms its alarm, a Toniebox 1, invented figures, bedtimes, listening times and charges). They drive the page in a headless browser (boxes, their settings and renaming one, the night mode set up through its form with the light ring following, a volume per figure, a creative figure renamed and sorted, the settings tab with the household's members, a figure unlocked and locked, the box's picture, a Tune laid on and taken off, the player's buttons and the headphones on the card, a voucher and content from a code, the most played chapters and the weekday and hour grid, live mode and shuffling on swap switched on, removing all chapters with its two questions, the household renamed, bedtimes with the alarm set on the box, their switches and the form to add and delete one, charge history, the header row with icon, name and tabs, the header's stamp, refresh on every tab and settings button, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
 
 ```bash
 uv venv --python 3.14 .venv-panel && uv pip install --python .venv-panel/bin/python -r requirements_panel.txt

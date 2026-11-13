@@ -526,15 +526,21 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     async def boxes() -> None:
         await _ready(page, ".tile")
-        cards = page.locator(f"{PANEL} .grid > ha-card")
-        expect(await cards.count() == 2, f"2 boxes expected, got {await cards.count()}")
+        cards = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)")
+        expect(await cards.count() == 1, f"1 Toniebox 2 card expected, got {await cards.count()}")
         kids = await cards.nth(0).inner_text()
         for part in ("Kids room", "Toniebox 2", "Online", "The Clever Fox", "Chapter 3 / 8"):
             expect(part in kids, f"{part!r} missing on the box: {kids}")
         expect("The Frozen River" in kids and "Playing" in kids, kids)
         expect("64 %" in kids and "per full charge" in kids, "battery missing")
-        living = await cards.nth(1).inner_text()
-        expect("Living room" in living and "Last seen" in living, living)
+        # The Toniebox 1 is a slim row under the Toniebox 2, in a card of its own
+        minis = page.locator(f"{PANEL} ha-card.mini-boxes")
+        heading = await minis.locator(".card-header").inner_text()
+        expect(heading.strip() == "Toniebox 1", heading)
+        living = await minis.locator(".mini-box").inner_text()
+        for part in ("Living room", "Last seen", "Max. 100 %", "headphones 75 %", "LED Dimmed"):
+            expect(part in living, f"{part!r} missing in the Toniebox 1 row: {living}")
+        expect("live data" not in living, "the row explains no live data")
         about = await page.locator(f"{PANEL} .about").inner_text()
         expect(about.startswith(f"Storybox Plus {_version()} · commit "), about)
         title = await page.locator(f"{PANEL} ha-top-app-bar-fixed [slot=title] .name").inner_text()
@@ -646,8 +652,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         text = await tile.inner_text()
         for part in ("Max. 75 %", "light ring 60 %", "skipping on"):
             expect(part in text, f"{part!r} missing in the settings: {text}")
-        living = page.locator(f"{PANEL} .grid > ha-card").nth(1)
-        expect("LED Dimmed" in await living.locator(".tile").inner_text(), "classic LED missing")
+        # The row of the Toniebox 1 opens its own settings form and closes it again
+        living = page.locator(f"{PANEL} ha-card.mini-boxes .mini-box").first
+        await living.locator("ha-icon-button[data-act^='bedit:']").click()
+        living_form = living.locator("ha-form[data-form=settings]")
+        await living_form.wait_for()
+        await living.locator("ha-button[data-act=bcancel]").click()
+        await living_form.wait_for(state="detached")
 
         async def rename(name: str) -> None:
             await tile.locator("ha-icon-button[data-act^='bedit:']").click()

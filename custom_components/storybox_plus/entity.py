@@ -21,7 +21,7 @@ from .const import MANUFACTURER
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
 from .ids import account_identifier, box_identifier, box_unique_id
 
-MODEL_NAMES = {Generation.CLASSIC: "Toniebox", Generation.TONIEBOX_2: "Toniebox 2"}
+MODEL_NAMES = {Generation.CLASSIC: "Toniebox 1", Generation.TONIEBOX_2: "Toniebox 2"}
 
 
 class BoxEntity(CoordinatorEntity[StoryboxCoordinator]):

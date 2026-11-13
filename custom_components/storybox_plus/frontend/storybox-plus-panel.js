@@ -98,10 +98,10 @@ if (!customElements.get("storybox-plus-panel")) {
       noEntry: "No account is set up. Add one under Settings → Devices & services.",
       notLoaded: "No account is loaded at the moment. Home Assistant tries again by itself.",
       pushDown: "Live channel not connected – states may be stale",
-      noBoxes: "No box in this account yet.", toniebox2: "Toniebox 2", classic: "Toniebox",
+      noBoxes: "No box in this account yet.", toniebox2: "Toniebox 2", classic: "Toniebox 1",
       online: "Online", offline: "Offline", unknown: "Unknown", charging: "charging",
       sleepUntil: "Sleep timer until {t}", sleepOn: "Sleep timer active", firmware: "Firmware",
-      classicNote: "The classic box reports no live data.", lastSeen: "Last seen {t}", never: "never",
+      classicNote: "A Toniebox 1 reports no live data.", lastSeen: "Last seen {t}", never: "never",
       battery: "Battery", perFull: "about {h} h per full charge", perFullProjected: "about {h} h per full charge, projected",
       remaining: "lasts about {h} more", charge1: "1 charge", chargesN: "{n} charges", nowSince: "now {t} since {p} %", noCycles: "no discharge recorded yet",
       history: "Charge history", colDay: "Day", colOn: "Run time", colLevel: "Level", colPerFull: "Per full charge",
@@ -145,7 +145,7 @@ if (!customElements.get("storybox-plus-panel")) {
       topChapters: "Most played chapters", whenListened: "When it is listened to",
       whenHint: "Summed over the period, per weekday and hour of the day; no single plays are kept.",
       noteLocalTitle: "Counted locally",
-      noteLocal: "Home Assistant counts the listening time itself, from what a Toniebox 2 reports live. It does not come from the manufacturer's cloud and so cannot be complete: it starts with the setup, the classic Toniebox is missing, and so is anything played while Home Assistant was not running.",
+      noteLocal: "Home Assistant counts the listening time itself, from what a Toniebox 2 reports live. It does not come from the manufacturer's cloud and so cannot be complete: it starts with the setup, the Toniebox 1 is missing, and so is anything played while Home Assistant was not running.",
       disabled: "Counting is switched off on the settings tab.", noStats: "Nothing was counted yet.",
       bedtimes: "Bedtimes", addSchedule: "Add", scheduleNew: "New bedtime", scheduleUnnamed: "Bedtime",
       noSchedules: "No bedtime yet. A bedtime with an alarm wakes the child on the chosen days.",
@@ -171,6 +171,7 @@ if (!customElements.get("storybox-plus-panel")) {
       s_tap_direction: "Tap direction", s_led_level: "LED", s_age_mode: "Age mode", s_language: "Language",
       v_left: "Left", v_right: "Right", v_on: "On", v_off: "Off", v_dimmed: "Dimmed",
       sumVolume: "max. {v} %", sumRing: "light ring {v} %", sumSkip: "skipping on", sumLed: "LED {v}",
+      sumPhones: "headphones {v} %", sumTilt: "winding by tilting",
       nightMode: "Night mode of the light ring", nightSetup: "Set up night mode", nightNow: "night now", dayNow: "day now",
       nightSummary: "{start} – {end}: {night} %, otherwise {day} %",
       nightHint: "Home Assistant dims the light ring at the start and sets it back at the end; a brightness set in the app in between stays until the next change. The box takes it the next time it is online.",
@@ -213,10 +214,10 @@ if (!customElements.get("storybox-plus-panel")) {
       noEntry: "Kein Konto eingerichtet. Unter Einstellungen → Geräte & Dienste hinzufügen.",
       notLoaded: "Gerade ist kein Konto geladen. Home Assistant versucht es selbst erneut.",
       pushDown: "Live-Kanal nicht verbunden – Zustände können veraltet sein",
-      noBoxes: "Noch keine Box in diesem Konto.", toniebox2: "Toniebox 2", classic: "Toniebox",
+      noBoxes: "Noch keine Box in diesem Konto.", toniebox2: "Toniebox 2", classic: "Toniebox 1",
       online: "Online", offline: "Offline", unknown: "Unbekannt", charging: "lädt",
       sleepUntil: "Schlaf-Timer bis {t}", sleepOn: "Schlaf-Timer aktiv", firmware: "Firmware",
-      classicNote: "Die klassische Box meldet keine Live-Daten.", lastSeen: "Zuletzt gesehen {t}", never: "nie",
+      classicNote: "Eine Toniebox 1 meldet keine Live-Daten.", lastSeen: "Zuletzt gesehen {t}", never: "nie",
       battery: "Akku", perFull: "etwa {h} h pro Ladung", perFullProjected: "voraussichtlich etwa {h} h pro Ladung",
       remaining: "reicht noch etwa {h}", charge1: "1 Ladung", chargesN: "{n} Ladungen", nowSince: "jetzt {t} seit {p} %", noCycles: "noch kein Entladezyklus erfasst",
       history: "Ladungsverlauf", colDay: "Tag", colOn: "Laufzeit", colLevel: "Ladestand", colPerFull: "Pro Ladung",
@@ -260,7 +261,7 @@ if (!customElements.get("storybox-plus-panel")) {
       topChapters: "Meistgehörte Kapitel", whenListened: "Wann gehört wird",
       whenHint: "Über den Zeitraum summiert, je Wochentag und Stunde; einzelne Wiedergaben werden nicht gespeichert.",
       noteLocalTitle: "Lokal mitgezählt",
-      noteLocal: "Home Assistant zählt die Hörzeit selbst mit, aus dem, was eine Toniebox 2 live meldet. Sie stammt nicht aus der Hersteller-Cloud und ist deshalb nicht vollständig: Sie beginnt mit der Einrichtung, die klassische Toniebox fehlt, und Zeiten, in denen Home Assistant nicht lief, fehlen ebenso.",
+      noteLocal: "Home Assistant zählt die Hörzeit selbst mit, aus dem, was eine Toniebox 2 live meldet. Sie stammt nicht aus der Hersteller-Cloud und ist deshalb nicht vollständig: Sie beginnt mit der Einrichtung, die Toniebox 1 fehlt, und Zeiten, in denen Home Assistant nicht lief, fehlen ebenso.",
       disabled: "Das Zählen ist im Einstellungen-Tab ausgeschaltet.", noStats: "Noch nichts gezählt.",
       bedtimes: "Schlafenszeiten", addSchedule: "Hinzufügen", scheduleNew: "Neue Schlafenszeit", scheduleUnnamed: "Schlafenszeit",
       noSchedules: "Noch keine Schlafenszeit. Eine Schlafenszeit mit Wecker weckt das Kind an den gewählten Tagen.",
@@ -286,6 +287,7 @@ if (!customElements.get("storybox-plus-panel")) {
       s_tap_direction: "Klopfrichtung", s_led_level: "LED", s_age_mode: "Altersmodus", s_language: "Sprache",
       v_left: "Links", v_right: "Rechts", v_on: "An", v_off: "Aus", v_dimmed: "Gedimmt",
       sumVolume: "max. {v} %", sumRing: "Lichtring {v} %", sumSkip: "Überspringen an", sumLed: "LED {v}",
+      sumPhones: "Kopfhörer {v} %", sumTilt: "Spulen durch Kippen",
       nightMode: "Nachtmodus des Lichtrings", nightSetup: "Nachtmodus einrichten", nightNow: "gerade Nacht", dayNow: "gerade Tag",
       nightSummary: "{start} – {end}: {night} %, sonst {day} %",
       nightHint: "Home Assistant dimmt den Lichtring zu Beginn und stellt ihn am Ende zurück; eine Helligkeit, die zwischendurch in der App gesetzt wird, bleibt bis zum nächsten Wechsel. Die Box übernimmt es, sobald sie online ist.",
@@ -1094,7 +1096,35 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!o.push_connected && o.boxes.some((b) => b.generation === "toniebox_2")) html += this._alert(t.pushDown, "warning");
       if (!o.boxes.length) return html + this._card("", `<div class="muted">${esc(t.noBoxes)}</div>`);
       const households = new Set(o.boxes.map((b) => b.household).filter(Boolean));
-      return html + `<div class="grid">${o.boxes.map((b) => this._box(b, households.size > 1)).join("")}</div>`;
+      const many = households.size > 1;
+      // A Toniebox 1 reports nothing live: next to a Toniebox 2 it gets a slim row, not a card
+      const live = o.boxes.filter((b) => b.generation === "toniebox_2");
+      const rest = o.boxes.filter((b) => b.generation !== "toniebox_2");
+      if (!live.length || !rest.length) return html + `<div class="grid">${o.boxes.map((b) => this._box(b, many)).join("")}</div>`;
+      // In the grid after the Toniebox 2 cards, so it fills the space beside them
+      return html + `<div class="grid">${live.map((b) => this._box(b, many)).join("")}` +
+        this._card(esc(t.classic), rest.map((b) => this._miniBox(b, many)).join(""), "mini-boxes") + `</div>`;
+    }
+
+    // A Toniebox 1 as one row: status, its settings in a sentence, the form on demand
+    _miniBox(b, showHousehold) {
+      const t = this._t;
+      const [state, label] = b.online === true ? ["ok", t.online] : b.online === false ? ["err", t.offline] : ["", t.unknown];
+      const pic = safeUrl(b.image_url);
+      const seen = b.online !== true && b.last_seen ? fill(t.lastSeen, { t: this._relative(b.last_seen) }) : "";
+      const st = b.settings;
+      const editing = st && this._boxEdit?.box === b.id ? this._boxEdit : null;
+      const chips = (showHousehold && b.household ? this._chip(b.household) : "") +
+        (st?.applied === false ? this._chip(t.settingsPending, "warn") : "");
+      const summary = st ? this._settingsSummary(st, true) : "";
+      const pencil = st && !editing
+        ? iconButton("pencil", t.edit, `data-act="bedit:${esc(b.id)}"${this._sched || this._boxEdit ? " disabled" : ""}`) : "";
+      return `<div class="mini-box"><div class="mini-head">` +
+        (pic ? `<img class="box-pic small" src="${esc(pic)}" alt="">` : "") +
+        `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>` +
+        `<span class="supporting">${esc([summary, b.firmware ? `${t.firmware} ${b.firmware}` : ""].filter(Boolean).join(" · "))}</span></div>` +
+        `<span class="status"><span class="dot ${state}"></span><span class="mini-status">${esc(label)}${seen ? `<span class="supporting">${esc(seen)}</span>` : ""}</span></span>` +
+        pencil + `</div>` + (editing ? this._settingsForm(editing) + `</div>` : "") + `</div>`;
     }
 
     _box(b, showHousehold) {
@@ -1236,28 +1266,40 @@ if (!customElements.get("storybox-plus-panel")) {
     _settingsTile(b) {
       const t = this._t;
       const st = b.settings;
-      const v = st.values || {};
       const editing = this._boxEdit?.box === b.id ? this._boxEdit : null;
       const chips = (st.applied === false ? this._chip(t.settingsPending, "warn") : "") +
         (st.offline_mode ? this._chip(t.offlineMode, "warn") : "");
       let html = `<div class="tile-head"><span class="tile-title">${esc(t.boxSettings)}</span>${chips}<span class="grow"></span>` +
         (editing ? "" : iconButton("pencil", t.edit, `data-act="bedit:${esc(b.id)}"${this._sched || this._boxEdit ? " disabled" : ""}`)) + `</div>`;
-      if (editing) {
-        html += `<div class="sched-form"><ha-form data-form="settings"></ha-form><div class="ch-bar">` +
-          this._btn("bsave", t.save, "check", { look: "filled", disabled: editing.saving }) +
-          this._btn("bcancel", t.cancel, "close", { disabled: editing.saving }) +
-          `<span class="muted small hint">${esc(t.settingsHint)}</span></div>`;
-        if (editing.error) html += this._alert(fill(t.settingsFailed, { e: editing.error }), "error");
-        return `<div class="tile">${html}</div></div>`;
-      }
+      if (editing) return `<div class="tile">${html}${this._settingsForm(editing)}</div></div>`;
+      html += `<div class="muted small">${esc(this._settingsSummary(st))}</div>`;
+      if (b.night) html += this._night(b);
+      return `<div class="tile">${html}</div>`;
+    }
+
+    // The settings form, opened; the caller closes the form's outer div
+    _settingsForm(editing) {
+      const t = this._t;
+      let html = `<div class="sched-form"><ha-form data-form="settings"></ha-form><div class="ch-bar">` +
+        this._btn("bsave", t.save, "check", { look: "filled", disabled: editing.saving }) +
+        this._btn("bcancel", t.cancel, "close", { disabled: editing.saving }) +
+        `<span class="muted small hint">${esc(t.settingsHint)}</span></div>`;
+      if (editing.error) html += this._alert(fill(t.settingsFailed, { e: editing.error }), "error");
+      return html;
+    }
+
+    // The settings in one sentence; a Toniebox 1 names all of its few
+    _settingsSummary(st, all = false) {
+      const t = this._t;
+      const v = st.values || {};
       const parts = [];
       if (v.max_volume != null) parts.push(fill(t.sumVolume, { v: v.max_volume }));
+      if (all && v.max_headphone_volume != null) parts.push(fill(t.sumPhones, { v: v.max_headphone_volume }));
       if (v.lightring_brightness != null) parts.push(fill(t.sumRing, { v: v.lightring_brightness }));
       if (v.skipping_enabled) parts.push(t.sumSkip);
       if (v.led_level) parts.push(fill(t.sumLed, { v: t[`v_${v.led_level}`] || v.led_level }));
-      html += `<div class="muted small">${esc(parts.length ? cap(parts.join(" · ")) : t.noSettings)}</div>`;
-      if (b.night) html += this._night(b);
-      return `<div class="tile">${html}</div>`;
+      if (all && v.accelerometer_enabled) parts.push(t.sumTilt);
+      return parts.length ? cap(parts.join(" · ")) : t.noSettings;
     }
 
     // The night mode of the light ring: a switch with the span, or the form
@@ -2509,6 +2551,23 @@ if (!customElements.get("storybox-plus-panel")) {
   .ctl-gap { width: 12px; }
   .box-pic { width: 40px; height: 40px; object-fit: contain; flex: none; margin-right: 4px; }
   .box-pic.broken { display: none; }
+  .box-pic.small { width: 32px; height: 32px; margin-right: 0; }
+  .mini-box { padding: 8px 0; border-bottom: 1px solid var(--divider-color); }
+  .mini-box:last-child { border-bottom: 0; padding-bottom: 0; }
+  .mini-box:first-child { padding-top: 0; }
+  .mini-head { display: flex; align-items: center; gap: 12px; }
+  .mini-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .mini-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .mini-title .box-name { font-size: var(--ha-font-size-l, 16px); }
+  .mini-text .supporting { white-space: normal; }
+  .mini-head .status { margin-left: 0; flex: none; }
+  .mini-status { display: flex; flex-direction: column; }
+  .mini-box .sched-form { margin-top: 8px; }
+  @media (max-width: 600px) {
+    .mini-head { flex-wrap: wrap; }
+    .mini-text { flex-basis: calc(100% - 100px); }
+    .mini-head .status { order: 3; margin-left: 44px; }
+  }
   .pref-head { font-weight: var(--ha-font-weight-medium, 500); margin: 12px 0 4px; }
   .pref-head:first-child { margin-top: 0; }
   .household-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }

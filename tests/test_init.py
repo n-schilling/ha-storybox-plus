@@ -67,7 +67,7 @@ async def test_setup_creates_devices_and_entities(
     assert tb2.connections == {(dr.CONNECTION_NETWORK_MAC, "a1:b2:c3:d4:e5:f6")}
     classic = device(hass, setup_entry, CLASSIC_BOX_ID)
     assert classic is not None
-    assert classic.model == "Toniebox"
+    assert classic.model == "Toniebox 1"
     assert classic.connections == set()
 
     entities = er.async_entries_for_config_entry(er.async_get(hass), setup_entry.entry_id)
