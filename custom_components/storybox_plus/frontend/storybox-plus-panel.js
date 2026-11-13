@@ -123,6 +123,35 @@ if (!customElements.get("storybox-plus-panel")) {
       clearYes2: "I have them elsewhere, remove all", clearNo: "Keep them",
       shuffleSwap: "Shuffle when another figure replaces it", shuffleSwapHint: "On a Toniebox 2: once another figure is placed after it, the chapters get a new order. Taking it off and putting it back keeps where it was. Every shuffle makes the cloud convert the figure anew.",
       shuffleFailed: "Saving failed: {e}",
+      figSettings: "Settings of the figure", boxSettingsOf: "Settings of the box", dlgClose: "Close",
+      errConnection: "Home Assistant cannot be reached right now. Check the connection and try again.",
+      errUnknown: "Something went wrong. Try again; if it keeps happening, the log of Home Assistant tells more.",
+      err_cloud_error: "The Tonie cloud did not answer or refused the request. Try again in a moment.",
+      err_unauthorized: "Only administrators of Home Assistant can do this.",
+      err_unknown_command: "Storybox Plus is not ready yet, for example while Home Assistant starts. Try again in a moment.",
+      err_unknown_entry: "The account is not loaded. Look at the integration in the settings of Home Assistant.",
+      err_unloaded: "Storybox Plus was reloaded meanwhile. Try again.",
+      err_unknown_figure: "This figure is no longer in the account. Refresh the page.",
+      err_unknown_box: "This box is no longer in the account. Refresh the page.",
+      err_unknown_household: "This household is no longer in the account. Refresh the page.",
+      err_unknown_chapter: "The chapters changed meanwhile. Refresh the page and try again.",
+      err_unknown_schedule: "This bedtime is gone meanwhile. Refresh the page.",
+      err_unknown_file: "The file is gone; upload it again.", err_empty_file: "The file is empty.",
+      err_not_creative: "Only creative figures take own chapters.",
+      err_not_lockable: "Only bought figures and discs can be locked.",
+      err_unknown_tune: "The account has no such Tune.", err_unsuitable_tune: "This Tune does not fit the figure.",
+      err_no_tune: "No Tune lies on this figure.",
+      err_fetcher_missing: "Links need the Media Fetcher app; it is not installed or not running.",
+      err_fetcher_unavailable: "The Media Fetcher app does not answer. Check that it is running.",
+      err_invalid_url: "That is no web link. Paste the whole link, starting with https://.",
+      err_too_long: "The video is longer than the time still free on the figure.",
+      err_too_large: "The file is larger than the figure can hold.",
+      err_speech_missing: "Text needs a Piper voice in Home Assistant (Wyoming integration).",
+      err_speech_failed: "Piper could not speak the text. Check the Piper app.",
+      err_alarm_due: "A bedtime's alarm is set; a sleep timer would cancel it.",
+      err_nothing_plays: "No figure is on the box.", err_not_supported: "This box does not have that setting.",
+      err_invalid_value: "A Toniebox 1 takes 25, 50, 75 or 100 percent.",
+      err_no_alarm: "This box has no bedtimes.",
       figVolume: "Volume of this figure", figVolumeBox: "As set on the box", figVolumeChip: "volume {v} / 13",
       figVolumeHint: "On a Toniebox 2 the figure plays at this level; taken off or replaced, the box gets its level from before back.",
       figVolumeFailed: "Saving the volume failed: {e}",
@@ -239,6 +268,35 @@ if (!customElements.get("storybox-plus-panel")) {
       clearYes2: "Ich habe sie anderswo, alle entfernen", clearNo: "Behalten",
       shuffleSwap: "Neu mischen, wenn eine andere Figur sie ersetzt", shuffleSwapHint: "Auf einer Toniebox 2: Sobald danach eine andere Figur aufgestellt wird, bekommen die Kapitel eine neue Reihenfolge. Abnehmen und wieder aufstellen behält die Stelle. Jedes Mischen lässt die Cloud die Figur neu umwandeln.",
       shuffleFailed: "Speichern fehlgeschlagen: {e}",
+      figSettings: "Einstellungen der Figur", boxSettingsOf: "Einstellungen der Box", dlgClose: "Schließen",
+      errConnection: "Home Assistant ist gerade nicht erreichbar. Bitte Verbindung prüfen und noch einmal versuchen.",
+      errUnknown: "Da ist etwas schiefgegangen. Bitte noch einmal versuchen; bleibt es dabei, steht mehr im Protokoll von Home Assistant.",
+      err_cloud_error: "Die Tonie-Cloud hat nicht geantwortet oder die Anfrage abgelehnt. Bitte gleich noch einmal versuchen.",
+      err_unauthorized: "Das dürfen nur Administratoren von Home Assistant.",
+      err_unknown_command: "Storybox Plus ist noch nicht bereit, etwa während Home Assistant startet. Bitte gleich noch einmal versuchen.",
+      err_unknown_entry: "Das Konto ist nicht geladen. Bitte die Integration in den Einstellungen von Home Assistant ansehen.",
+      err_unloaded: "Storybox Plus wurde zwischendurch neu geladen. Bitte noch einmal versuchen.",
+      err_unknown_figure: "Diese Figur ist nicht mehr im Konto. Bitte die Seite aktualisieren.",
+      err_unknown_box: "Diese Box ist nicht mehr im Konto. Bitte die Seite aktualisieren.",
+      err_unknown_household: "Diesen Haushalt gibt es im Konto nicht mehr. Bitte die Seite aktualisieren.",
+      err_unknown_chapter: "Die Kapitel haben sich zwischendurch geändert. Bitte die Seite aktualisieren und noch einmal versuchen.",
+      err_unknown_schedule: "Diese Schlafenszeit gibt es nicht mehr. Bitte die Seite aktualisieren.",
+      err_unknown_file: "Die Datei ist weg; bitte noch einmal hochladen.", err_empty_file: "Die Datei ist leer.",
+      err_not_creative: "Nur Kreativ-Tonies nehmen eigene Kapitel.",
+      err_not_lockable: "Nur gekaufte Figuren und Discs lassen sich sperren.",
+      err_unknown_tune: "Diesen Tune hat das Konto nicht.", err_unsuitable_tune: "Dieser Tune passt nicht auf die Figur.",
+      err_no_tune: "Auf dieser Figur liegt kein Tune.",
+      err_fetcher_missing: "Links brauchen die App Media Fetcher; sie ist nicht installiert oder läuft nicht.",
+      err_fetcher_unavailable: "Die App Media Fetcher antwortet nicht. Bitte prüfen, ob sie läuft.",
+      err_invalid_url: "Das ist kein Weblink. Bitte den ganzen Link einfügen, beginnend mit https://.",
+      err_too_long: "Das Video ist länger als die Zeit, die auf der Figur noch frei ist.",
+      err_too_large: "Die Datei ist größer, als die Figur aufnehmen kann.",
+      err_speech_missing: "Texte brauchen eine Piper-Stimme in Home Assistant (Wyoming-Integration).",
+      err_speech_failed: "Piper konnte den Text nicht sprechen. Bitte die Piper-App prüfen.",
+      err_alarm_due: "Ein Wecker einer Schlafenszeit ist gestellt; ein Schlaf-Timer würde ihn löschen.",
+      err_nothing_plays: "Auf der Box steht keine Figur.", err_not_supported: "Diese Einstellung hat die Box nicht.",
+      err_invalid_value: "Eine Toniebox 1 nimmt 25, 50, 75 oder 100 Prozent.",
+      err_no_alarm: "Diese Box hat keine Schlafenszeiten.",
       figVolume: "Lautstärke dieser Figur", figVolumeBox: "Wie an der Box eingestellt", figVolumeChip: "Lautstärke {v} / 13",
       figVolumeHint: "Auf einer Toniebox 2 spielt die Figur mit dieser Stufe; abgenommen oder ersetzt, bekommt die Box ihre Stufe von vorher zurück.",
       figVolumeFailed: "Lautstärke speichern fehlgeschlagen: {e}",
@@ -482,7 +540,7 @@ if (!customElements.get("storybox-plus-panel")) {
         this._stamps[key] = new Date();
         delete this._errors[key];
       } catch (err) {
-        this._errors[key] = err?.message || String(err);
+        this._errors[key] = this._errText(err);
       }
       this._busy.delete(key);
       this._render();
@@ -514,6 +572,8 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!TABS.some(([t]) => t === tab)) tab = "boxes";
       if (window.location.hash !== `#${tab}`) window.history.replaceState(window.history.state, "", `#${tab}`);
       this._tab = tab;
+      this._figDialog = null;
+      this._boxDialog = null;
       this._render();
       this._ensure();
       this._syncTimers();
@@ -574,6 +634,11 @@ if (!customElements.get("storybox-plus-panel")) {
       });
       // The fold heads are rows, as in Home Assistant's lists: Enter and Space open them
       root.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && this._overlayHtml) {
+          e.preventDefault();
+          this._closeOverlay();
+          return;
+        }
         // Enter in the link field adds the link, as the button does
         if (e.key === "Enter" && e.target.closest?.('ha-form[data-form="link"]')) {
           e.preventDefault();
@@ -667,6 +732,7 @@ if (!customElements.get("storybox-plus-panel")) {
       list.innerHTML = this._figureList();
       this._hydrate(list);
       this._sheetHtml = this._content();
+      this._renderOverlay();
     }
 
     _render() {
@@ -684,7 +750,105 @@ if (!customElements.get("storybox-plus-panel")) {
         this._hydrate(sheet);
         this._tick();
       }
+      this._renderOverlay();
       this._header();
+    }
+
+    // The overlay above the page: the settings of a figure or a box, or a form to add
+    // chapters. It is drawn apart from the sheet, so the page under it stays as it is
+    _renderOverlay() {
+      const host = this.shadowRoot.getElementById("overlay");
+      if (!host) return;
+      const html = this._overlay();
+      if (html === this._overlayHtml) return;
+      const opened = !this._overlayHtml && !!html;
+      this._overlayHtml = html;
+      host.innerHTML = html;
+      this._hydrate(host);
+      if (opened) host.querySelector(".ov-card")?.focus();
+    }
+
+    _overlay() {
+      const t = this._t;
+      let title = "";
+      let sub = "";
+      let body = "";
+      if (this._tab === "figures" && this._library) {
+        const find = (id) => this._library.tonies.find((x) => x.id === id);
+        const f = find(this._figDialog) || find(this._link?.id) || find(this._speak?.id) || find(this._code?.id);
+        if (f && this._figDialog === f.id) [title, body] = [t.figSettings, this._figureSettings(f)];
+        else if (f && this._link?.id === f.id) [title, body] = [t.fromLink, this._linkBody()];
+        else if (f && this._speak?.id === f.id) [title, body] = [t.fromText, this._speakBody()];
+        else if (f && this._code?.id === f.id) [title, body] = [t.fromCode, this._codeBody()];
+        sub = f?.name || "";
+      } else if (this._tab === "boxes" && this._overview && this._boxDialog) {
+        const b = this._overview.boxes.find((x) => x.id === this._boxDialog);
+        if (b) {
+          title = t.boxSettingsOf;
+          sub = b.name || b.id;
+          body = (b.settings ? this._settingsTile(b) : "") + (b.bedtime ? this._bedtime(b) : "");
+        }
+      }
+      if (!body) return "";
+      return `<div class="ov"><div class="ov-back" data-act="dlgclose"></div>` +
+        `<div class="ov-card" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">` +
+        `<div class="ov-head"><div class="ov-titles"><span class="ov-title">${esc(title)}</span>` +
+        (sub ? `<span class="supporting">${esc(sub)}</span>` : "") + `</div>` +
+        iconButton("close", t.dlgClose, 'data-act="dlgclose"') + `</div><div class="ov-body">${body}</div></div></div>`;
+    }
+
+    // Closing drops what was open in it; a text being spoken or a code being redeemed waits
+    _closeOverlay() {
+      if (this._speak?.busy || this._code?.busy || this._boxEdit?.saving || this._nightEdit?.saving || this._sched?.saving) return;
+      this._figDialog = null;
+      this._boxDialog = null;
+      this._link = null;
+      this._speak = null;
+      this._code = null;
+      this._boxEdit = null;
+      this._nightEdit = null;
+      this._sched = null;
+      this._render();
+    }
+
+    _linkBody() {
+      const t = this._t;
+      return `<ha-form data-form="link"></ha-form><div class="muted small">${esc(t.linkHint)}</div>` +
+        `<div class="ov-actions">${this._btn("linkcancel", t.cancel, "close")}${this._btn("linkadd", t.add, "check", { look: "filled" })}</div>`;
+    }
+
+    _speakBody() {
+      const t = this._t;
+      const sp = this._speak;
+      let html = sp.busy
+        ? `<div class="muted small busy">${esc(t.textBusy)}</div>`
+        : `<ha-form data-form="speak"></ha-form><div class="muted small">${esc(t.textHint)}</div>` +
+          `<div class="ov-actions">${this._btn("speakcancel", t.cancel, "close")}${this._btn("speakadd", t.add, "check", { look: "filled" })}</div>`;
+      if (sp.error) html += this._alert(fill(t.textFailed, { e: sp.error }), "error");
+      return html;
+    }
+
+    _codeBody() {
+      const t = this._t;
+      const c = this._code;
+      return `<ha-form data-form="code"></ha-form><div class="muted small">${esc(t.codeHint)}</div>` +
+        (c.error ? this._alert(fill(t.codeFailed, { e: c.error }), "error") : "") +
+        `<div class="ov-actions">${this._btn("codecancel", t.cancel, "close", { disabled: !!c.busy })}` +
+        `${this._btn("codeadd", t.add, "check", { look: "filled", disabled: !!c.busy })}</div>`;
+    }
+
+    // What a figure has to set: its volume, the lock, a Tune, shuffling on swap
+    _figureSettings(f) {
+      const t = this._t;
+      let html = this._volumeRow(f);
+      if (f.kind === "content" || f.kind === "disc") html += this._lockRow(f);
+      html += this._tuneRow(f);
+      if (f.kind === "creative" && f.chapters.length > 1) {
+        html += `<div class="switch-row"><ha-switch data-act="swapshuffle:${esc(f.id)}"${f.shuffle_on_swap ? " checked" : ""} aria-label="${esc(t.shuffleSwap)}"></ha-switch>` +
+          `<div class="text"><span>${esc(t.shuffleSwap)}</span><span class="supporting wrap">${esc(t.shuffleSwapHint)}</span></div></div>`;
+        if (this._shuffleError?.id === f.id) html += this._alert(fill(t.shuffleFailed, { e: this._shuffleError.message }), "error");
+      }
+      return html;
     }
 
     // Home Assistant's forms take their schema, data and labels as properties
@@ -771,11 +935,13 @@ if (!customElements.get("storybox-plus-panel")) {
             ${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}
           </div>
         </ha-top-app-bar-fixed>
+        <div id="overlay"></div>
         <input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden>`;
       const menu = this.shadowRoot.querySelector("ha-menu-button");
       menu.hass = this._hass;
       menu.narrow = this._narrow;
       this._sheetHtml = null;
+      this._overlayHtml = null;
     }
 
     // The settings tab: per account the preferences and the cloud's version
@@ -859,7 +1025,7 @@ if (!customElements.get("storybox-plus-panel")) {
         v.code = "";
         if (this._library) this._library.tunes = answer.tunes;
       } catch (err) {
-        v.error = err?.message || String(err);
+        v.error = this._errText(err);
       }
       v.busy = false;
       this._render();
@@ -880,7 +1046,7 @@ if (!customElements.get("storybox-plus-panel")) {
         if (this._speak === sp) this._speak = null;
       } catch (err) {
         sp.busy = false;
-        sp.error = err?.message || String(err);
+        sp.error = this._errText(err);
       }
       this._refreshList();
     }
@@ -897,7 +1063,7 @@ if (!customElements.get("storybox-plus-panel")) {
         if (this._code === code) this._code = null;
       } catch (err) {
         code.busy = false;
-        code.error = err?.message || String(err);
+        code.error = this._errText(err);
       }
       this._refreshList();
     }
@@ -916,7 +1082,7 @@ if (!customElements.get("storybox-plus-panel")) {
         entry.title = answer.entry_title;
         delete this._homeNames[id];
       } catch (err) {
-        this._homeError = { id, message: err?.message || String(err) };
+        this._homeError = { id, message: this._errText(err) };
       }
       this._homeBusy = null;
       this._render();
@@ -934,7 +1100,7 @@ if (!customElements.get("storybox-plus-panel")) {
           window.setTimeout(() => this._loadOverview(), 4000);
         }
       } catch (err) {
-        this._prefError = err?.message || String(err);
+        this._prefError = this._errText(err);
       }
       this._render();
     }
@@ -946,7 +1112,7 @@ if (!customElements.get("storybox-plus-panel")) {
       try {
         f.locked = (await this._hass.callWS({ type: "storybox_plus/figure/lock", tonie_id: id, locked: !f.locked })).locked;
       } catch (err) {
-        this._lockError = { id, message: err?.message || String(err) };
+        this._lockError = { id, message: this._errText(err) };
       }
       this._refreshList();
     }
@@ -984,7 +1150,7 @@ if (!customElements.get("storybox-plus-panel")) {
         // A creative figure plays other chapters now; a bought one keeps its own as they were
         if (answer.figure?.kind === "creative") this._replaceTonie(answer.figure);
       } catch (err) {
-        this._tuneError = { id, message: err?.message || String(err) };
+        this._tuneError = { id, message: this._errText(err) };
       }
       this._tuneBusy = null;
       this._refreshList();
@@ -1062,6 +1228,20 @@ if (!customElements.get("storybox-plus-panel")) {
       return `<ha-alert alert-type="${kind}"${title ? ` title="${esc(title)}"` : ""}>${esc(text)}${action}</ha-alert>`;
     }
 
+    // A failure as a sentence for the user: known codes get their own text, a lost
+    // connection says so; whatever else came keeps its message, never an object
+    _errText(err) {
+      const t = this._t;
+      const e = err && typeof err === "object" && err.error && typeof err.error === "object" ? err.error : err;
+      if (e == null) return t.errUnknown;
+      if (typeof e === "number" || [1, 2, 3].includes(e.code)) return t.errConnection;
+      const code = typeof e === "object" ? e.code : null;
+      if (code && t[`err_${code}`]) return t[`err_${code}`];
+      const raw = typeof e === "string" ? e : typeof e.message === "string" ? e.message : "";
+      if (/connection (lost|closed)|failed to fetch|socket/i.test(raw)) return t.errConnection;
+      return raw.trim() || t.errUnknown;
+    }
+
     _fail(message) {
       return this._alert(`${this._t.failed}: ${message}`, "error", "",
         `<ha-button slot="action" appearance="plain" data-act="retry">${esc(this._t.retry)}</ha-button>`);
@@ -1113,18 +1293,16 @@ if (!customElements.get("storybox-plus-panel")) {
       const pic = safeUrl(b.image_url);
       const seen = b.online !== true && b.last_seen ? fill(t.lastSeen, { t: this._relative(b.last_seen) }) : "";
       const st = b.settings;
-      const editing = st && this._boxEdit?.box === b.id ? this._boxEdit : null;
       const chips = (showHousehold && b.household ? this._chip(b.household) : "") +
         (st?.applied === false ? this._chip(t.settingsPending, "warn") : "");
       const summary = st ? this._settingsSummary(st, true) : "";
-      const pencil = st && !editing
-        ? iconButton("pencil", t.edit, `data-act="bedit:${esc(b.id)}"${this._sched || this._boxEdit ? " disabled" : ""}`) : "";
+      const cog = st ? iconButton("cog", t.boxSettingsOf, `data-act="boxset:${esc(b.id)}"`) : "";
       return `<div class="mini-box"><div class="mini-head">` +
         (pic ? `<img class="box-pic small" src="${esc(pic)}" alt="">` : "") +
         `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>` +
         `<span class="supporting">${esc([summary, b.firmware ? `${t.firmware} ${b.firmware}` : ""].filter(Boolean).join(" · "))}</span></div>` +
         `<span class="status"><span class="dot ${state}"></span><span class="mini-status">${esc(label)}${seen ? `<span class="supporting">${esc(seen)}</span>` : ""}</span></span>` +
-        pencil + `</div>` + (editing ? this._settingsForm(editing) + `</div>` : "") + `</div>`;
+        cog + `</div></div>`;
     }
 
     _box(b, showHousehold) {
@@ -1133,8 +1311,10 @@ if (!customElements.get("storybox-plus-panel")) {
       const [state, label] = b.online === true ? ["ok", t.online] : b.online === false ? ["err", t.offline] : ["", t.unknown];
       const chips = this._chip(live ? t.toniebox2 : t.classic) + (showHousehold && b.household ? this._chip(b.household) : "");
       const pic = safeUrl(b.image_url);
+      // Settings, night mode and bedtimes sit behind the box's cog
+      const cog = b.settings || b.bedtime ? iconButton("cog", t.boxSettingsOf, `class="box-cog" data-act="boxset:${esc(b.id)}"`) : "";
       const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span><span class="chips">${chips}</span>` +
-        `<span class="status"><span class="dot ${state}"></span>${esc(label)}</span>`;
+        `<span class="status"><span class="dot ${state}"></span>${esc(label)}</span>${cog}`;
       const facts = [];
       if (Number.isFinite(b.volume)) facts.push(`<span class="fact">${icon("volume")}${b.volume} / ${b.volume_max ?? 13}</span>`);
       if (b.headphones?.connected) {
@@ -1143,6 +1323,13 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       const sleep = this._sleep(b.sleep_timer);
       if (sleep) facts.push(`<span class="fact">${icon("sleep")}${esc(sleep)}</span>`);
+      // The next alarm and a night mode at work stay on the card; the rest is behind the cog
+      const next = b.bedtime?.next_alarm;
+      if (next) {
+        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        facts.push(`<span class="fact">${icon("alarm")}${esc(fill(t.nextAlarm, { t: when }))}</span>`);
+      }
+      if (b.night?.mode?.enabled && b.night.phase === "night") facts.push(this._chip(t.nightMode, "on"));
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
       if (live) body += this._playback(b.playback) + this._controls(b);
       else body += `<div class="muted">${esc(t.classicNote)}</div>`;
@@ -1151,8 +1338,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (b.firmware) notes.push(`${t.firmware} ${b.firmware}`);
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
       // The battery is a section of its own at the bottom of the card
-      const tile = (b.settings ? this._settingsTile(b) : "") + (b.bedtime ? this._bedtime(b) : "") +
-        (live && b.battery_stats ? this._battery(b) : "");
+      const tile = live && b.battery_stats ? this._battery(b) : "";
       return this._card(title, body, "", tile);
     }
 
@@ -1245,6 +1431,13 @@ if (!customElements.get("storybox-plus-panel")) {
       else if (act.startsWith("pautolock:")) this._setPreference(act.slice(10), "auto_lock");
       else if (act.startsWith("pmarkread:")) this._setPreference(act.slice(10), "mark_read");
       else if (act.startsWith("panalytics:")) this._setPreference(act.slice(11), "analytics");
+      else if (act === "dlgclose") this._closeOverlay();
+      else if (act.startsWith("figset:") || act.startsWith("boxset:")) {
+        this._closeOverlay();
+        if (this._overlayHtml) return;
+        if (act.startsWith("figset:")) this._figDialog = act.slice(7); else this._boxDialog = act.slice(7);
+        this._render();
+      }
       else if (act.startsWith("lock:")) this._setLock(act.slice(5));
       else if (act.startsWith("swapshuffle:")) this._setShuffleOnSwap(act.slice(12));
       else if (act.startsWith("homesave:")) this._renameHousehold(act.slice(9));
@@ -1396,9 +1589,9 @@ if (!customElements.get("storybox-plus-panel")) {
       } catch (err) {
         if (edit) {
           edit.saving = false;
-          edit.error = err?.message || String(err);
+          edit.error = this._errText(err);
         } else {
-          this._errors.overview = err?.message || String(err);
+          this._errors.overview = this._errText(err);
         }
       }
       if (!edit) this._render();
@@ -1501,7 +1694,7 @@ if (!customElements.get("storybox-plus-panel")) {
         if (this._boxEdit === edit) this._boxEdit = null;
       } catch (err) {
         edit.saving = false;
-        edit.error = err?.message || String(err);
+        edit.error = this._errText(err);
       }
       this._render();
     }
@@ -1590,9 +1783,9 @@ if (!customElements.get("storybox-plus-panel")) {
         if (edit) {
           edit.saving = false;
           edit.confirm = false;
-          edit.error = err?.message || String(err);
+          edit.error = this._errText(err);
         } else {
-          this._errors.overview = err?.message || String(err);
+          this._errors.overview = this._errText(err);
           this._render();
         }
         return false;
@@ -1641,7 +1834,7 @@ if (!customElements.get("storybox-plus-panel")) {
       try {
         await this._hass.callWS(msg);
       } catch (err) {
-        this._ctlError = { id: boxId, message: err?.message || String(err) };
+        this._ctlError = { id: boxId, message: this._errText(err) };
       }
       this._ctlBusy = null;
       // The box reports the change through the push channel; the overview shows it soon after
@@ -1785,16 +1978,14 @@ if (!customElements.get("storybox-plus-panel")) {
         if (Number.isFinite(f.chapters_remaining)) free.push(fill(f.chapters_remaining === 1 ? t.chapter1 : t.chaptersN, { n: f.chapters_remaining }));
         detail += `<div class="muted small">${esc(free.join(" · "))}</div>`;
       }
-      // Only a creative figure takes chapters; a bought one takes favourites
-      // The level only while nothing is edited: the edit mode's form takes the place
-      if (this._edit?.id !== f.id) detail += this._volumeRow(f);
-      if (f.kind === "content" || f.kind === "disc") detail += this._lockRow(f);
-      if (this._edit?.id !== f.id) detail += this._tuneRow(f);
+      // Only a creative figure takes chapters; a bought one takes favourites. Volume,
+      // lock, Tune and shuffling sit behind the figure's cog
       detail += f.kind === "creative" ? this._creativeDetail(f) : this._boughtDetail(f, chapters);
       return `<div class="figure${open ? " open" : ""}"><div class="fig-head" role="button" tabindex="0" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
         `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
         `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
-        `<span class="badges">${badges}</span>${icon("chevron")}</div><div class="detail">${detail}</div></div>`;
+        `<span class="badges">${badges}</span>${iconButton("cog", t.figSettings, `class="fig-cog" data-act="figset:${esc(f.id)}"`)}` +
+        `${icon("chevron")}</div><div class="detail">${detail}</div></div>`;
     }
 
     // With `fav` ({ id, set }) every chapter gets a star that marks it as a favourite
@@ -1889,37 +2080,13 @@ if (!customElements.get("storybox-plus-panel")) {
           : `<span class="tip" title="${esc(t.speechMissing)}">${this._btn(`text:${f.id}`, t.fromText, "text", { disabled: true })}</span>`) +
         this._btn(`code:${f.id}`, t.fromCode, "plus", { disabled: busy || this._code?.id === f.id }) +
         this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) + `</div>`;
-      if (link) {
-        html += `<div class="link-form"><ha-form data-form="link"></ha-form>` +
-          `<div class="ch-bar">${this._btn("linkadd", t.add, "check", { look: "filled" })}${this._btn("linkcancel", t.cancel, "close")}` +
-          `<span class="muted small hint">${esc(t.linkHint)}</span></div></div>`;
-      }
-      if (this._speak?.id === f.id) {
-        const sp = this._speak;
-        html += sp.busy
-          ? `<div class="muted small busy">${esc(t.textBusy)}</div>`
-          : `<div class="link-form"><ha-form data-form="speak"></ha-form>` +
-            `<div class="ch-bar">${this._btn("speakadd", t.add, "check", { look: "filled" })}${this._btn("speakcancel", t.cancel, "close")}` +
-            `<span class="muted small hint">${esc(t.textHint)}</span></div></div>`;
-        if (sp.error) html += this._alert(fill(t.textFailed, { e: sp.error }), "error");
-      }
-      if (this._code?.id === f.id) {
-        html += `<div class="link-form"><ha-form data-form="code"></ha-form>` +
-          `<div class="ch-bar">${this._btn("codeadd", t.add, "check", { look: "filled", disabled: !!this._code.busy })}${this._btn("codecancel", t.cancel, "close", { disabled: !!this._code.busy })}` +
-          `<span class="muted small hint">${esc(t.codeHint)}</span></div>` +
-          (this._code.error ? this._alert(fill(t.codeFailed, { e: this._code.error }), "error") : "") + `</div>`;
-      }
+      // Link, text and code open their form in the overlay
       if (up) {
         html += up.error
           ? this._alert(fill(up.link ? t.linkFailed : t.uploadFailed, { e: up.error }), "error", "",
             `<ha-button slot="action" appearance="plain" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</ha-button>`)
           : `<div class="muted small busy">${esc(this._progressText(up))}</div>`;
       }
-      if (f.chapters.length > 1) {
-        html += `<div class="switch-row"><ha-switch data-act="swapshuffle:${esc(f.id)}"${f.shuffle_on_swap ? " checked" : ""} aria-label="${esc(t.shuffleSwap)}"></ha-switch>` +
-          `<div class="text"><span>${esc(t.shuffleSwap)}</span><span class="supporting wrap">${esc(t.shuffleSwapHint)}</span></div></div>`;
-      }
-      if (this._shuffleError?.id === f.id) html += this._alert(fill(t.shuffleFailed, { e: this._shuffleError.message }), "error");
       return html + this._chapterList(f.chapters);
     }
 
@@ -1930,7 +2097,7 @@ if (!customElements.get("storybox-plus-panel")) {
       try {
         f.shuffle_on_swap = (await this._hass.callWS({ type: "storybox_plus/figure/shuffle_on_swap", tonie_id: id, enabled: !f.shuffle_on_swap })).shuffle_on_swap;
       } catch (err) {
-        this._shuffleError = { id, message: err?.message || String(err) };
+        this._shuffleError = { id, message: this._errText(err) };
       }
       this._refreshList();
     }
@@ -2035,6 +2202,7 @@ if (!customElements.get("storybox-plus-panel")) {
           if (this._uploads[arg] && !this._uploads[arg].error) return;
           delete this._uploads[arg];
           this._link = { id: arg, url: "" };
+          this._figDialog = null;
           this._refreshList();
           this.shadowRoot.querySelector('ha-form[data-form="link"]')?.focus();
           return;
@@ -2043,10 +2211,12 @@ if (!customElements.get("storybox-plus-panel")) {
           return;
         case "code":
           this._code = { id: arg, token: "", busy: false, error: null };
+          this._figDialog = null;
           break;
         case "text":
           if (!this._library?.speech) return;
           this._speak = { id: arg, title: "", text: "", busy: false, error: null };
+          this._figDialog = null;
           break;
         case "speakcancel":
           if (this._speak?.busy) return;
@@ -2129,7 +2299,7 @@ if (!customElements.get("storybox-plus-panel")) {
         if (this._edit === edit) this._edit = null;
       } catch (err) {
         edit.saving = false;
-        edit.error = err?.message || String(err);
+        edit.error = this._errText(err);
       }
       this._refreshList();
     }
@@ -2155,7 +2325,7 @@ if (!customElements.get("storybox-plus-panel")) {
           this._replaceTonie(tonie);
           up.done += 1;
         } catch (err) {
-          up.error = err?.message || String(err);
+          up.error = this._errText(err);
           break;
         }
       }
@@ -2171,7 +2341,7 @@ if (!customElements.get("storybox-plus-panel")) {
       try {
         f.volume = (await this._hass.callWS({ type: "storybox_plus/figure/volume", tonie_id: id, level })).volume;
       } catch (err) {
-        this._volError = { id, message: err?.message || String(err) };
+        this._volError = { id, message: this._errText(err) };
       }
       this._refreshList();
     }
@@ -2194,7 +2364,7 @@ if (!customElements.get("storybox-plus-panel")) {
         const answer = await this._hass.callWS({ type: "storybox_plus/favourites/set", tonie_id: id, chapters, active });
         f.favourites = answer.favourites;
       } catch (err) {
-        this._favError = { id, message: err?.message || String(err) };
+        this._favError = { id, message: this._errText(err) };
       }
       this._refreshList();
     }
@@ -2221,7 +2391,7 @@ if (!customElements.get("storybox-plus-panel")) {
             end();
             if (this._uploads[id] === up) delete this._uploads[id];
           } else if (ev.stage === "error") {
-            up.error = ev.message || ev.code;
+            up.error = this._errText({ code: ev.code, message: ev.message });
             end();
           } else {
             up.stage = ev.stage;
@@ -2231,7 +2401,7 @@ if (!customElements.get("storybox-plus-panel")) {
           this._refreshList();
         }, { type: "storybox_plus/chapters/add_link", tonie_id: id, url }, { resubscribe: false });
       } catch (err) {
-        up.error = err?.message || String(err);
+        up.error = this._errText(err);
         this._refreshList();
       }
     }
@@ -2562,7 +2732,28 @@ if (!customElements.get("storybox-plus-panel")) {
   .mini-text .supporting { white-space: normal; }
   .mini-head .status { margin-left: 0; flex: none; }
   .mini-status { display: flex; flex-direction: column; }
-  .mini-box .sched-form { margin-top: 8px; }
+  .box-cog { margin: -6px -8px -6px 0; }
+  .fig-head .fig-cog { margin: -6px 0; }
+  .ov { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .ov-back { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+  .ov-card { position: relative; width: min(640px, 100%); max-height: calc(100dvh - 48px); overflow: auto; outline: none;
+    background: var(--ha-card-background, var(--card-background-color, #fff)); color: var(--primary-text-color);
+    border-radius: var(--ha-dialog-border-radius, 24px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); padding: 12px 24px 24px; }
+  .ov-head { display: flex; align-items: flex-start; gap: 8px; margin: 4px -12px 12px 0; position: sticky; top: -12px;
+    background: inherit; padding-top: 8px; z-index: 1; }
+  .ov-titles { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .ov-title { font-size: var(--ha-font-size-xl, 22px); line-height: 28px; }
+  .ov-body ha-form { display: block; margin-bottom: 8px; }
+  .ov-body .tile { padding: 12px 0 14px; background: none; }
+  .ov-body .tile:first-child { border-top: 0; padding-top: 0; }
+  .ov-body .vol-row, .ov-body .tune-row { display: block; }
+  .ov-body .vol-row .hint, .ov-body .tune-row .hint { display: block; margin: 0 0 8px; }
+  .ov-body .switch-row { margin: 12px 0; }
+  .ov-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  @media (max-width: 600px) {
+    .ov { align-items: flex-end; padding: 0; }
+    .ov-card { width: 100%; max-height: 92dvh; border-radius: 24px 24px 0 0; padding: 8px 16px 24px; }
+  }
   @media (max-width: 600px) {
     .mini-head { flex-wrap: wrap; }
     .mini-text { flex-basis: calc(100% - 100px); }

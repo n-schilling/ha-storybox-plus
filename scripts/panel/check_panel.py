@@ -586,7 +586,16 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     )
 
     async def bedtimes() -> None:
-        tile = page.locator(f"{PANEL} .tile", has_text="Bedtimes")
+        # The card names the next alarm; the bedtimes sit behind the box's cog
+        card = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)").nth(0)
+        await _until(
+            lambda: _has_text(card, "Next alarm"), "the next alarm on the card", seconds=10
+        )
+        expect(
+            await card.locator(".tile").count() == 1, "only the battery as a section of the card"
+        )
+        overlay = await _box_overlay(page)
+        tile = overlay.locator(".tile", has_text="Bedtimes")
         await tile.wait_for()
         text = await tile.inner_text()
         for part in ("Bedtime", "every day", "Weekend lie-in", "Next alarm"):
@@ -609,11 +618,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await page.wait_for_timeout(300)
         await weekend.locator("ha-switch").click()
         await _until(lambda: switched(False), "the bedtime switched off", seconds=5)
+        await _close_overlay(page)
 
     await checks.run("bedtimes: next alarm armed on the box, a switch per bedtime", bedtimes)
 
     async def bedtime_form() -> None:
-        tile = page.locator(f"{PANEL} .tile", has_text="Bedtimes")
+        overlay = await _box_overlay(page)
+        tile = overlay.locator(".tile", has_text="Bedtimes")
         await tile.locator("ha-button[data-act^='sadd:']").click()
         form = tile.locator("ha-form[data-form=schedule]")
         await form.wait_for()
@@ -641,24 +652,30 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _until(
             lambda: _has_schedule(api, instance, "Nap", False), "the bedtime deleted", seconds=5
         )
+        await _close_overlay(page)
 
     await checks.run(
         "bedtimes: a new one through the form, deleted after a second click", bedtime_form
     )
 
     async def box_settings() -> None:
-        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
-        tile = kids.locator(".tile", has_text="Settings")
+        kids = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)").nth(0)
+        # The row of the Toniebox 1 opens the same overlay with its own settings
+        living = page.locator(f"{PANEL} ha-card.mini-boxes .mini-box").first
+        overlay = await _open_overlay(page, living.locator("ha-icon-button[data-act^='boxset:']"))
+        text = await overlay.inner_text()
+        expect("Living room" in text and "LED Dimmed" in text, text)
+        expect("Bedtimes" not in text, "a Toniebox 1 has no bedtimes")
+        await _close_overlay(page)
+        # Escape closes the overlay too
+        await _box_overlay(page)
+        await page.keyboard.press("Escape")
+        await page.locator(OVERLAY).wait_for(state="detached")
+        overlay = await _box_overlay(page)
+        tile = overlay.locator(".tile", has_text="Settings")
         text = await tile.inner_text()
         for part in ("Max. 75 %", "light ring 60 %", "skipping on"):
             expect(part in text, f"{part!r} missing in the settings: {text}")
-        # The row of the Toniebox 1 opens its own settings form and closes it again
-        living = page.locator(f"{PANEL} ha-card.mini-boxes .mini-box").first
-        await living.locator("ha-icon-button[data-act^='bedit:']").click()
-        living_form = living.locator("ha-form[data-form=settings]")
-        await living_form.wait_for()
-        await living.locator("ha-button[data-act=bcancel]").click()
-        await living_form.wait_for(state="detached")
 
         async def rename(name: str) -> None:
             await tile.locator("ha-icon-button[data-act^='bedit:']").click()
@@ -683,12 +700,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await rename("Nursery")
         expect("Nursery" in await kids.locator(".box-name").inner_text(), "new name not shown")
         await rename("Kids room")
+        await _close_overlay(page)
 
     await checks.run("box settings: summary per generation, renamed through the form", box_settings)
 
     async def night_mode() -> None:
-        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
-        tile = kids.locator(".tile", has_text="Settings")
+        overlay = await _box_overlay(page)
+        tile = overlay.locator(".tile", has_text="Settings")
         await tile.locator("ha-button[data-act^='nedit:']").click()
         form = tile.locator("ha-form[data-form=night]")
         await form.wait_for()
@@ -720,6 +738,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             return (await kids_box())["night"]["mode"]["enabled"] is False
 
         await _until(switched_off, "the night mode switched off", seconds=5)
+        await _close_overlay(page)
 
     await checks.run("night mode: set up through the form, the light ring follows", night_mode)
 
@@ -842,8 +861,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         # By its ID: the name changes on the way
         figure = page.locator(f"{PANEL} .figure:has([data-fold='{creative['id']}'])")
         await figure.locator("[data-fold]").click()
-        # A volume of its own, chosen from Home Assistant's dropdown
-        volume = figure.locator("ha-form[data-form^='vol:']")
+        # A volume of its own, chosen from Home Assistant's dropdown behind the figure's cog
+        expect(await figure.locator("ha-form[data-form^='vol:']").count() == 0, "volume inline")
+        overlay = await _figure_overlay(page, figure)
+        volume = overlay.locator("ha-form[data-form^='vol:']")
         await volume.wait_for()
         await volume.evaluate(
             """(form) => form.dispatchEvent(new CustomEvent("value-changed",
@@ -859,6 +880,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             "the volume chip",
             seconds=5,
         )
+        await _close_overlay(page)
         # Renamed and sorted by title in the edit mode, saved together
         await figure.locator("ha-button[data-act^='edit:']").click()
         name = figure.locator("ha-form[data-form=figname] input[name=name]")
@@ -918,7 +940,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             return (await _library(api, instance))[creative["id"]]["live"] is True
 
         await _until(is_live, "the live mode saved", seconds=5)
-        swap = figure.locator("ha-switch[data-act^='swapshuffle:']")
+        overlay = await _figure_overlay(page, figure)
+        swap = overlay.locator("ha-switch[data-act^='swapshuffle:']")
         await swap.wait_for()
         await swap.click()
 
@@ -926,6 +949,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             return (await _library(api, instance))[creative["id"]]["shuffle_on_swap"] is True
 
         await _until(shuffles, "shuffling on swap switched on", seconds=5)
+        await _close_overlay(page)
         # Later checks know the figure by its old name
         await api.ws(
             instance.token,
@@ -996,7 +1020,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await go("figures", ".figure")
         fox = page.locator(f"{PANEL} .figure", has_text="The Clever Fox")
         await fox.locator("[data-fold]").click()
-        lock = fox.locator("ha-switch[data-act^='lock:']")
+        overlay = await _figure_overlay(page, fox)
+        lock = overlay.locator("ha-switch[data-act^='lock:']")
         await lock.wait_for()
         await lock.click()
 
@@ -1006,6 +1031,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _until(unlocked, "the figure unlocked", seconds=5)
         await lock.click()
         await _until(lambda: _negate(unlocked), "the figure locked again", seconds=5)
+        await _close_overlay(page)
         # The box card shows the box's picture
         await go("boxes", ".tile")
         expect(await page.locator(f"{PANEL} img.box-pic").count() == 1, "box picture missing")
@@ -1054,8 +1080,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await go("figures", ".figure")
         empty = page.locator(f"{PANEL} .figure", has_text="Creative figure")
         await empty.locator("[data-fold]").click()
-        await empty.locator("ha-form[data-form^='tune:']").wait_for()
-        await empty.locator("ha-button[data-act^='tuneon:']").click()
+        overlay = await _figure_overlay(page, empty)
+        await overlay.locator("ha-form[data-form^='tune:']").wait_for()
+        await overlay.locator("ha-button[data-act^='tuneon:']").click()
 
         async def laid_on() -> bool:
             lib = await api.ws(instance.token, {"type": "storybox_plus/library"})
@@ -1063,7 +1090,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
         await _until(laid_on, "the Tune laid on", seconds=5)
         await _until(
-            lambda: _has_text(empty.locator(".tune-row"), "Tune on it:"),
+            lambda: _has_text(overlay.locator(".tune-row"), "Tune on it:"),
             "the Tune shown",
             seconds=5,
         )
@@ -1071,11 +1098,11 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             lambda: _has_text(empty.locator(".badges"), "Tune"), "the Tune chip", seconds=5
         )
         if shots is not None:
-            await empty.scroll_into_view_if_needed()
             await page.wait_for_timeout(400)
-            await empty.screenshot(path=str(shots / "tune.png"))
-        await empty.locator("ha-button[data-act^='tuneoff:']").click()
+            await overlay.screenshot(path=str(shots / "tune.png"))
+        await overlay.locator("ha-button[data-act^='tuneoff:']").click()
         await _until(lambda: _negate(laid_on), "the Tune taken off", seconds=5)
+        await _close_overlay(page)
 
     await checks.run("Tunes: one laid on a creative figure and taken off again", tunes)
 
@@ -1151,18 +1178,20 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await go("figures", ".figure")
         empty = page.locator(f"{PANEL} .figure:has([data-fold='fig-empty'])")
         await empty.locator("[data-fold]").click()
-        await empty.locator("ha-button[data-act^='code:']").click()
-        token = empty.locator("ha-form[data-form=code] input")
+        overlay = await _open_overlay(page, empty.locator("ha-button[data-act^='code:']"))
+        token = overlay.locator("ha-form[data-form=code] input")
         await token.wait_for()
         await token.fill("CARD-123")
         await page.wait_for_timeout(300)
-        await empty.locator("ha-button[data-act=codeadd]").click()
+        await overlay.locator("ha-button[data-act=codeadd]").click()
 
         async def from_card() -> bool:
             chapters = (await _library(api, instance))["fig-empty"]["chapters"]
             return any(c["title"] == "Song from a card" for c in chapters)
 
         await _until(from_card, "the content from the code", seconds=5)
+        # Done, the overlay closes on its own
+        await page.locator(OVERLAY).wait_for(state="detached")
 
     await checks.run("player buttons, headphones, a voucher and content from a code", extras)
 
@@ -1330,6 +1359,33 @@ def _mdi(name: str) -> str:
     script = (INTEGRATION / "frontend" / "storybox-plus-panel.js").read_text()
     start = script.index(f'    {name}: "') + len(f'    {name}: "')
     return script[start : script.index('"', start)]
+
+
+OVERLAY = f"{PANEL} #overlay .ov-card"
+
+
+async def _open_overlay(page: Any, opener: Any) -> Any:
+    """Click a cog (or another opener) and return the overlay it opens."""
+    await opener.click()
+    overlay = page.locator(OVERLAY)
+    await overlay.wait_for()
+    return overlay
+
+
+async def _close_overlay(page: Any) -> None:
+    await page.locator(f"{OVERLAY} ha-icon-button[data-act=dlgclose]").click()
+    await page.locator(OVERLAY).wait_for(state="detached")
+
+
+async def _box_overlay(page: Any) -> Any:
+    """The overlay of the Toniebox 2's settings, night mode and bedtimes."""
+    card = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)").nth(0)
+    return await _open_overlay(page, card.locator("ha-icon-button[data-act^='boxset:']"))
+
+
+async def _figure_overlay(page: Any, figure: Any) -> Any:
+    """The overlay of a figure's settings, opened by its cog."""
+    return await _open_overlay(page, figure.locator("ha-icon-button[data-act^='figset:']"))
 
 
 async def _negate(check: Callable[[], Awaitable[bool]]) -> bool:
