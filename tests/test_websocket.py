@@ -108,6 +108,7 @@ async def test_overview(
         "battery": 80,
         "charging": True,
         "volume": 7,
+        "volume_percent": None,
         "volume_max": 13,
         "headphones": None,
         "sleep_timer": {"state": "on", "alarm": False, "until": "2026-11-04T20:00:00+00:00"},

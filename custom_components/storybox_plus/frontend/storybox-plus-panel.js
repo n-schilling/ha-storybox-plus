@@ -188,7 +188,7 @@ if (!customElements.get("storybox-plus-panel")) {
       deleteSchedule: "Delete", deleteConfirm: "Really delete", scheduleFailed: "Saving the bedtime failed: {e}",
       headphones: "Headphones", headphonesBattery: "Headphones {p} %",
       ctlPrev: "Previous chapter", ctlNext: "Next chapter", ctlPlay: "Play", ctlPause: "Pause", ctlLouder: "Louder", ctlQuieter: "Quieter",
-      ctlSleep: "Sleep timer {m} min", ctlSleepOff: "Cancel the sleep timer", ctlFailed: "The box did not get the command: {e}",
+      ctlSleep: "Sleep timer {m} min", ctlSleepTitle: "Sleep timer", sleepMin: "{m} min", batteryDetails: "Battery and charge history", ctlSleepOff: "Cancel the sleep timer", ctlFailed: "The box did not get the command: {e}",
       boxSettings: "Settings", settingsPending: "waiting for the box", offlineMode: "offline mode",
       settingsFailed: "Saving the settings failed: {e}", noSettings: "The cloud names no settings of this box.",
       settingsHint: "The box takes the settings the next time it is online.",
@@ -199,7 +199,7 @@ if (!customElements.get("storybox-plus-panel")) {
       s_scrubbing_enabled: "Wind by tilting", s_accelerometer_enabled: "Tilt and tap",
       s_tap_direction: "Tap direction", s_led_level: "LED", s_age_mode: "Age mode", s_language: "Language",
       v_left: "Left", v_right: "Right", v_on: "On", v_off: "Off", v_dimmed: "Dimmed",
-      sumVolume: "max. {v} %", sumRing: "light ring {v} %", sumSkip: "skipping on", sumLed: "LED {v}",
+      sumVolume: "max. {v} %", volumeLevel: "level {v} of {max}", sumRing: "light ring {v} %", sumSkip: "skipping on", sumLed: "LED {v}",
       sumPhones: "headphones {v} %", sumTilt: "winding by tilting",
       nightMode: "Night mode of the light ring", nightSetup: "Set up night mode", nightNow: "night now", dayNow: "day now",
       nightSummary: "{start} – {end}: {night} %, otherwise {day} %",
@@ -333,7 +333,7 @@ if (!customElements.get("storybox-plus-panel")) {
       deleteSchedule: "Löschen", deleteConfirm: "Wirklich löschen", scheduleFailed: "Schlafenszeit speichern fehlgeschlagen: {e}",
       headphones: "Kopfhörer", headphonesBattery: "Kopfhörer {p} %",
       ctlPrev: "Vorheriges Kapitel", ctlNext: "Nächstes Kapitel", ctlPlay: "Abspielen", ctlPause: "Pausieren", ctlLouder: "Lauter", ctlQuieter: "Leiser",
-      ctlSleep: "Schlaf-Timer {m} Min.", ctlSleepOff: "Schlaf-Timer abbrechen", ctlFailed: "Die Box hat den Befehl nicht bekommen: {e}",
+      ctlSleep: "Schlaf-Timer {m} Min.", ctlSleepTitle: "Schlaf-Timer", sleepMin: "{m} Min.", batteryDetails: "Akku und Ladungsverlauf", ctlSleepOff: "Schlaf-Timer abbrechen", ctlFailed: "Die Box hat den Befehl nicht bekommen: {e}",
       boxSettings: "Einstellungen", settingsPending: "wartet auf die Box", offlineMode: "Offline-Modus",
       settingsFailed: "Einstellungen speichern fehlgeschlagen: {e}", noSettings: "Die Cloud nennt keine Einstellungen dieser Box.",
       settingsHint: "Die Box übernimmt die Einstellungen, sobald sie das nächste Mal online ist.",
@@ -344,7 +344,7 @@ if (!customElements.get("storybox-plus-panel")) {
       s_scrubbing_enabled: "Spulen per Kippen", s_accelerometer_enabled: "Kippen und Klopfen",
       s_tap_direction: "Klopfrichtung", s_led_level: "LED", s_age_mode: "Altersmodus", s_language: "Sprache",
       v_left: "Links", v_right: "Rechts", v_on: "An", v_off: "Aus", v_dimmed: "Gedimmt",
-      sumVolume: "max. {v} %", sumRing: "Lichtring {v} %", sumSkip: "Überspringen an", sumLed: "LED {v}",
+      sumVolume: "max. {v} %", volumeLevel: "Stufe {v} von {max}", sumRing: "Lichtring {v} %", sumSkip: "Überspringen an", sumLed: "LED {v}",
       sumPhones: "Kopfhörer {v} %", sumTilt: "Spulen durch Kippen",
       nightMode: "Nachtmodus des Lichtrings", nightSetup: "Nachtmodus einrichten", nightNow: "gerade Nacht", dayNow: "gerade Tag",
       nightSummary: "{start} – {end}: {night} %, sonst {day} %",
@@ -547,7 +547,7 @@ if (!customElements.get("storybox-plus-panel")) {
     }
 
     _loadOverview() {
-      return this._fetch("overview", { type: "storybox_plus/overview" }, (d) => { this._overview = d; });
+      return this._fetch("overview", { type: "storybox_plus/overview" }, (d) => { this._overview = d; this._keepVolume(); });
     }
 
     _loadLibrary() {
@@ -574,6 +574,7 @@ if (!customElements.get("storybox-plus-panel")) {
       this._tab = tab;
       this._figDialog = null;
       this._boxDialog = null;
+      this._battDialog = null;
       this._render();
       this._ensure();
       this._syncTimers();
@@ -781,12 +782,17 @@ if (!customElements.get("storybox-plus-panel")) {
         else if (f && this._speak?.id === f.id) [title, body] = [t.fromText, this._speakBody()];
         else if (f && this._code?.id === f.id) [title, body] = [t.fromCode, this._codeBody()];
         sub = f?.name || "";
+      } else if (this._tab === "boxes" && this._overview && this._battDialog) {
+        const b = this._overview.boxes.find((x) => x.id === this._battDialog);
+        if (b?.battery_stats) [title, sub, body] = [t.battery, b.name || b.id, this._battery(b)];
       } else if (this._tab === "boxes" && this._overview && this._boxDialog) {
         const b = this._overview.boxes.find((x) => x.id === this._boxDialog);
         if (b) {
           title = t.boxSettingsOf;
           sub = b.name || b.id;
-          body = (b.settings ? this._settingsTile(b) : "") + (b.bedtime ? this._bedtime(b) : "");
+          // The firmware matters seldom; it is noted at the end of the settings
+          body = (b.settings ? this._settingsTile(b) : "") + (b.bedtime ? this._bedtime(b) : "") +
+            (b.firmware ? `<div class="muted small ov-foot">${esc(`${t.firmware} ${b.firmware}`)}</div>` : "");
         }
       }
       if (!body) return "";
@@ -802,6 +808,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (this._speak?.busy || this._code?.busy || this._boxEdit?.saving || this._nightEdit?.saving || this._sched?.saving) return;
       this._figDialog = null;
       this._boxDialog = null;
+      this._battDialog = null;
       this._link = null;
       this._speak = null;
       this._code = null;
@@ -1300,7 +1307,7 @@ if (!customElements.get("storybox-plus-panel")) {
       return `<div class="mini-box"><div class="mini-head">` +
         (pic ? `<img class="box-pic small" src="${esc(pic)}" alt="">` : "") +
         `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>` +
-        `<span class="supporting">${esc([summary, b.firmware ? `${t.firmware} ${b.firmware}` : ""].filter(Boolean).join(" · "))}</span></div>` +
+        `<span class="supporting">${esc(summary)}</span></div>` +
         `<span class="status"><span class="dot ${state}"></span><span class="mini-status">${esc(label)}${seen ? `<span class="supporting">${esc(seen)}</span>` : ""}</span></span>` +
         cog + `</div></div>`;
     }
@@ -1316,7 +1323,17 @@ if (!customElements.get("storybox-plus-panel")) {
       const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span><span class="chips">${chips}</span>` +
         `<span class="status"><span class="dot ${state}"></span>${esc(label)}</span>${cog}`;
       const facts = [];
-      if (Number.isFinite(b.volume)) facts.push(`<span class="fact">${icon("volume")}${b.volume} / ${b.volume_max ?? 13}</span>`);
+      // Only the level shows on the card; the rest of the battery opens in the overlay
+      if (live && b.battery_stats) {
+        facts.push(`<button class="fact fact-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}" aria-label="${esc(t.batteryDetails)}">` +
+          `${this._batteryLevel(b)}</button>`);
+      }
+      if (Number.isFinite(b.volume)) {
+        // The box's own percent once it reported the level; a level just sent shows as a level
+        const sent = this._volSent?.box === b.id;
+        const shown = Number.isFinite(b.volume_percent) && !sent ? `${b.volume_percent} %` : fill(t.volumeLevel, { v: b.volume, max: b.volume_max ?? 13 });
+        facts.push(`<span class="fact${sent ? " pending" : ""}" title="${esc(fill(t.volumeLevel, { v: b.volume, max: b.volume_max ?? 13 }))}">${icon("volume")}${esc(shown)}</span>`);
+      }
       if (b.headphones?.connected) {
         const hp = Number.isFinite(b.headphones.battery) ? fill(t.headphonesBattery, { p: b.headphones.battery }) : t.headphones;
         facts.push(`<span class="fact">${icon("headphones")}${esc(hp)}</span>`);
@@ -1335,11 +1352,9 @@ if (!customElements.get("storybox-plus-panel")) {
       else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
       if ((!live || b.online !== true) && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
-      if (b.firmware) notes.push(`${t.firmware} ${b.firmware}`);
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
       // The battery is a section of its own at the bottom of the card
-      const tile = live && b.battery_stats ? this._battery(b) : "";
-      return this._card(title, body, "", tile);
+      return this._card(title, body);
     }
 
     // The weekday names in the language of Home Assistant; 1 January 2024 was a Monday
@@ -1432,10 +1447,13 @@ if (!customElements.get("storybox-plus-panel")) {
       else if (act.startsWith("pmarkread:")) this._setPreference(act.slice(10), "mark_read");
       else if (act.startsWith("panalytics:")) this._setPreference(act.slice(11), "analytics");
       else if (act === "dlgclose") this._closeOverlay();
-      else if (act.startsWith("figset:") || act.startsWith("boxset:")) {
+      else if (/^(fig|box|batt)set:/.test(act)) {
         this._closeOverlay();
         if (this._overlayHtml) return;
-        if (act.startsWith("figset:")) this._figDialog = act.slice(7); else this._boxDialog = act.slice(7);
+        const [kind, id] = act.split(/:(.*)/s);
+        if (kind === "figset") this._figDialog = id;
+        else if (kind === "boxset") this._boxDialog = id;
+        else this._battDialog = id;
         this._render();
       }
       else if (act.startsWith("lock:")) this._setLock(act.slice(5));
@@ -1816,8 +1834,9 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!alarm) {
         html += timerOn
           ? btn("sleep_clear", "sleepOff", t.ctlSleepOff, false)
-          : [15, 30, 45, 60].map((m) => `<ha-button appearance="plain" size="small" data-act="ctl:${esc(b.id)}:sleep:${m}"${busy ? " disabled" : ""}>` +
-            `${esc(fill(t.ctlSleep, { m }))}</ha-button>`).join("");
+          : `<span class="sleep-pick" title="${esc(t.ctlSleepTitle)}">${icon("sleep")}` + [30, 60].map((m) =>
+            `<button class="chip pick" data-act="ctl:${esc(b.id)}:sleep:${m}" aria-label="${esc(fill(t.ctlSleep, { m }))}"${busy ? " disabled" : ""}>` +
+            `${esc(fill(t.sleepMin, { m }))}</button>`).join("") + `</span>`;
       }
       html += `</div>`;
       if (this._ctlError?.id === b.id) html += this._alert(fill(t.ctlFailed, { e: this._ctlError.message }), "error");
@@ -1833,6 +1852,12 @@ if (!customElements.get("storybox-plus-panel")) {
       if (value !== undefined && value !== "") msg.value = Number(value);
       try {
         await this._hass.callWS(msg);
+        // The next press goes on from the level just sent, not from the one the
+        // box reported before: its answer comes through the push channel later
+        if (command === "volume") {
+          this._volSent = { box: boxId, level: msg.value, at: Date.now() };
+          this._keepVolume();
+        }
       } catch (err) {
         this._ctlError = { id: boxId, message: this._errText(err) };
       }
@@ -1840,6 +1865,26 @@ if (!customElements.get("storybox-plus-panel")) {
       // The box reports the change through the push channel; the overview shows it soon after
       window.setTimeout(() => this._loadOverview(), 1500);
       this._render();
+    }
+
+    // A level sent a moment ago wins over an overview that does not have it yet;
+    // once the box reports it, or after a few seconds, the box's word counts again
+    _keepVolume() {
+      const sent = this._volSent;
+      if (!sent) return;
+      const b = this._overview?.boxes?.find((x) => x.id === sent.box);
+      if (!b) { this._volSent = null; return; }
+      // A fresh overview with the level: the box has it
+      if (this._overview !== sent.overview && b.volume === sent.level) { this._volSent = null; return; }
+      if (Date.now() - sent.at > 4000) {
+        // No word from the box: the next overview shows what it really has
+        this._volSent = null;
+        this._loadOverview();
+        return;
+      }
+      b.volume = sent.level;
+      sent.overview = this._overview;
+      window.setTimeout(() => { if (this._volSent === sent) this._loadOverview(); }, 1500);
     }
 
     // The timer counts as set unless its state says otherwise; a timer that ends
@@ -1853,16 +1898,20 @@ if (!customElements.get("storybox-plus-panel")) {
 
     // The battery tile: the level, how long a charge lasts and, behind a fold, the
     // completed discharges. The numbers are the backend's; here they are only formatted.
+    // The level with its little battery; nothing is known while the box is switched off
+    _batteryLevel(b) {
+      const t = this._t;
+      if (!Number.isFinite(b.battery)) return `<span class="batt"><i style="height:0"></i></span>–`;
+      const low = b.battery < 20 && !b.charging;
+      return `<span class="batt${low ? " low" : ""}"><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></span>` +
+        `${b.battery} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;
+    }
+
+    // The battery in the overlay: level, what a charge lasts, and the charge history
     _battery(b) {
       const t = this._t;
       const s = b.battery_stats;
-      // Nothing is known while the box is switched off
-      let level = "–";
-      if (Number.isFinite(b.battery)) {
-        const low = b.battery < 20 && !b.charging;
-        level = `<span class="batt${low ? " low" : ""}"><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></span>` +
-          `${b.battery} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;
-      }
+      const level = this._batteryLevel(b);
       const cur = s.current;
       const parts = [];
       if (Number.isFinite(b.battery_remaining_hours)) parts.push(fill(t.remaining, { h: hours(b.battery_remaining_hours) }));
@@ -1870,7 +1919,8 @@ if (!customElements.get("storybox-plus-panel")) {
       else if (Number.isFinite(cur?.per_full)) parts.push(fill(t.perFullProjected, { h: this._num(cur.per_full) }));
       if (s.count > 0) parts.push(fill(s.count === 1 ? t.charge1 : t.chargesN, { n: s.count }));
       if (Number.isFinite(cur?.hours) && Number.isFinite(cur?.from)) parts.push(fill(t.nowSince, { t: hours(cur.hours), p: cur.from }));
-      let html = `<div class="tile-head"><span class="tile-title">${esc(t.battery)}</span><span class="fact">${level}</span></div>` +
+      // The overlay is titled "Battery" already: the level leads, large
+      let html = `<div class="batt-level fact">${level}</div>` +
         `<div class="muted small">${esc(cap(parts.length ? parts.join(" · ") : t.noCycles))}</div>`;
       const cycles = Array.isArray(s.cycles) ? s.cycles : [];
       if (cycles.length) {
@@ -1883,12 +1933,11 @@ if (!customElements.get("storybox-plus-panel")) {
           return `<tr><td>${esc(this._date(c.day))}</td><td>${esc(hours(c.hours))}</td><td>${esc(level)}</td>` +
             `<td><div class="pf"><div class="bar"><div style="width:${width}%"></div></div><span>${esc(hours(c.per_full))}</span></div></td></tr>`;
         }).join("");
-        html += `<div class="fold${open ? " open" : ""}"><div class="fig-head" role="button" tabindex="0" data-fold="${esc(key)}" aria-expanded="${open}">` +
-          `<span class="headline">${esc(t.history)}</span>${icon("chevron")}</div><div class="detail"><table class="cycles"><thead><tr>` +
+        html += `<div class="pref-head">${esc(t.history)}</div><table class="cycles"><thead><tr>` +
           `<th>${esc(t.colDay)}</th><th>${esc(t.colOn)}</th><th>${esc(t.colLevel)}</th><th>${esc(t.colPerFull)}</th></tr></thead>` +
-          `<tbody>${rows}</tbody></table></div></div>`;
+          `<tbody>${rows}</tbody></table>`;
       }
-      return `<div class="tile">${html}</div>`;
+      return `<div class="batt-view">${html}</div>`;
     }
 
     _playback(p) {
@@ -2719,6 +2768,15 @@ if (!customElements.get("storybox-plus-panel")) {
   .hm-hour { font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color); }
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 8px 0 4px; }
   .ctl-gap { width: 12px; }
+  .sleep-pick { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; color: var(--secondary-text-color); }
+  .sleep-pick .chip.pick { line-height: 28px; padding: 0 12px; background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); color: var(--primary-text-color); }
+  .sleep-pick .chip.pick[disabled] { opacity: 0.5; cursor: default; }
+  .fact.pending { opacity: .6; }
+  .fact-btn { border: 0; background: none; color: inherit; font: inherit; padding: 2px 8px; margin: -2px -8px; border-radius: 12px; cursor: pointer; }
+  .fact-btn:hover, .fact-btn:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); outline: none; }
+  .batt-level { font-size: var(--ha-font-size-2xl, 24px); margin: 0 0 6px; }
+  .ov-foot { margin-top: 12px; }
+  .batt-view .pref-head { margin-top: 16px; }
   .box-pic { width: 40px; height: 40px; object-fit: contain; flex: none; margin-right: 4px; }
   .box-pic.broken { display: none; }
   .box-pic.small { width: 32px; height: 32px; margin-right: 0; }

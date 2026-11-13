@@ -438,7 +438,9 @@ def test_parse_online(data: dict[str, Any], expected: bool | None) -> None:
 
 def test_parse_volume() -> None:
     """The level is an integer or unknown; the fraction maps 13 levels to 0..1."""
-    assert parse_volume({"level": 7, "hardwarePercentage": 55}) == Volume(level=7)
+    assert parse_volume({"level": 7, "hardwarePercentage": 55}) == Volume(level=7, percent=55)
+    assert Volume(level=7, percent=50).fraction == 0.5
+    assert Volume(level=7, percent=120).fraction == 1.0
     assert parse_volume({}) == Volume(level=None)
     assert Volume(level=None).fraction is None
     assert Volume(level=0).fraction == 0.0

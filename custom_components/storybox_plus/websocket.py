@@ -253,6 +253,7 @@ def _box_dict(
         "charging": box_state.battery.charging if box_state.battery else None,
         "volume": box_state.volume.level if box_state.volume else None,
         "volume_max": VOLUME_LEVELS,
+        "volume_percent": box_state.volume.percent if box_state.volume else None,
         "headphones": (
             {
                 "connected": box_state.headphones.connected,

@@ -215,13 +215,20 @@ class Battery:
 
 @dataclass(frozen=True, slots=True)
 class Volume:
-    """The volume of a Toniebox 2, from the push channel."""
+    """The volume of a Toniebox 2, from the push channel.
+
+    The box is set in levels; it also reports what a level means for its
+    loudness in percent (seen: level 1 is 5 %, 7 is 50 %, 8 is 60 %).
+    """
 
     level: int | None
+    percent: int | None = None
 
     @property
     def fraction(self) -> float | None:
-        """Return the level as 0..1."""
+        """Return the loudness as 0..1: the box's percent, else the level."""
+        if self.percent is not None:
+            return max(0.0, min(1.0, self.percent / 100))
         if self.level is None:
             return None
         return max(0.0, min(1.0, self.level / VOLUME_LEVELS))
@@ -688,7 +695,9 @@ def parse_online(data: dict[str, Any]) -> bool | None:
 
 def parse_volume(data: dict[str, Any]) -> Volume:
     """Parse volume/state."""
-    return Volume(level=_integer(data.get("level")))
+    return Volume(
+        level=_integer(data.get("level")), percent=_integer(data.get("hardwarePercentage"))
+    )
 
 
 def parse_playback(data: dict[str, Any], now: float | None = None) -> Playback:

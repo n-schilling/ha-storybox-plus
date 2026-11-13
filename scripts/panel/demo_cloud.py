@@ -559,7 +559,7 @@ def install() -> None:
             for topic, data in (
                 (TOPIC_ONLINE, True),
                 (TOPIC_BATTERY, Battery(percent=64, charging=False, status="discharging")),
-                (TOPIC_VOLUME, Volume(level=9)),
+                (TOPIC_VOLUME, Volume(level=9, percent=70)),
                 (TOPIC_HEADPHONES, Headphones(connected=True, kind="bluetooth", battery=80)),
                 (
                     TOPIC_PLAYBACK,
@@ -578,6 +578,16 @@ def install() -> None:
             await asyncio.Event().wait()
 
         async def async_command(self, mac: str, command: str, payload: dict[str, Any]) -> None:
+            # The box answers a volume late, with its percent (about 10 % a level)
+            if command == "volume":
+                level = payload["level"]
+                volume = Volume(level=level, percent=max(5, min(100, level * 10 - 20)))
+
+                async def answer() -> None:
+                    await asyncio.sleep(2)
+                    self._on_event(PushEvent(mac, TOPIC_VOLUME, volume))
+
+                asyncio.get_running_loop().create_task(answer())
             # The box answers a sleep timer with its state, an alarm included
             if command == "stl":
                 on = payload.get("state") == "on"

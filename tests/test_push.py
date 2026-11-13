@@ -293,7 +293,7 @@ async def test_boxes_set_before_connecting(broker: FakeBroker, sleeps: list[floa
         (TOPIC_BATTERY, b'{"percent": null, "status": null}', Battery(None, None, None)),
         (TOPIC_ONLINE, b'{"onlineState": "online"}', True),
         (TOPIC_ONLINE, b'{"onlineState": "offline"}', False),
-        (TOPIC_VOLUME, b'{"level": 7, "hardwarePercentage": 55}', Volume(level=7)),
+        (TOPIC_VOLUME, b'{"level": 7, "hardwarePercentage": 55}', Volume(level=7, percent=55)),
         (
             TOPIC_SLEEP_TIMER,
             b'{"stl": {"state": "on", "duration": 600, "until": 1760000000}}',

@@ -525,14 +525,32 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     checks = Checks()
 
     async def boxes() -> None:
-        await _ready(page, ".tile")
+        await _ready(page, ".fact-btn")
         cards = page.locator(f"{PANEL} .grid > ha-card:not(.mini-boxes)")
         expect(await cards.count() == 1, f"1 Toniebox 2 card expected, got {await cards.count()}")
         kids = await cards.nth(0).inner_text()
         for part in ("Kids room", "Toniebox 2", "Online", "The Clever Fox", "Chapter 3 / 8"):
             expect(part in kids, f"{part!r} missing on the box: {kids}")
         expect("The Frozen River" in kids and "Playing" in kids, kids)
-        expect("64 %" in kids and "per full charge" in kids, "battery missing")
+        # The card names the battery's level only, and two sleep timers; no firmware
+        expect("64 %" in kids and "per full charge" not in kids, f"battery on the card: {kids}")
+        expect("Firmware" not in kids, "the firmware on the card")
+        # While an alarm is due the timers stay away; otherwise there are two
+        timers = await cards.nth(0).locator(".sleep-pick button").all_inner_texts()
+        expect(timers in ([], ["30 min", "60 min"]), f"sleep timers: {timers}")
+        free = await page.evaluate(
+            """() => {
+              const panel = document.querySelector("home-assistant").shadowRoot
+                .querySelector("home-assistant-main").shadowRoot
+                .querySelector("partial-panel-resolver").querySelector("ha-panel-custom")
+                .querySelector("storybox-plus-panel");
+              const html = panel._controls({ id: "x", online: true, volume: 5, playback: null });
+              const box = document.createElement("div");
+              box.innerHTML = html;
+              return [...box.querySelectorAll(".sleep-pick button")].map((b) => b.textContent);
+            }"""
+        )
+        expect(free == ["30 min", "60 min"], f"sleep timers without an alarm: {free}")
         # The Toniebox 1 is a slim row under the Toniebox 2, in a card of its own
         minis = page.locator(f"{PANEL} ha-card.mini-boxes")
         heading = await minis.locator(".card-header").inner_text()
@@ -591,9 +609,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _until(
             lambda: _has_text(card, "Next alarm"), "the next alarm on the card", seconds=10
         )
-        expect(
-            await card.locator(".tile").count() == 1, "only the battery as a section of the card"
-        )
+        expect(await card.locator(".tile").count() == 0, "no sections left on the card")
         overlay = await _box_overlay(page)
         tile = overlay.locator(".tile", has_text="Bedtimes")
         await tile.wait_for()
@@ -743,22 +759,38 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     await checks.run("night mode: set up through the form, the light ring follows", night_mode)
 
     async def charge_history() -> None:
-        await page.locator(f"{PANEL} .tile [data-fold]").click()
-        rows = page.locator(f"{PANEL} table.cycles tbody tr")
-        await rows.first.wait_for()
-        expect(await rows.count() == 7, f"7 charges expected, got {await rows.count()}")
-        # Keyboard: Enter on the head closes it again
-        await page.locator(f"{PANEL} .tile [data-fold]").press("Enter")
-        await rows.first.wait_for(state="hidden")
         if shots is not None:
-            await page.locator(f"{PANEL} .tile [data-fold]").click()
-            await rows.first.wait_for()
-            await page.set_viewport_size({"width": 1200, "height": 1320})
+            await page.set_viewport_size({"width": 1200, "height": 900})
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "boxes.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
+        # The level on the card opens the battery with its charge history
+        level = page.locator(f"{PANEL} .fact-btn[data-act^='battset:']")
+        overlay = await _open_overlay(page, level)
+        rows = overlay.locator("table.cycles tbody tr")
+        await rows.first.wait_for()
+        expect(await rows.count() == 7, f"7 charges expected, got {await rows.count()}")
+        text = await overlay.inner_text()
+        expect("per full charge" in text and "Lasts about" in text, text)
+        if shots is not None:
+            await page.wait_for_timeout(400)
+            await overlay.screenshot(path=str(shots / "battery.png"))
+        await page.keyboard.press("Escape")
+        await page.locator(OVERLAY).wait_for(state="detached")
+        # Keyboard: Enter on the level opens it too
+        await level.focus()
+        await page.keyboard.press("Enter")
+        await page.locator(OVERLAY).wait_for()
+        await _close_overlay(page)
+        # The firmware is noted in the box's settings
+        settings = await _box_overlay(page)
+        expect("Firmware 1.6.30" in await settings.inner_text(), "the firmware in the settings")
+        await _close_overlay(page)
 
-    await checks.run("the charge history opens and closes, also by keyboard", charge_history)
+    await checks.run(
+        "the battery's level opens its charge history, also by keyboard; firmware in the settings",
+        charge_history,
+    )
 
     async def figures_filter() -> None:
         await go("figures", ".figure")
@@ -1033,7 +1065,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _until(lambda: _negate(unlocked), "the figure locked again", seconds=5)
         await _close_overlay(page)
         # The box card shows the box's picture
-        await go("boxes", ".tile")
+        await go("boxes", ".fact-btn")
         expect(await page.locator(f"{PANEL} img.box-pic").count() == 1, "box picture missing")
 
     await checks.run(
@@ -1140,11 +1172,11 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     async def extras() -> None:
         # Headphones and the player's buttons on the card of the Toniebox 2
-        await go("boxes", ".tile")
+        await go("boxes", ".fact-btn")
         kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
         card = await kids.inner_text()
         expect("Headphones 80 %" in card, "headphones missing on the card")
-        expect("asts about" in card, f"battery remaining missing: {card}")
+        expect("asts about" not in card, f"battery remaining on the card: {card}")
         controls = kids.locator(".controls")
         for act in ("previous", "pause", "next", "volume:8", "volume:10"):
             expect(
@@ -1157,6 +1189,18 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await controls.locator("[data-act$=':pause']").click()
         await page.wait_for_timeout(600)
         expect(await kids.locator("ha-alert[alert-type=error]").count() == 0, "the command failed")
+        # The volume shows in the box's percent; two quick presses go up two levels,
+        # though the box answers only later
+        expect("70 %" in card, f"volume not in percent: {card}")
+        await controls.locator("[data-act$=':volume:10']").click()
+        await controls.locator("[data-act$=':volume:11']").wait_for(timeout=3000)
+        await controls.locator("[data-act$=':volume:11']").click()
+        await controls.locator("[data-act$=':volume:12']").wait_for(timeout=3000)
+        await _until(
+            lambda: _has_text(kids.locator(".facts"), "90 %"),
+            "the volume the box reports after two presses",
+            seconds=10,
+        )
         # A voucher on the settings tab: a wrong one is refused, the right one adds a Tune
         await go("preferences", ".pref-head")
         code = page.locator(f"{PANEL} ha-form[data-form^='voucher:'] input")
@@ -1218,7 +1262,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         stamp = bar.locator("#stamp")
         refresh = bar.locator("ha-icon-button#refresh")
         for tab, what, message in (
-            ("boxes", ".tile", "storybox_plus/overview"),
+            ("boxes", ".fact-btn", "storybox_plus/overview"),
             ("figures", ".figure", "storybox_plus/library"),
             ("listening", ".chart", "storybox_plus/analytics"),
         ):
@@ -1318,7 +1362,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     )
 
     async def phone_dark() -> None:
-        await _ready(phone, ".tile")
+        await _ready(phone, ".fact-btn")
         expect(
             await phone.locator(f"{PANEL} .bottom-tabs .tab").count() == 4, "no tabs at the bottom"
         )

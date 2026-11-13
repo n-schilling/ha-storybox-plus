@@ -13,10 +13,16 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - Calmer page: the cog of a box opens its settings, night mode and bedtimes in an overlay, the card keeps the live state, the next alarm and the battery; the cog of a figure opens its volume, lock, Tune and shuffling on swap; links, texts and codes are entered in an overlay. Escape or a click beside it closes it.
+- The card of a Toniebox 2 shows only the battery's level; a click on it opens what a charge lasts and the charge history. The sleep timer offers 30 and 60 minutes. The firmware moved into the box's settings.
+- The volume of a Toniebox 2 shows in the percent the box reports, on the page and in the media player; the levels stay what the buttons set.
 - Error messages say in plain words what went wrong and what to do, in the language of Home Assistant; a lost connection says so instead of showing "[object Object]".
 - Next to a Toniebox 2, a Toniebox 1 shows as a slim row in a card of its own: its state, when it was last seen and its settings in one line, the form behind the pencil. The page, the device model and the documentation call it Toniebox 1.
 - The unique IDs of a box's entities and the identifier of its device start with the config entry, so two accounts of one household no longer collide over their shared box. Installed boxes get new devices and entities; the old ones are left behind and can be deleted.
 - A box or figure shared by two accounts of one household shows once on the page, through the account added first, and only that account counts its listening time.
+
+### Fixed
+
+- Pressing louder or quieter several times in a row on the page goes up or down a level each time; before, a press before the box's answer sent the same level again.
 
 ## [0.6.0] - 2026-11-13
 
