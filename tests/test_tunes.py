@@ -122,13 +122,15 @@ async def test_tune_cloud_error_and_failed_read(
     hass_ws_client: WebSocketGenerator,
 ) -> None:
     """A refused Tune comes back as cloud_error; a failed read keeps the last Tunes."""
-    cloud.main.tunes = [tune(remaining=0)]
+    cloud.main.tunes = [tune()]
     await _setup(hass, cloud, config_entry)
     client = await hass_ws_client(hass)
+    cloud.main.rest_status = 400
     result = await _call(
         client, {"type": f"{DOMAIN}/figure/tune", "tonie_id": CREATIVE_ID, "tune_id": "my-tune-1"}
     )
     assert result["error"]["code"] == "cloud_error"
+    cloud.main.rest_status = None
     coordinator = config_entry.runtime_data.coordinator
     cloud.main.tunes_status = 500
     await coordinator.async_refresh()
@@ -161,3 +163,22 @@ async def test_tune_fits_by_compatible_figures(
     )
     assert result["success"], result
     assert result["result"]["tunes"][0]["suitable"] == []
+
+
+async def test_used_up_tune_fits_nothing(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """A Tune with no assignments left is offered for no figure and refused as unsuitable."""
+    cloud.main.tunes = [tune(remaining=0)]
+    await _setup(hass, cloud, config_entry)
+    client = await hass_ws_client(hass)
+    library = await _call(client, {"type": f"{DOMAIN}/library"})
+    assert library["result"]["tunes"][0]["suitable"] == []
+    result = await _call(
+        client, {"type": f"{DOMAIN}/figure/tune", "tonie_id": CREATIVE_ID, "tune_id": "my-tune-1"}
+    )
+    assert result["error"]["code"] == "unsuitable_tune"

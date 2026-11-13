@@ -345,7 +345,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             _LOGGER.debug("Tunes not read: %s", err)
 
     def tune_fits(self, tune: Tune) -> list[str]:
-        """Return the figures a Tune can be laid on now: those it fits and does not lie on."""
+        """Return the figures a Tune can be laid on now: those it fits and does not lie on.
+
+        A Tune laid on as often as it may be fits none until it is taken off one.
+        """
+        if tune.remaining is not None and tune.remaining < 1:
+            return []
         fits = set(tune.suitable) | set(tune.compatible)
         if tune.all_creative:
             fits |= {t.id for t in self.data.tonies.values() if t.kind is TonieKind.CREATIVE}
