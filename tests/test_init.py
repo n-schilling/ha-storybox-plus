@@ -25,6 +25,7 @@ from custom_components.storybox_plus.const import (
     UPDATE_INTERVAL,
 )
 from custom_components.storybox_plus.frontend import PANEL_URL_PATH
+from custom_components.storybox_plus.ids import box_identifier
 
 from .conftest import (
     BOX_ID,
@@ -70,16 +71,17 @@ async def test_setup_creates_devices_and_entities(
     assert classic.connections == set()
 
     entities = er.async_entries_for_config_entry(er.async_get(hass), setup_entry.entry_id)
-    assert {e.unique_id for e in entities} == {
-        f"{BOX_ID}",
+    assert {e.unique_id.removeprefix(f"{setup_entry.entry_id}_") for e in entities} == {
+        BOX_ID,
         f"{BOX_ID}_connectivity",
         f"{BOX_ID}_charging",
         f"{BOX_ID}_battery",
         f"{BOX_ID}_figure",
         f"{CLASSIC_BOX_ID}_connectivity",
-        f"{setup_entry.entry_id}_notification",
-        f"{setup_entry.entry_id}_live_channel",
+        "notification",
+        "live_channel",
     }
+    assert all(e.unique_id.startswith(f"{setup_entry.entry_id}_") for e in entities)
     assert hass.states.get(entity_id(hass, "binary_sensor", f"{BOX_ID}_connectivity")).name == (
         "Kinderzimmer Connectivity"
     )
@@ -369,7 +371,9 @@ async def test_stale_device_is_removed_after_an_hour(
     config_entry.add_to_hass(hass)
     registry = dr.async_get(hass)
     registry.async_get_or_create(
-        config_entry_id=config_entry.entry_id, identifiers={(DOMAIN, "box-sold")}, name="Alt"
+        config_entry_id=config_entry.entry_id,
+        identifiers={box_identifier(config_entry, "box-sold")},
+        name="Alt",
     )
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
@@ -444,3 +448,37 @@ async def test_unload_fails_when_a_platform_does_not(
     ):
         assert not await hass.config_entries.async_unload(setup_entry.entry_id)
     assert setup_entry.state is ConfigEntryState.FAILED_UNLOAD
+
+
+async def test_two_accounts_of_one_household(
+    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
+) -> None:
+    """Two members sign in with their own accounts: each gets its own device of the shared box."""
+    second = entry_for(
+        cloud.add_account(
+            "second",
+            households=[{"id": HOUSEHOLD_ID, "name": "Familie Muster"}],
+            boxes={HOUSEHOLD_ID: [tb2_box()]},
+        )
+    )
+    second.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(second.entry_id)
+    await hass.async_block_till_done()
+
+    first_device = device(hass, setup_entry, BOX_ID)
+    second_device = device(hass, second, BOX_ID)
+    assert first_device is not None
+    assert second_device is not None
+    assert first_device.id != second_device.id
+    registry = er.async_get(hass)
+    players = [
+        e.entity_id
+        for entry in (setup_entry, second)
+        for e in er.async_entries_for_config_entry(registry, entry.entry_id)
+        if e.domain == "media_player"
+    ]
+    assert len(players) == 2
+    assert all(hass.states.get(p) is not None for p in players)
+    # Each entry removes only devices of its own; the other's box is not gone
+    await setup_entry.runtime_data.coordinator.async_refresh()
+    assert device(hass, second, BOX_ID) is not None

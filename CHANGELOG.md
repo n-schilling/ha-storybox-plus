@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the versions
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- The settings tab shows the members of each household with name, email and role, as the cloud shows them to the account; read once an hour, shown only.
+
+### Changed
+
+- The unique IDs of a box's entities and the identifier of its device start with the config entry, so two accounts of one household no longer collide over their shared box. Installed boxes get new devices and entities; the old ones are left behind and can be deleted.
+- A box or figure shared by two accounts of one household shows once on the page, through the account added first, and only that account counts its listening time.
+
 ## [0.6.0] - 2026-11-13
 
 ### Added

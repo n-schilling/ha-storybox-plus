@@ -24,6 +24,7 @@ from .conftest import (
     BOX_ID,
     CREATIVE_ID,
     DISC_ID,
+    HOUSEHOLD_ID,
     TONIE_ID,
     FakeCloud,
     PushChannels,
@@ -241,3 +242,79 @@ async def test_cloud_version_unreadable(
     coordinator = config_entry.runtime_data.coordinator
     assert coordinator.backend_version is None
     assert coordinator.last_update_success
+
+
+async def test_household_members(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The settings tab shows who belongs to the household; a failed read keeps the last."""
+    cloud.main.members = {
+        HOUSEHOLD_ID: [
+            {
+                "id": "m1",
+                "displayName": "Alex",
+                "firstName": "Alex",
+                "lastName": "Muster",
+                "email": "alex@example.com",
+                "mtype": "owner",
+                "isSelf": True,
+                "canEdit": False,
+                "canDelete": False,
+            },
+            {"id": "m2", "displayName": "sam@example.com", "mtype": "guest", "isSelf": False},
+            {"id": "broken", "mtype": "full"},
+        ]
+    }
+    await _setup(hass, config_entry)
+    client = await hass_ws_client(hass)
+
+    async def members() -> Any:
+        await client.send_json_auto_id({"type": f"{DOMAIN}/overview"})
+        overview = await client.receive_json()
+        return overview["result"]["entries"][0]["households"][0]["members"]
+
+    assert await members() == [
+        {
+            "id": "m1",
+            "name": "Alex",
+            "first_name": "Alex",
+            "last_name": "Muster",
+            "email": "alex@example.com",
+            "role": "owner",
+            "self": True,
+        },
+        {
+            "id": "m2",
+            "name": "sam@example.com",
+            "first_name": None,
+            "last_name": None,
+            "email": None,
+            "role": "unknown",
+            "self": False,
+        },
+    ]
+    cloud.main.members_status = 500
+    freezer.tick(CLOUD_INFO_INTERVAL + timedelta(minutes=1))
+    await config_entry.runtime_data.coordinator.async_refresh()
+    assert [m["id"] for m in await members()] == ["m1", "m2"]
+
+
+async def test_household_members_never_read(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """Members the cloud never answered are unknown, not an empty household."""
+    cloud.main.members_status = 403
+    await _setup(hass, config_entry)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": f"{DOMAIN}/overview"})
+    overview = await client.receive_json()
+    assert overview["result"]["entries"][0]["households"][0]["members"] is None

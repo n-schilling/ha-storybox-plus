@@ -42,7 +42,7 @@ The night mode of the light ring being set up:
 
 The settings tab of an account:
 
-<img src="docs/screenshots/preferences.png" alt="Settings tab: lock new figures and discs, mark notifications as read in the cloud, and the cloud's backend version marked as tested" width="700">
+<img src="docs/screenshots/preferences.png" alt="Settings tab: the household with its members, lock new figures and discs, mark notifications as read in the cloud, and the cloud's backend version marked as tested" width="700">
 
 A new bedtime with its days, times and alarm:
 
@@ -101,6 +101,8 @@ The REST API is read every 5 minutes: households, boxes, figures and chapters, a
 | Toniebox (classic) | online state only. The classic box reports nothing live to the cloud; nothing is simulated or guessed. |
 
 Both generations can be mixed in one account. Figures (bought figures, creative figures, discs) belong to the household, not to a box; the page shows them that way.
+
+Members of one household may each add their own account. Every account then gets its own device and entities of the shared boxes; the page shows a shared box or figure once, through the account added first, and only that account counts its listening time.
 
 A single failed poll keeps the last values; after three failed polls in a row the entities become unavailable and recover with the next successful poll. The push channel is reconnected whenever the cloud drops it; a message it cannot read is logged and skipped. A box that is missing from the account for an hour of polls loses its device and entities; a box that comes back gets them anew.
 
@@ -256,7 +258,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 
 - **Boxes**: every box with its live state and its settings; a Toniebox 2 with volume, headphones, sleep timer, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), its bedtimes with the next alarm, and its battery with the charge history.
 - **Figures**: the library with search over names and chapters, a filter by kind, which figure stands on a box, the chapters with their lengths, favourites for bought figures and the tools for creative ones.
-- **Settings**: per account, the household's name, redeeming a Tunes voucher, counting the listening time, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
+- **Settings**: per account, the household's name and its members (shown only: name, email and role as the cloud shows them to the account, read once an hour; managed in the app), redeeming a Tunes voucher, counting the listening time, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 - **Listening**: the most played figures and chapters, when is listened to (weekday and hour), the total, a chart per day (per week over long spans) and the sums per box, for 7, 30 or 365 days or since the setup.
 
 The header is one row: the integration's icon, its name and right after it the tabs. At its end it carries, as on every page of the shared standard, when the open tab's data came ("As of 14:53:23", left out on a phone), a refresh button that asks the integration again without reloading the page and spins while it waits, and a settings button to the integration's page under **Settings → Devices & services**. The boxes tab asks again every 10 seconds by itself, and the stamp follows.
@@ -349,16 +351,16 @@ What automations and dashboards can build on. Before 1.0.0 it may still change b
 
 ### Entities
 
-IDs as created in English, for a box named "Kids room"; the unique IDs use the box's ID from the cloud, which is also the device identifier `(storybox_plus, <box>)`.
+IDs as created in English, for a box named "Kids room". Every unique ID starts with the config entry (`<entry>`), and a box's device is `(storybox_plus, <entry>_<box>)` with the box's ID from the cloud: members of one household who each add their own account get a device of the shared box per account instead of a collision.
 
 | Entity | Unique ID | Boxes | State |
 |---|---|---|---|
-| `binary_sensor.kids_room_connectivity` | `<box>_connectivity` | all | connected to the cloud; unknown while nothing tells |
-| `sensor.kids_room_battery` | `<box>_battery` | Toniebox 2 | battery in percent; unavailable while the box is switched off |
-| `binary_sensor.kids_room_charging` | `<box>_charging` | Toniebox 2 | charging |
+| `binary_sensor.kids_room_connectivity` | `<entry>_<box>_connectivity` | all | connected to the cloud; unknown while nothing tells |
+| `sensor.kids_room_battery` | `<entry>_<box>_battery` | Toniebox 2 | battery in percent; unavailable while the box is switched off |
+| `binary_sensor.kids_room_charging` | `<entry>_<box>_charging` | Toniebox 2 | charging |
 | `binary_sensor.<account>_live_channel` | `<entry>_live_channel` | the account's device, with a Toniebox 2 | the push channel is connected; live state and commands of every Toniebox 2 go through it |
-| `media_player.kids_room` | `<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length |
-| `event.kids_room_figure` | `<box>_figure` | Toniebox 2 | event types `placed`, `removed` with `tonie_id` and `tonie` (name) |
+| `media_player.kids_room` | `<entry>_<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length |
+| `event.kids_room_figure` | `<entry>_<box>_figure` | Toniebox 2 | event types `placed`, `removed` with `tonie_id` and `tonie` (name) |
 | `event.<account>_cloud_notification` | `<entry>_notification` | the account's device | event type `notification` with `kind` (the cloud's type, `system` for a broadcast), `text`, `time`, `tonie_id`, `tonie`, `reason` (why a conversion failed) |
 
 The media player takes play, pause, volume (13 levels), next and previous chapter, seeking within the chapter, playing a chapter of the figure on the box picked from the media browser (`media_player.play_media` with `chapter:<figure>:<index from 0>`; a chapter of another figure is refused), and turning off, which puts the box to sleep as the app's sleep button does; the cloud cannot wake it again.
@@ -432,7 +434,7 @@ scripts/check.sh
 
 The cloud access lives in `custom_components/storybox_plus/cloud/` and imports nothing from Home Assistant, so it can be tested on its own; its README collects what is known about the API. Endpoints and payloads were learned from the official app and from the community project [HA-Toniebox](https://github.com/git4sim/HA-Toniebox) (MIT); the code here is written from scratch.
 
-The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays and confirms its alarm, a classic box, invented figures, bedtimes, listening times and charges). They drive the page in a headless browser (boxes, their settings and renaming one, the night mode set up through its form with the light ring following, a volume per figure, a creative figure renamed and sorted, the settings tab, a figure unlocked and locked, the box's picture, a Tune laid on and taken off, the player's buttons and the headphones on the card, a voucher and content from a code, the most played chapters and the weekday and hour grid, live mode and shuffling on swap switched on, removing all chapters with its two questions, the household renamed, bedtimes with the alarm set on the box, their switches and the form to add and delete one, charge history, the header row with icon, name and tabs, the header's stamp, refresh on every tab and settings button, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
+The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays and confirms its alarm, a classic box, invented figures, bedtimes, listening times and charges). They drive the page in a headless browser (boxes, their settings and renaming one, the night mode set up through its form with the light ring following, a volume per figure, a creative figure renamed and sorted, the settings tab with the household's members, a figure unlocked and locked, the box's picture, a Tune laid on and taken off, the player's buttons and the headphones on the card, a voucher and content from a code, the most played chapters and the weekday and hour grid, live mode and shuffling on swap switched on, removing all chapters with its two questions, the household renamed, bedtimes with the alarm set on the box, their switches and the form to add and delete one, charge history, the header row with icon, name and tabs, the header's stamp, refresh on every tab and settings button, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
 
 ```bash
 uv venv --python 3.14 .venv-panel && uv pip install --python .venv-panel/bin/python -r requirements_panel.txt

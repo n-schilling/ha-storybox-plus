@@ -25,6 +25,7 @@ from .const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN, STORAGE_VERSION
 from .coordinator import RuntimeData, StoryboxConfigEntry, StoryboxCoordinator
 from .favourites import FavouriteChapters
 from .frontend import async_register_frontend, async_unregister_panel
+from .ids import account_identifier, box_of
 from .night import NightModes
 from .notices import CloudNotices
 from .preferences import Preferences
@@ -238,7 +239,6 @@ async def async_remove_config_entry_device(
     The integration removes such a device itself after an hour without the
     box; this is for whoever does not want to wait.
     """
-    boxes = entry.runtime_data.coordinator.data.boxes
-    return not any(
-        i[0] == DOMAIN and (i[1] in boxes or i[1] == entry.entry_id) for i in device.identifiers
-    )
+    if account_identifier(entry) in device.identifiers:
+        return False
+    return box_of(entry, device.identifiers) not in entry.runtime_data.coordinator.data.boxes

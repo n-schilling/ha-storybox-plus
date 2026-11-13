@@ -17,8 +17,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .cloud import Generation
-from .const import DOMAIN, MANUFACTURER
+from .const import MANUFACTURER
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
+from .ids import account_identifier, box_identifier, box_unique_id
 
 MODEL_NAMES = {Generation.CLASSIC: "Toniebox", Generation.TONIEBOX_2: "Toniebox 2"}
 
@@ -32,12 +33,13 @@ class BoxEntity(CoordinatorEntity[StoryboxCoordinator]):
         """Initialize for the box; key None is the box's main entity."""
         super().__init__(coordinator)
         self._box_id = box_id
-        self._attr_unique_id = f"{box_id}_{key}" if key else box_id
+        entry = coordinator.config_entry
+        self._attr_unique_id = box_unique_id(entry, box_id, key)
         if key:
             self._attr_translation_key = key
         box = coordinator.data.boxes[box_id].box
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, box_id)},
+            identifiers={box_identifier(entry, box_id)},
             connections={(CONNECTION_NETWORK_MAC, format_mac(box.mac))} if box.mac else set(),
             name=box.name,
             manufacturer=MANUFACTURER,
@@ -59,7 +61,7 @@ class BoxEntity(CoordinatorEntity[StoryboxCoordinator]):
 def account_device_info(entry: StoryboxConfigEntry) -> DeviceInfo:
     """Return the device of the account: its notifications and its live channel."""
     return DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
+        identifiers={account_identifier(entry)},
         name=entry.title,
         manufacturer=MANUFACTURER,
         model="Cloud account",
@@ -83,7 +85,7 @@ def async_follow_boxes(
         # A box whose device was removed lost its entities; should it come
         # back, it gets new ones
         for box_id in known - set(coordinator.data.boxes):
-            if devices.async_get_device(identifiers={(DOMAIN, box_id)}) is None:
+            if devices.async_get_device(identifiers={box_identifier(entry, box_id)}) is None:
                 known.discard(box_id)
         new: list[Entity] = []
         for box_id, box_state in coordinator.data.boxes.items():

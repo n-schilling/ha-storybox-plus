@@ -82,7 +82,7 @@ async def test_overview(
             "entry_id": setup_entry.entry_id,
             "title": HOUSEHOLD_NAME,
             "loaded": True,
-            "households": [{"id": "hh1", "name": HOUSEHOLD_NAME}],
+            "households": [{"id": "hh1", "name": HOUSEHOLD_NAME, "members": []}],
             "preferences": {"analytics": True, "auto_lock": True, "mark_read": False},
             "cloud": {
                 "version": BACKEND_VERSION,
@@ -1125,3 +1125,50 @@ async def test_chapter_commands_need_an_admin(
 def test_content_type_by_ending(filename: str, content_type: str) -> None:
     """The upload's content type follows the file ending; unknown ones count as MP3."""
     assert _content_type(filename) == content_type
+
+
+async def test_shared_household_shows_and_counts_once(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Two accounts of one household: its box, figures and listening time show once."""
+    second = entry_for(
+        cloud.add_account(
+            "second",
+            households=[{"id": HOUSEHOLD_ID, "name": HOUSEHOLD_NAME}],
+            boxes={HOUSEHOLD_ID: [tb2_box()]},
+            content_tonies=[content_tonie()],
+        )
+    )
+    second.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(second.entry_id)
+    await hass.async_block_till_done()
+
+    first, latest = push.instances
+    first.connect()
+    latest.connect()
+    first.playback(paused=False)
+    latest.playback(paused=False)
+    freezer.tick(timedelta(seconds=100))
+    first.playback(paused=True)
+    latest.playback(paused=True)
+
+    client = await hass_ws_client(hass)
+    overview = await _ask(client, {"type": f"{DOMAIN}/overview"})
+    boxes = overview["result"]["boxes"]
+    assert sorted(b["id"] for b in boxes) == sorted([BOX_ID, CLASSIC_BOX_ID])
+    assert all(b["entry_id"] == setup_entry.entry_id for b in boxes)
+    library = await _ask(client, {"type": f"{DOMAIN}/library"})
+    assert [h["entry_id"] for h in library["result"]["households"]] == [setup_entry.entry_id]
+    assert [t["id"] for t in library["result"]["tonies"]].count(TONIE_ID) == 1
+    analytics = await _ask(client, {"type": f"{DOMAIN}/analytics", "limit": 5})
+    assert analytics["result"]["total_seconds"] == 100
+
+    # Without the older account, the other one speaks for the box
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+    overview = await _ask(client, {"type": f"{DOMAIN}/overview"})
+    assert [b["entry_id"] for b in overview["result"]["boxes"]] == [second.entry_id]

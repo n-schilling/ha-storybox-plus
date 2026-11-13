@@ -74,6 +74,9 @@ if (!customElements.get("storybox-plus-panel")) {
       fromCode: "From a code", codePlaceholder: "Content code", codeHint: "Ready-made content from a code (for example on a card) is added to the figure; the cloud then converts it.",
       codeFailed: "Adding from the code failed: {e}",
       prefHousehold: "Household", householdName: "Name of the household", householdSaved: "Saved", householdFailed: "Renaming failed: {e}",
+      members: "Members", membersUnknown: "The members could not be read yet.", memberYou: "You",
+      role_owner: "Owner", role_full: "Full access", role_limited: "Limited access", role_unknown: "Unknown role",
+      membersHint: "As the cloud shows them to this account; members and invitations are managed in the app.",
       prefListening: "Listening time", prefAnalytics: "Count listening time",
       prefAnalyticsHint: "Keeps sums per day, figure, box, chapter and hour for the listening tab, never single plays. Switching it off deletes the sums.",
       prefFigures: "Figures", prefAutoLock: "Lock new figures and discs to the household",
@@ -186,6 +189,9 @@ if (!customElements.get("storybox-plus-panel")) {
       fromCode: "Per Code", codePlaceholder: "Inhaltscode", codeHint: "Fertige Inhalte zu einem Code (etwa von einer Karte) kommen auf die Figur; die Cloud wandelt sie danach um.",
       codeFailed: "Hinzufügen per Code fehlgeschlagen: {e}",
       prefHousehold: "Haushalt", householdName: "Name des Haushalts", householdSaved: "Gespeichert", householdFailed: "Umbenennen fehlgeschlagen: {e}",
+      members: "Mitglieder", membersUnknown: "Die Mitglieder konnten noch nicht gelesen werden.", memberYou: "Du",
+      role_owner: "Besitzer", role_full: "Voller Zugriff", role_limited: "Eingeschränkter Zugriff", role_unknown: "Unbekannte Rolle",
+      membersHint: "So, wie die Cloud sie diesem Konto zeigt; Mitglieder und Einladungen werden in der App verwaltet.",
       prefListening: "Hörzeit", prefAnalytics: "Hörzeit zählen",
       prefAnalyticsHint: "Speichert Summen je Tag, Figur, Box, Kapitel und Stunde für den Hörzeit-Tab, nie einzelne Wiedergaben. Ausgeschaltet werden die Summen gelöscht.",
       prefFigures: "Figuren", prefAutoLock: "Neue Figuren und Discs für den Haushalt sperren",
@@ -797,7 +803,8 @@ if (!customElements.get("storybox-plus-panel")) {
         const homes = (e.households || []).map((h) =>
           `<div class="household-row"><ha-form data-form="home:${esc(h.id)}"></ha-form>` +
           this._btn(`homesave:${h.id}`, t.save, "check", { disabled: this._homeBusy === h.id }) + `</div>` +
-          (this._homeError?.id === h.id ? this._alert(fill(t.householdFailed, { e: this._homeError.message }), "error") : "")).join("");
+          (this._homeError?.id === h.id ? this._alert(fill(t.householdFailed, { e: this._homeError.message }), "error") : "") +
+          this._members(h)).join("");
         const v = this._voucher?.[e.entry_id] || {};
         const voucher = `<div class="household-row"><ha-form data-form="voucher:${esc(e.entry_id)}"></ha-form>` +
           this._btn(`voucher:${e.entry_id}`, t.voucherRedeem, "check", { disabled: !!v.busy }) + `</div>` +
@@ -814,6 +821,26 @@ if (!customElements.get("storybox-plus-panel")) {
         html += this._card(loaded.length > 1 ? esc(e.title) : "", body);
       }
       return html;
+    }
+
+    // Who belongs to a household: shown only, managed in the app
+    _members(h) {
+      const t = this._t;
+      if (!Array.isArray(h.members)) return `<div class="muted small">${esc(t.membersUnknown)}</div>`;
+      const order = { owner: 0, full: 1, limited: 2 };
+      const list = [...h.members].sort((a, b) => (order[a.role] ?? 3) - (order[b.role] ?? 3) || String(a.name).localeCompare(String(b.name)));
+      const rows = list.map((m) => {
+        const full = [m.first_name, m.last_name].filter(Boolean).join(" ");
+        const title = full || m.name;
+        const sub = [full && m.name !== full && m.name !== m.first_name ? m.name : "", m.email && m.email !== title ? m.email : ""].filter(Boolean).join(" · ");
+        const initial = String(title || "?").trim().charAt(0).toUpperCase();
+        return `<div class="member"><span class="member-avatar${m.role === "owner" ? " owner" : ""}" aria-hidden="true">${esc(initial)}</span>` +
+          `<div class="text"><span>${esc(title)}${m.self ? " " + this._chip(t.memberYou, "on") : ""}</span>` +
+          (sub ? `<span class="supporting">${esc(sub)}</span>` : "") + `</div>` +
+          this._chip(t[`role_${m.role}`] || t.role_unknown, m.role === "owner" ? "ok" : "") + `</div>`;
+      }).join("");
+      return `<div class="members"><div class="members-head">${esc(t.members)} (${list.length})</div>${rows}` +
+        `<div class="muted small">${esc(t.membersHint)}</div></div>`;
     }
 
     async _redeemVoucher(entryId) {
@@ -2486,6 +2513,15 @@ if (!customElements.get("storybox-plus-panel")) {
   .pref-head:first-child { margin-top: 0; }
   .household-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
   .household-row ha-form { flex: 1 1 260px; display: block; }
+  .members { margin: 4px 0 12px; }
+  .members-head { font-size: var(--ha-font-size-s, 13px); color: var(--secondary-text-color); margin: 8px 0 4px; }
+  .member { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--divider-color); }
+  .member:last-of-type { border-bottom: 0; }
+  .member .text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .member .text .supporting { overflow: hidden; text-overflow: ellipsis; }
+  .member-avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 500; background: color-mix(in srgb, var(--primary-color) 16%, transparent); color: var(--primary-color); }
+  .member-avatar.owner { background: color-mix(in srgb, var(--success-color) 18%, transparent); color: var(--success-color); }
   .pref-cloud { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
   .night-row { margin-top: 8px; }
   .tile-head .chip { margin-left: 4px; }

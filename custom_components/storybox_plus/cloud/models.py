@@ -333,6 +333,27 @@ class CloudNotice:
 
 
 @dataclass(frozen=True, slots=True)
+class Member:
+    """A member of a household, as the cloud shows it to the account.
+
+    role is the cloud's ``mtype``: owner, full or limited. Name and email
+    come only as far as the account may see them; display_name is always
+    there (the first name or the email address).
+    """
+
+    id: str
+    display_name: str
+    role: str
+    is_self: bool = False
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+
+
+MEMBER_ROLES = ("owner", "full", "limited")
+
+
+@dataclass(frozen=True, slots=True)
 class BedtimeSchedule:
     """A recurring bedtime of a Toniebox 2, as the app keeps it in the cloud.
 
@@ -793,6 +814,24 @@ def parse_notice(data: dict[str, Any], system: bool = False) -> CloudNotice | No
         timestamp=parse_datetime(data.get("timestamp")),
         tonie_id=_text(data, "tonieId"),
         reason=_text(data, "tonieReason"),
+    )
+
+
+def parse_member(data: dict[str, Any]) -> Member | None:
+    """Parse one entry of GET /households/{id}/memberships."""
+    member_id = _text(data, "id")
+    display_name = _text(data, "displayName", "firstName", "email")
+    if member_id is None or display_name is None:
+        return None
+    role = _text(data, "mtype")
+    return Member(
+        id=member_id,
+        display_name=display_name,
+        role=role if role in MEMBER_ROLES else "unknown",
+        is_self=data.get("isSelf") is True,
+        first_name=_text(data, "firstName"),
+        last_name=_text(data, "lastName"),
+        email=_text(data, "email"),
     )
 
 

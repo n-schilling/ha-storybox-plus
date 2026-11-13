@@ -35,6 +35,7 @@ from .cloud import (
     WEEKDAYS,
     BedtimeSchedule,
     CloudError,
+    Member,
     Tonie,
     TonieKind,
     Tune,
@@ -48,7 +49,9 @@ from .coordinator import (
     CloudState,
     StoryboxConfigEntry,
     StoryboxCoordinator,
+    box_owner,
     setting_supported,
+    tonie_owner,
 )
 from .favourites import Favourites
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
@@ -372,11 +375,34 @@ def _read_commit() -> str | None:
         return None
 
 
+def _member_dict(member: Member) -> dict[str, Any]:
+    return {
+        "id": member.id,
+        "name": member.display_name,
+        "first_name": member.first_name,
+        "last_name": member.last_name,
+        "email": member.email,
+        "role": member.role,
+        "self": member.is_self,
+    }
+
+
 def _entry_extras(entry: StoryboxConfigEntry) -> dict[str, Any]:
     """The page's settings of an account and the version its cloud runs."""
     coordinator = entry.runtime_data.coordinator
     return {
-        "households": [{"id": h.id, "name": h.name} for h in coordinator.data.households.values()],
+        "households": [
+            {
+                "id": h.id,
+                "name": h.name,
+                "members": (
+                    None
+                    if h.id not in coordinator.members
+                    else [_member_dict(m) for m in coordinator.members[h.id]]
+                ),
+            }
+            for h in coordinator.data.households.values()
+        ],
         "preferences": entry.runtime_data.preferences.as_dict(),
         "cloud": {
             "version": coordinator.backend_version,
@@ -400,7 +426,12 @@ async def websocket_overview(
     for entry in _loaded_entries(hass):
         coordinator = entry.runtime_data.coordinator
         push_connected = push_connected or coordinator.data.push_connected
-        boxes.extend(_box_dict(entry, coordinator, b) for b in coordinator.data.boxes.values())
+        # A box shared by two accounts of one household shows once
+        boxes.extend(
+            _box_dict(entry, coordinator, b)
+            for b in coordinator.data.boxes.values()
+            if box_owner(hass, b.box.id) is entry
+        )
     connection.send_result(
         msg["id"],
         {
@@ -435,6 +466,7 @@ async def websocket_library(
         households.extend(
             {"id": h.id, "name": h.name, "entry_id": entry.entry_id}
             for h in data.households.values()
+            if h.id not in {known["id"] for known in households}
         )
         favourites = entry.runtime_data.favourites
         volumes = entry.runtime_data.volumes
@@ -445,6 +477,8 @@ async def websocket_library(
                 "shuffle_on_swap": shuffles.enabled(t.id),
             }
             for t in data.tonies.values()
+            # A figure of a household shared by two accounts shows once
+            if tonie_owner(hass, t.id) is entry
         )
         coordinator = entry.runtime_data.coordinator
         tunes.extend(_tune_dict(t, coordinator) for t in coordinator.tunes or ())

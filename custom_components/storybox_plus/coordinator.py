@@ -42,6 +42,7 @@ from .cloud import (
     CloudNotice,
     Headphones,
     Household,
+    Member,
     Playback,
     PushClient,
     PushEvent,
@@ -72,6 +73,7 @@ from .const import (
     UPDATE_INTERVAL,
 )
 from .favourites import Action, FavouriteChapters
+from .ids import account_identifier, box_of
 from .night import NightMode, NightModes
 from .notices import CloudNotices
 from .preferences import LOCKABLE, Preferences
@@ -226,6 +228,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._shuffling: set[str] = set()
         # Read now and then: the box pictures by colour and the cloud backend's version
         self.box_pictures: dict[str, str] = {}
+        # The members of each household, read with the cloud info
+        self.members: dict[str, list[Member]] = {}
         # The Tunes the account bought; None until read once
         self.tunes: list[Tune] | None = None
         self.backend_version: str | None = None
@@ -334,7 +338,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         await self._async_read_notices()
         await self._async_auto_lock(state)
         await self._async_read_tunes()
-        await self._async_read_cloud_info()
+        await self._async_read_cloud_info(state)
         self._follow_box_names(state)
         return state
 
@@ -400,8 +404,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             await self._async_take_creative(tonie, None)
         self.async_update_listeners()
 
-    async def _async_read_cloud_info(self) -> None:
-        """Read the box pictures and the backend's version, at most once an hour."""
+    async def _async_read_cloud_info(self, state: CloudState) -> None:
+        """Read the box pictures, the backend's version and the members, at most once an hour."""
         now = dt_util.utcnow()
         if self._cloud_info_at is not None and now - self._cloud_info_at < CLOUD_INFO_INTERVAL:
             return
@@ -418,6 +422,19 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             self.box_pictures = await self.client.async_box_pictures()
         except CloudError as err:
             _LOGGER.debug("Pictures of the boxes not read: %s", err)
+        await self._async_read_members(state)
+
+    async def _async_read_members(self, state: CloudState) -> None:
+        """Read who belongs to each household; one that cannot be read keeps its last members."""
+        members: dict[str, list[Member]] = {}
+        for household_id in state.households:
+            try:
+                members[household_id] = await self.client.async_members(household_id)
+            except CloudError as err:
+                _LOGGER.debug("Members of a household not read: %s", err)
+                if household_id in self.members:
+                    members[household_id] = self.members[household_id]
+        self.members = members
 
     @property
     def backend_release(self) -> str | None:
@@ -440,11 +457,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         A name given in Home Assistant (name_by_user) stays; it wins anyway.
         """
         registry = dr.async_get(self.hass)
-        for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
-            for domain, box_id in device.identifiers:
-                box_state = state.boxes.get(box_id) if domain == DOMAIN else None
-                if box_state is not None and device.name != box_state.box.name:
-                    registry.async_update_device(device.id, name=box_state.box.name)
+        entry = self.config_entry
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+            box_id = box_of(entry, device.identifiers)
+            box_state = state.boxes.get(box_id) if box_id else None
+            if box_state is not None and device.name != box_state.box.name:
+                registry.async_update_device(device.id, name=box_state.box.name)
 
     async def _async_auto_lock(self, state: CloudState) -> None:
         """Lock the bought figures and discs that are new in the account, if so preferred."""
@@ -475,7 +493,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             self.hass.config_entries.async_update_entry(entry, title=name)
             registry = dr.async_get(self.hass)
             for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
-                if (DOMAIN, entry.entry_id) in device.identifiers:
+                if account_identifier(entry) in device.identifiers:
                     registry.async_update_device(device.id, name=name)
         self.async_update_listeners()
 
@@ -554,15 +572,10 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         registry = dr.async_get(self.hass)
         seen: set[str] = set()
         for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
-            # The account's own device (for its notifications) is named after the entry
-            box_ids = {
-                i[1]
-                for i in device.identifiers
-                if i[0] == DOMAIN and i[1] != self.config_entry.entry_id
-            }
-            if not box_ids or box_ids & set(state.boxes):
+            # The account's own device stands for no box
+            key = box_of(self.config_entry, device.identifiers)
+            if key is None or key in state.boxes:
                 continue
-            key = min(box_ids)
             seen.add(key)
             self._missing_polls[key] = self._missing_polls.get(key, 0) + 1
             if self._missing_polls[key] >= STALE_AFTER_POLLS:
@@ -618,7 +631,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             self.analytics.observe(
                 box_state.box.id,
                 box_state.tonie_id,
-                box_state.playing,
+                box_state.playing and self.counts_box(box_state.box.id),
                 playback.chapter if playback else None,
             )
             self.analytics.save_soon()
@@ -1018,6 +1031,15 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 self._check_alarm_later(box_state.box.id, bedtime.SETTLE)
         self.async_update_listeners()
 
+    def counts_box(self, box_id: str) -> bool:
+        """Return whether this account counts the listening time of a box (see box_owner).
+
+        While this entry is being set up, it is not loaded yet; an older
+        loaded entry with the box then counts it.
+        """
+        owner = box_owner(self.hass, box_id)
+        return owner is None or owner is self.config_entry
+
     def _stop_playing(self, box_state: BoxState) -> None:
         if box_state.playback is not None and box_state.playback.playing:
             box_state.playback = replace(box_state.playback, paused=True)
@@ -1311,6 +1333,32 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if tonie_id is None:
             return None
         return self.data.tonies.get(tonie_id)
+
+
+def _first_entry(
+    hass: HomeAssistant, has: Callable[[CloudState], bool]
+) -> StoryboxConfigEntry | None:
+    entries: list[StoryboxConfigEntry] = hass.config_entries.async_loaded_entries(DOMAIN)
+    for entry in entries:
+        data = entry.runtime_data.coordinator.data
+        if data is not None and has(data):
+            return entry
+    return None
+
+
+def box_owner(hass: HomeAssistant, box_id: str) -> StoryboxConfigEntry | None:
+    """Return the account that speaks for a box on the page and counts its listening time.
+
+    Members of one household who each add their own account all see its
+    boxes and figures. The oldest loaded entry that has one speaks for it,
+    so the page shows it once and its listening time is counted once.
+    """
+    return _first_entry(hass, lambda data: box_id in data.boxes)
+
+
+def tonie_owner(hass: HomeAssistant, tonie_id: str) -> StoryboxConfigEntry | None:
+    """Return the account that speaks for a figure on the page (see box_owner)."""
+    return _first_entry(hass, lambda data: tonie_id in data.tonies)
 
 
 def setting_supported(box: Box, name: str) -> bool:

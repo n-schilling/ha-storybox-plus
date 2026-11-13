@@ -33,7 +33,7 @@ async def test_live_channel_sensor(
     hass: HomeAssistant, push: PushChannels, setup_entry: MockConfigEntry
 ) -> None:
     """The account's sensor follows the push channel."""
-    sensor = entity_id(hass, "binary_sensor", f"{setup_entry.entry_id}_live_channel")
+    sensor = entity_id(hass, "binary_sensor", "live_channel")
     assert hass.states.get(sensor).state == "off"
     push.last.connect()
     await hass.async_block_till_done()

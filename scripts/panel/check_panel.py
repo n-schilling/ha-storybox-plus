@@ -932,8 +932,21 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     async def preferences() -> None:
         await go("preferences", ".pref-head")
         text = await page.locator(f"{PANEL} .sheet").inner_text()
-        for part in ("Lock new figures", "Mark notifications as read", "Backend version", "tested"):
+        for part in (
+            "Lock new figures",
+            "Mark notifications as read",
+            "Backend version",
+            "tested",
+            "Members (3)",
+            "Alex Muster",
+            "alex@example.com",
+            "Owner",
+            "Limited access",
+        ):
             expect(part in text, f"{part!r} missing in the settings: {text}")
+        expect(
+            await page.locator(f"{PANEL} .member").count() == 3, "three members of the household"
+        )
         # Another commit of the tested release counts as tested
         expect("tested with" not in text, "the demo cloud runs the tested release")
         expect(
@@ -986,7 +999,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await go("boxes", ".tile")
         expect(await page.locator(f"{PANEL} img.box-pic").count() == 1, "box picture missing")
 
-    await checks.run("settings tab, a figure unlocked and locked, the box's picture", preferences)
+    await checks.run(
+        "settings tab with the members, a figure unlocked and locked, the box's picture",
+        preferences,
+    )
 
     async def clear_all() -> None:
         await go("figures", ".figure")

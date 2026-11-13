@@ -21,6 +21,7 @@ from .models import (
     CloudNotice,
     Household,
     Library,
+    Member,
     Tonie,
     TonieDetails,
     TonieKind,
@@ -31,6 +32,7 @@ from .models import (
     parse_creative_tonie,
     parse_disc,
     parse_household,
+    parse_member,
     parse_notice,
     parse_playback_info,
     parse_tune,
@@ -326,6 +328,11 @@ class CloudClient:
         return [n for item in own if (n := parse_notice(item))] + [
             n for item in system if (n := parse_notice(item, system=True))
         ]
+
+    async def async_members(self, household_id: str) -> list[Member]:
+        """Return the members of a household, the account's own membership among them."""
+        items = await self._get_list(f"/households/{household_id}/memberships", "results")
+        return [m for item in items if (m := parse_member(item))]
 
     def _schedules_path(self, box: Box) -> str:
         return f"/households/{box.household_id}/tonieboxes/{box.id}/bedtime-schedules"

@@ -151,6 +151,7 @@ def install() -> None:
         Generation,
         Headphones,
         Household,
+        Member,
         Playback,
         PushClient,
         PushEvent,
@@ -480,6 +481,28 @@ def install() -> None:
         async def async_backend_version(self) -> str:
             # Another commit of the tested release: no note
             return f"{TESTED_BACKEND_RELEASE}/0d3m0c0de"
+
+        async def async_members(self, household_id: str) -> list[Member]:
+            return [
+                Member(
+                    "m1",
+                    "Alex",
+                    "owner",
+                    is_self=True,
+                    first_name="Alex",
+                    last_name="Muster",
+                    email="alex@example.com",
+                ),
+                Member(
+                    "m2",
+                    "Sam",
+                    "full",
+                    first_name="Sam",
+                    last_name="Muster",
+                    email="sam@example.com",
+                ),
+                Member("m3", "Oma Ilse", "limited"),
+            ]
 
         async def async_box_pictures(self) -> dict[str, str]:
             return {"2": f"{base}/local/storybox-demo/box-red.svg"}

@@ -50,6 +50,7 @@ from custom_components.storybox_plus.const import (
     DOMAIN,
     TESTED_BACKEND_RELEASE,
 )
+from custom_components.storybox_plus.ids import box_identifier
 
 # The account, the household and what is in it
 USER_ID = "0f3c5f2a-1111-4d2e-9c3b-000000000001"
@@ -323,6 +324,9 @@ class Account:
     creative_tonies: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     content_tonies: list[dict[str, Any]] = field(default_factory=list)
     discs: list[dict[str, Any]] = field(default_factory=list)
+    # GET /households/{id}/memberships per household; reading them answers this status
+    members: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    members_status: int | None = None
     # What GET /playback-info/{box}/{tonie} answers; a pair not listed is a 404
     playback_info: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
     # What the detail query answers per figure; a figure not listed answers with its
@@ -519,6 +523,10 @@ class FakeCloud:
             return _json(method, url, 200, {"uuid": account.user_id, "email": account.email})
         if path == "/households":
             return _json(method, url, 200, account.households)
+        if match := re.fullmatch(r"/households/([^/]+)/memberships", path):
+            if account.members_status is not None:
+                return _json(method, url, account.members_status, {})
+            return _json(method, url, 200, account.members.get(match[1], []))
         if (match := re.fullmatch(r"/households/([^/]+)", path)) and method.upper() == "PATCH":
             household = next((h for h in account.households if h["id"] == match[1]), None)
             if household is None:
@@ -1099,12 +1107,23 @@ async def setup_entry(
 
 
 def entity_id(hass: HomeAssistant, domain: str, unique_id: str) -> str:
-    """Return the entity ID of one of our entities."""
-    found = er.async_get(hass).async_get_entity_id(domain, DOMAIN, unique_id)
-    assert found, f"no {domain} entity with unique_id {unique_id}"
-    return found
+    """Return the entity ID of one of our entities.
+
+    The unique ID is given without the entry in front (box-1_battery); the
+    one entry that has the entity is looked up.
+    """
+    registry = er.async_get(hass)
+    found = [
+        e
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if (e := registry.async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{unique_id}"))
+    ]
+    assert len(found) == 1, f"no single {domain} entity with unique_id {unique_id}: {found}"
+    return found[0]
 
 
 def device(hass: HomeAssistant, entry: MockConfigEntry, box_id: str) -> dr.DeviceEntry | None:
     """Return the device of a box, if the entry has one."""
-    return dr.async_get(hass).async_get_device_by_identifier((DOMAIN, box_id), entry.entry_id)
+    return dr.async_get(hass).async_get_device_by_identifier(
+        box_identifier(entry, box_id), entry.entry_id
+    )
