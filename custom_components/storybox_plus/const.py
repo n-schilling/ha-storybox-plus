@@ -26,6 +26,13 @@ UNAVAILABLE_AFTER_FAILURES = 3
 # A classic box tells the cloud nothing but when it was last there
 CLASSIC_ONLINE_WINDOW = timedelta(minutes=30)
 
+# The pictures of the boxes and the cloud's version are read this often
+CLOUD_INFO_INTERVAL = timedelta(hours=1)
+# The release of the cloud's backend this version was tested with. The cloud names
+# its version as release and commit ("v2026.11.10/602b7aff2"); only the release is
+# compared, and the settings tab says so when the cloud runs another one
+TESTED_BACKEND_RELEASE = "v2026.11.10"
+
 STORAGE_VERSION = 1
 ANALYTICS_KEEP_DAYS = 730
 
@@ -34,6 +41,11 @@ EVENT_FIGURE_PLACED = "placed"
 EVENT_FIGURE_REMOVED = "removed"
 ATTR_TONIE_ID = "tonie_id"
 ATTR_TONIE = "tonie"
+EVENT_NOTICE = "notification"
+ATTR_KIND = "kind"
+ATTR_TEXT = "text"
+ATTR_TIME = "time"
+ATTR_REASON = "reason"
 
 # Actions of the media player
 SERVICE_SET_SLEEP_TIMER = "set_sleep_timer"

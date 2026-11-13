@@ -13,29 +13,34 @@ from typing import Any
 from yarl import URL
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.event import async_call_later, async_track_point_in_utc_time
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from . import fetcher
+from . import bedtime, fetcher, night
 from .analytics import Analytics
 from .battery import BatteryStats
 from .cloud import (
     TOPIC_BATTERY,
+    TOPIC_HEADPHONES,
     TOPIC_ONLINE,
     TOPIC_PLAYBACK,
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
     Auth,
     Battery,
+    BedtimeSchedule,
     Box,
     Chapter,
     CloudAuthError,
     CloudClient,
     CloudError,
+    CloudNotice,
+    Headphones,
     Household,
     Playback,
     PushClient,
@@ -44,27 +49,50 @@ from .cloud import (
     Tonie,
     TonieDetails,
     TonieKind,
+    Tune,
     Volume,
 )
+from .cloud.models import CLASSIC_SETTINGS, FEATURE_SETTINGS, LIVE_SETTINGS, SETTING_FIELDS
 from .const import (
     CLASSIC_ONLINE_WINDOW,
+    CLOUD_INFO_INTERVAL,
     DOMAIN,
     RETRY_INTERVAL,
     STALE_AFTER_POLLS,
+    TESTED_BACKEND_RELEASE,
     UNAVAILABLE_AFTER_FAILURES,
     UPDATE_INTERVAL,
 )
 from .favourites import Action, FavouriteChapters
+from .night import NightMode, NightModes
+from .notices import CloudNotices
+from .preferences import LOCKABLE, Preferences
+from .shuffle import MIN_CHAPTERS, ShuffleOnSwap, new_order
+from .volumes import FigureVolumes
 
 _LOGGER = logging.getLogger(__name__)
 
 type PlacementListener = Callable[[str | None, str | None], None]
+type NoticeListener = Callable[[CloudNotice], None]
 
 # Bought figures asked for their chapters per poll, when the library gave none
 DETAILS_PER_POLL = 5
 # A box that told nothing about a figure's chapters is asked again after this
 # long, or as soon as the figure is placed again
 LENGTHS_RETRY = timedelta(hours=1)
+
+
+class BoxError(HomeAssistantError):
+    """A change to a box's settings or bedtimes that is refused before the cloud is asked.
+
+    The code names why: "unknown_box", "no_alarm" (the box rings no alarms),
+    "unknown_schedule" or "not_supported" (a setting this box does not have).
+    """
+
+    def __init__(self, code: str) -> None:
+        """Keep the code; it is the message as well."""
+        super().__init__(code)
+        self.code = code
 
 
 class ChapterError(HomeAssistantError):
@@ -93,7 +121,12 @@ class BoxState:
     playback: Playback | None = None
     volume: Volume | None = None
     sleep_timer: SleepTimer | None = None
+    headphones: Headphones | None = None
     last_push: datetime | None = None
+    # When the push channel last said the box came online
+    online_since: datetime | None = None
+    # The bedtime schedules of a box that rings alarms; None until read once
+    schedules: tuple[BedtimeSchedule, ...] | None = None
 
     @property
     def tonie_id(self) -> str | None:
@@ -134,6 +167,11 @@ class RuntimeData:
     analytics: Analytics | None
     battery_stats: BatteryStats
     favourites: FavouriteChapters
+    night_modes: NightModes
+    volumes: FigureVolumes
+    notices: CloudNotices
+    preferences: Preferences
+    shuffles: ShuffleOnSwap
 
 
 type StoryboxConfigEntry = ConfigEntry[RuntimeData]
@@ -158,6 +196,11 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         details_store: Store[dict[str, Any]],
         battery_stats: BatteryStats,
         favourites: FavouriteChapters,
+        night_modes: NightModes,
+        volumes: FigureVolumes,
+        notices: CloudNotices,
+        preferences: Preferences,
+        shuffles: ShuffleOnSwap,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -166,6 +209,25 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self.client = client
         self.push = push
         self.favourites = favourites
+        self.night_modes = night_modes
+        self.volumes = volumes
+        self.notices = notices
+        self.preferences = preferences
+        self.shuffles = shuffles
+        # Creative figures being shuffled right now
+        self._shuffling: set[str] = set()
+        # Read now and then: the box pictures by colour and the cloud backend's version
+        self.box_pictures: dict[str, str] = {}
+        # The Tunes the account bought; None until read once
+        self.tunes: list[Tune] | None = None
+        self.backend_version: str | None = None
+        self._cloud_info_at: datetime | None = None
+        # Notifications of the cloud waiting for the event entity, and the entity's listener
+        self._notice_listener: NoticeListener | None = None
+        self._notices_waiting: list[CloudNotice] = []
+        # Per box: the next change of the night mode, and a change being sent
+        self._night_timers: dict[str, CALLBACK_TYPE] = {}
+        self._night_busy: set[str] = set()
         self.analytics = analytics
         self.battery_stats = battery_stats
         self._failures = 0
@@ -182,6 +244,14 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._details_missing: set[str] = set()
         # Figures a box told nothing (more) about, with the time it was asked
         self._lengths_asked: dict[str, datetime] = {}
+        # Per box: the wake-up the integration armed last, when it last sent a command,
+        # how often it tried for which step since the box came online, and the next check
+        self._armed: dict[str, datetime] = {}
+        self._alarm_sent: dict[str, datetime] = {}
+        self._alarm_tries: dict[str, tuple[datetime | None, int]] = {}
+        self._alarm_timers: dict[str, CALLBACK_TYPE] = {}
+        entry.async_on_unload(self._cancel_alarm_timers)
+        entry.async_on_unload(self._cancel_night_timers)
 
     async def async_load_details(self) -> None:
         """Read the chapters learned in earlier runs."""
@@ -239,6 +309,10 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             else:
                 box_state = BoxState(box=box, online=_online_from_rest(box))
             state.boxes[box.id] = box_state
+            if box.alarm_capable:
+                await self._async_read_schedules(box_state)
+            else:
+                box_state.schedules = None
         self.push.set_boxes(b.box.mac for b in state.boxes.values() if b.box.live and b.box.mac)
         self._remove_stale_devices(state)
         if self.analytics is not None:
@@ -246,7 +320,209 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             self.analytics.save_soon()
         self.battery_stats.tick()
         self.battery_stats.save_soon()
+        for box_state in state.boxes.values():
+            self._check_alarm(box_state, state)
+            self._check_night(box_state)
+        await self._async_read_notices()
+        await self._async_auto_lock(state)
+        await self._async_read_tunes()
+        await self._async_read_cloud_info()
+        self._follow_box_names(state)
         return state
+
+    async def _async_read_tunes(self) -> None:
+        """Read the bought Tunes; a failed read keeps the last ones."""
+        try:
+            self.tunes = await self.client.async_tunes()
+        except CloudError as err:
+            _LOGGER.debug("Tunes not read: %s", err)
+
+    def tune_on(self, tonie_id: str) -> Tune | None:
+        """Return the Tune that lies on a figure, if any."""
+        return next((t for t in self.tunes or () if tonie_id in t.assigned), None)
+
+    async def async_redeem_voucher(self, code: str) -> int:
+        """Redeem a Tunes voucher for the account; the Tunes are read anew."""
+        count = await self.client.async_redeem_voucher(code)
+        await self._async_read_tunes()
+        self.async_update_listeners()
+        return count
+
+    async def async_redeem_token(self, tonie_id: str, token: str) -> Tonie:
+        """Put the content of a token on a creative figure and read the figure anew."""
+        tonie = self._creative(tonie_id)
+        await self.client.async_redeem_token(tonie, token)
+        return await self._async_take_creative(tonie, None)
+
+    async def async_set_tune(self, tonie_id: str, tune_id: str | None) -> None:
+        """Lay a bought Tune on a figure, or take the one there off (None).
+
+        A creative figure keeps its chapters while a Tune lies on it; taken
+        off, they play again. Afterwards the Tunes and the figures are read
+        anew, because the cloud changes what the figure plays.
+        """
+        tonie = self.data.tonies.get(tonie_id)
+        if tonie is None:
+            raise ChapterError("unknown_figure")
+        if tune_id is None:
+            if self.tune_on(tonie_id) is None:
+                raise ChapterError("no_tune")
+            await self.client.async_remove_tune(tonie)
+        else:
+            tune = next((t for t in self.tunes or () if t.id == tune_id), None)
+            if tune is None:
+                raise ChapterError("unknown_tune")
+            if tonie_id not in tune.suitable and tonie_id not in tune.assigned:
+                raise ChapterError("unsuitable_tune")
+            await self.client.async_assign_tune(tonie, tune_id)
+        await self._async_read_tunes()
+        if tonie.kind is TonieKind.CREATIVE:
+            await self._async_take_creative(tonie, None)
+        self.async_update_listeners()
+
+    async def _async_read_cloud_info(self) -> None:
+        """Read the box pictures and the backend's version, at most once an hour."""
+        now = dt_util.utcnow()
+        if self._cloud_info_at is not None and now - self._cloud_info_at < CLOUD_INFO_INTERVAL:
+            return
+        self._cloud_info_at = now
+        try:
+            self.backend_version = await self.client.async_backend_version()
+        except CloudError as err:
+            _LOGGER.debug("Version of the cloud not read: %s", err)
+        if self.backend_version is not None and not self.backend_tested:
+            _LOGGER.debug(
+                "The cloud runs %s; tested with %s", self.backend_version, TESTED_BACKEND_RELEASE
+            )
+        try:
+            self.box_pictures = await self.client.async_box_pictures()
+        except CloudError as err:
+            _LOGGER.debug("Pictures of the boxes not read: %s", err)
+
+    @property
+    def backend_release(self) -> str | None:
+        """Return the release part of the cloud's version, without its commit."""
+        return self.backend_version.split("/", 1)[0] if self.backend_version else None
+
+    @property
+    def backend_tested(self) -> bool:
+        """Return whether the cloud runs the release this version was tested with."""
+        return self.backend_release == TESTED_BACKEND_RELEASE
+
+    def box_picture(self, box: Box) -> str | None:
+        """Return the picture of a box: by its colour, else the one the cloud names for it."""
+        by_color = self.box_pictures.get(box.color_id) if box.color_id else None
+        return by_color or box.image_url
+
+    def _follow_box_names(self, state: CloudState) -> None:
+        """Give a box's device the name the box has in the cloud.
+
+        A name given in Home Assistant (name_by_user) stays; it wins anyway.
+        """
+        registry = dr.async_get(self.hass)
+        for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
+            for domain, box_id in device.identifiers:
+                box_state = state.boxes.get(box_id) if domain == DOMAIN else None
+                if box_state is not None and device.name != box_state.box.name:
+                    registry.async_update_device(device.id, name=box_state.box.name)
+
+    async def _async_auto_lock(self, state: CloudState) -> None:
+        """Lock the bought figures and discs that are new in the account, if so preferred."""
+        for tonie in self.preferences.to_lock(list(state.tonies.values())):
+            try:
+                await self.client.async_lock(tonie, True)
+            except CloudError as err:
+                _LOGGER.debug("A new figure was not locked, trying again later: %s", err)
+                continue
+            self.preferences.locked(tonie.id)
+            state.tonies[tonie.id] = replace(tonie, locked=True)
+            _LOGGER.debug("A new figure was locked to the household")
+
+    async def async_rename_household(self, household_id: str, name: str) -> None:
+        """Rename a household; the entry and the account's device follow when named after it.
+
+        The entry is titled after its household at setup; as long as the
+        title is still that name, it takes the new one, and the device of
+        the account's notifications with it. A title given by hand stays.
+        """
+        household = self.data.households.get(household_id)
+        if household is None:
+            raise BoxError("unknown_household")
+        await self.client.async_rename_household(household_id, name)
+        self.data.households[household_id] = replace(household, name=name)
+        entry = self.config_entry
+        if entry.title == household.name:
+            self.hass.config_entries.async_update_entry(entry, title=name)
+            registry = dr.async_get(self.hass)
+            for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+                if (DOMAIN, entry.entry_id) in device.identifiers:
+                    registry.async_update_device(device.id, name=name)
+        self.async_update_listeners()
+
+    async def async_set_lock(self, tonie_id: str, locked: bool) -> Tonie:
+        """Lock a bought figure or disc to the household, or unlock it."""
+        tonie = self.data.tonies.get(tonie_id)
+        if tonie is None:
+            raise ChapterError("unknown_figure")
+        if tonie.kind not in LOCKABLE:
+            raise ChapterError("not_lockable")
+        await self.client.async_lock(tonie, locked)
+        # Whatever happens to it from now on, it is no new figure any more
+        self.preferences.locked(tonie_id)
+        tonie = self.data.tonies[tonie_id] = replace(tonie, locked=locked)
+        self.async_update_listeners()
+        return tonie
+
+    async def _async_read_notices(self) -> None:
+        """Pass on the cloud's notifications not passed on yet; a failed read waits for the next poll."""
+        try:
+            notices = await self.client.async_notices()
+        except CloudError as err:
+            _LOGGER.debug("Notifications of the cloud not read: %s", err)
+            return
+        for notice in self.notices.new(notices):
+            if self._notice_listener is not None:
+                self._notice_listener(notice)
+            else:
+                self._notices_waiting.append(notice)
+            if self.preferences.mark_read:
+                try:
+                    await self.client.async_mark_notice_read(notice)
+                except CloudError as err:
+                    _LOGGER.debug("A notification was not marked as read: %s", err)
+
+    @callback
+    def async_set_notice_listener(self, listener: NoticeListener) -> Callable[[], None]:
+        """Hand the cloud's new notifications to the listener, those waiting first.
+
+        The waiting ones follow a moment later: an entity's state written
+        while it is being added would be lost.
+        """
+        self._notice_listener = listener
+
+        @callback
+        def _flush() -> None:
+            waiting, self._notices_waiting = self._notices_waiting, []
+            for notice in waiting:
+                if self._notice_listener is not None:
+                    self._notice_listener(notice)
+                else:
+                    self._notices_waiting.append(notice)
+
+        self.hass.loop.call_soon(_flush)
+
+        @callback
+        def remove() -> None:
+            self._notice_listener = None
+
+        return remove
+
+    async def _async_read_schedules(self, box_state: BoxState) -> None:
+        """Read the bedtime schedules of a box; a failed read keeps the last ones."""
+        try:
+            box_state.schedules = tuple(await self.client.async_bedtime_schedules(box_state.box))
+        except CloudError as err:
+            _LOGGER.debug("Bedtime schedules of a box not read: %s", err)
 
     def _remove_stale_devices(self, state: CloudState) -> None:
         """Remove the devices of boxes that left the account.
@@ -258,7 +534,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         registry = dr.async_get(self.hass)
         seen: set[str] = set()
         for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
-            box_ids = {i[1] for i in device.identifiers if i[0] == DOMAIN}
+            # The account's own device (for its notifications) is named after the entry
+            box_ids = {
+                i[1]
+                for i in device.identifiers
+                if i[0] == DOMAIN and i[1] != self.config_entry.entry_id
+            }
             if not box_ids or box_ids & set(state.boxes):
                 continue
             key = min(box_ids)
@@ -288,9 +569,14 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if event.topic == TOPIC_BATTERY and isinstance(event.data, Battery):
             box_state.battery = event.data
         elif event.topic == TOPIC_ONLINE:
+            was_online = box_state.online
             box_state.online = event.data if isinstance(event.data, bool) else None
             if box_state.online is False:
                 self._stop_playing(box_state)
+            if box_state.online is True and was_online is not True:
+                box_state.online_since = box_state.last_push
+                self._alarm_tries.pop(box_state.box.id, None)
+                self._check_alarm_later(box_state.box.id, bedtime.SETTLE)
         elif event.topic == TOPIC_PLAYBACK and isinstance(event.data, Playback):
             box_state.playback = event.data
             if event.data.tonie_id is not None:
@@ -302,10 +588,19 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 )
         elif event.topic == TOPIC_VOLUME and isinstance(event.data, Volume):
             box_state.volume = event.data
+        elif event.topic == TOPIC_HEADPHONES and isinstance(event.data, Headphones):
+            box_state.headphones = event.data
         elif event.topic == TOPIC_SLEEP_TIMER and isinstance(event.data, SleepTimer):
             box_state.sleep_timer = event.data
+            self._check_alarm(box_state, self.data)
         if self.analytics is not None:
-            self.analytics.observe(box_state.box.id, box_state.tonie_id, box_state.playing)
+            playback = box_state.playback
+            self.analytics.observe(
+                box_state.box.id,
+                box_state.tonie_id,
+                box_state.playing,
+                playback.chapter if playback else None,
+            )
             self.analytics.save_soon()
         if box_state.box.live and event.topic in (TOPIC_BATTERY, TOPIC_ONLINE):
             battery = box_state.battery
@@ -319,6 +614,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if box_state.tonie_id != tonie_before:
             for listener in self._placement_listeners.get(box_state.box.id, []):
                 listener(tonie_before, box_state.tonie_id)
+            if box_state.box.live:
+                self._follow_figure_volume(box_state)
+                self._shuffle_replaced(box_state)
             placed = box_state.tonie_id
             if placed is not None:
                 # Placed anew: the box may know now what it did not before
@@ -330,6 +628,60 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                     f"{DOMAIN} chapters",
                 )
         self.async_update_listeners()
+
+    def _follow_figure_volume(self, box_state: BoxState) -> None:
+        """Set the level of the figure just placed, or restore the box's after one left."""
+        current = box_state.volume.level if box_state.volume else None
+        level = self.volumes.placed(box_state.box.id, box_state.tonie_id, current)
+        self.volumes.save_soon()
+        mac = box_state.box.mac
+        if level is None or mac is None or level == current:
+            return
+
+        async def _send() -> None:
+            try:
+                await self.push.async_set_volume(mac, level)
+            except CloudError as err:
+                _LOGGER.debug("The volume of a figure was not set: %s", err)
+
+        self.config_entry.async_create_background_task(self.hass, _send(), f"{DOMAIN} volume")
+
+    def _shuffle_replaced(self, box_state: BoxState) -> None:
+        """Shuffle the creative figure another figure just replaced, if it asks for it."""
+        target = self.shuffles.placed(box_state.box.id, box_state.tonie_id)
+        tonie = self.data.tonies.get(target) if target else None
+        if (
+            tonie is None
+            or tonie.kind is not TonieKind.CREATIVE
+            or len(tonie.chapters) < MIN_CHAPTERS
+            or tonie.id in self._shuffling
+            or self.tune_on(tonie.id) is not None
+            or any(b.tonie_id == tonie.id for b in self.data.boxes.values())
+        ):
+            return
+        self._shuffling.add(tonie.id)
+
+        async def _shuffle() -> None:
+            try:
+                order = new_order([c.id for c in tonie.chapters])
+                await self.async_arrange_chapters(tonie.id, order)
+                _LOGGER.debug("A replaced creative figure was shuffled")
+            except (CloudError, ChapterError) as err:
+                _LOGGER.debug("A replaced creative figure was not shuffled: %s", err)
+            finally:
+                self._shuffling.discard(tonie.id)
+
+        self.config_entry.async_create_background_task(self.hass, _shuffle(), f"{DOMAIN} shuffle")
+
+    async def async_set_figure_volume(self, tonie_id: str, level: int | None) -> None:
+        """Keep the level of a figure; a box it stands on gets it at once."""
+        if tonie_id not in self.data.tonies:
+            raise ChapterError("unknown_figure")
+        await self.volumes.async_set(tonie_id, level)
+        for box_state in self.data.boxes.values():
+            if box_state.box.live and box_state.tonie_id == tonie_id:
+                # As if placed anew: the level before the figure stays the one to restore
+                self._follow_figure_volume(box_state)
 
     async def _async_steer(self, box_state: BoxState, action: Action) -> None:
         """Send the box to a favourite chapter, or pause it after the last one."""
@@ -344,6 +696,291 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         except CloudError as err:
             _LOGGER.debug("The box was not steered to a favourite chapter: %s", err)
 
+    # ------------------------------------------------------------ commands of the page
+
+    async def async_box_command(self, box_id: str, command: str, value: int | None) -> None:
+        """Send a player command from the page to a Toniebox 2.
+
+        play, pause, next, previous (chapters), volume (level 0 to 13), sleep
+        (minutes), sleep_clear. The sleep timer is refused while the alarm of
+        a bedtime is due, as the media player's actions are.
+        """
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        mac = box_state.box.mac
+        if not box_state.box.live or mac is None:
+            raise BoxError("not_supported")
+        if command in ("sleep", "sleep_clear") and self.due_alarm(box_id) is not None:
+            raise BoxError("alarm_due")
+        playback = box_state.playback
+        if command in ("next", "previous"):
+            if playback is None or playback.tonie_id is None:
+                raise BoxError("nothing_plays")
+            chapter = max(0, (playback.chapter or 0) + (1 if command == "next" else -1))
+            tonie = self.tonie(playback.tonie_id)
+            if tonie is not None and tonie.chapters:
+                chapter = min(chapter, len(tonie.chapters) - 1)
+            await self.push.async_set_position(mac, chapter, 0)
+        elif command == "play":
+            await self.push.async_play(mac)
+        elif command == "pause":
+            await self.push.async_pause(mac)
+        elif command == "volume" and value is not None:
+            await self.push.async_set_volume(mac, value)
+        elif command == "sleep" and value is not None:
+            await self.push.async_set_sleep_timer(mac, value * 60)
+        elif command == "sleep_clear":
+            await self.push.async_clear_sleep_timer(mac)
+        else:
+            raise BoxError("invalid_command")
+
+    # ------------------------------------------------------------ night mode
+
+    async def async_set_night_mode(self, box_id: str, mode: NightMode) -> BoxState:
+        """Keep the night mode of a Toniebox 2 and set the light ring as it asks now."""
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        if not box_state.box.live:
+            raise BoxError("not_supported")
+        before = self.night_modes.get(box_id)
+        mode = await self.night_modes.async_set(box_id, mode)
+        if not mode.enabled and before is not None and before.applied == "night":
+            # Switched off at night: the light ring comes back now, not at the end of the span
+            await self.night_modes.async_applied(box_id, "night")
+        self._check_night(box_state)
+        self.async_update_listeners()
+        return box_state
+
+    def night_phase(self, box_state: BoxState) -> night.Phase | None:
+        """Return the phase the night mode of a box is in now; None without one."""
+        mode = self.night_modes.get(box_state.box.id)
+        if mode is None or not mode.enabled:
+            return None
+        return night.phase(mode, self.now_at(box_state.box))
+
+    @callback
+    def _check_night(self, box_state: BoxState) -> None:
+        """Set the light ring when the phase changed since the last time, and wait for the next."""
+        box = box_state.box
+        mode = self.night_modes.get(box.id)
+        if (cancel := self._night_timers.pop(box.id, None)) is not None:
+            cancel()
+        if mode is None or not box.live:
+            return
+        if mode.enabled:
+            now = self.now_at(box)
+            wanted: night.Phase = night.phase(mode, now)
+
+            @callback
+            def _next(_now: datetime) -> None:
+                self._night_timers.pop(box.id, None)
+                if self.data is not None and (current := self.data.boxes.get(box.id)) is not None:
+                    self._check_night(current)
+
+            self._night_timers[box.id] = async_track_point_in_utc_time(
+                self.hass, _next, dt_util.as_utc(night.next_change(mode, now))
+            )
+        elif mode.applied == "night":
+            wanted = "day"
+        else:
+            return
+        if wanted == mode.applied or box.id in self._night_busy:
+            return
+        self._night_busy.add(box.id)
+        self.config_entry.async_create_background_task(
+            self.hass, self._async_apply_night(box_state, wanted), f"{DOMAIN} night mode"
+        )
+
+    async def _async_apply_night(self, box_state: BoxState, wanted: night.Phase) -> None:
+        box_id = box_state.box.id
+        try:
+            mode = self.night_modes.get(box_id)
+            if mode is None:
+                return
+            value = night.brightness(mode, wanted)
+            try:
+                answer = await self.client.async_update_box(
+                    box_state.box, {"lightringBrightness": value}
+                )
+            except CloudError as err:
+                # The next poll tries again
+                _LOGGER.debug("The light ring of a box was not set for the %s: %s", wanted, err)
+                return
+            if answer is not None:
+                box_state.box = answer
+            await self.night_modes.async_applied(box_id, wanted)
+            _LOGGER.debug("Light ring set to %s %% for the %s", value, wanted)
+            self.async_update_listeners()
+        finally:
+            self._night_busy.discard(box_id)
+
+    @callback
+    def _cancel_night_timers(self) -> None:
+        for cancel in self._night_timers.values():
+            cancel()
+        self._night_timers.clear()
+
+    # ------------------------------------------------------------ alarm
+
+    def now_at(self, box: Box) -> datetime:
+        """Return the time in the box's own zone; the schedules are local to the box."""
+        zone = dt_util.get_time_zone(box.timezone) if box.timezone else None
+        return dt_util.now(zone)
+
+    def due_alarm(self, box_id: str) -> bedtime.NextAlarm | None:
+        """Return the alarm the integration arms on the box now, or has armed."""
+        box_state = self.data.boxes.get(box_id)
+        return self._due(box_state) if box_state is not None else None
+
+    def _due(self, box_state: BoxState) -> bedtime.NextAlarm | None:
+        if not box_state.box.alarm_capable:
+            return None
+        return bedtime.due(box_state.schedules, self.now_at(box_state.box))
+
+    @callback
+    def _check_alarm_later(self, box_id: str, delay: timedelta) -> None:
+        """Look at the alarm of a box again after a while; a later request replaces it."""
+
+        @callback
+        def _check(_now: datetime) -> None:
+            self._alarm_timers.pop(box_id, None)
+            if self.data is not None and (box_state := self.data.boxes.get(box_id)) is not None:
+                self._check_alarm(box_state, self.data)
+
+        if (cancel := self._alarm_timers.pop(box_id, None)) is not None:
+            cancel()
+        self._alarm_timers[box_id] = async_call_later(self.hass, delay, _check)
+
+    @callback
+    def _cancel_alarm_timers(self) -> None:
+        for cancel in self._alarm_timers.values():
+            cancel()
+        self._alarm_timers.clear()
+
+    @callback
+    def _check_alarm(self, box_state: BoxState, state: CloudState) -> None:
+        """Arm the due alarm of a box, or clear a stale one of ours, if the box listens now."""
+        box = box_state.box
+        if not box.alarm_capable or box.mac is None:
+            return
+        now = dt_util.utcnow()
+        armed = self._armed.get(box.id)
+        if armed is not None and armed <= now:
+            # It rang (or the box was off): nothing of ours is armed any more
+            self._armed.pop(box.id, None)
+            armed = None
+        step = bedtime.decide(self._due(box_state), box_state.sleep_timer, armed)
+        if step is None or not state.push_connected or box_state.online is not True:
+            return
+        if box_state.online_since is not None and now - box_state.online_since < bedtime.SETTLE:
+            self._check_alarm_later(box.id, bedtime.SETTLE - (now - box_state.online_since))
+            return
+        sent = self._alarm_sent.get(box.id)
+        if sent is not None and now - sent < bedtime.RETRY:
+            return
+        # A box that does not confirm is not asked forever: a few times per time online
+        target = step[1].at if step[0] == "arm" else None
+        tried_for, tries = self._alarm_tries.get(box.id, (None, 0))
+        tries = tries + 1 if tried_for == target else 1
+        self._alarm_tries[box.id] = (target, tries)
+        if tries > bedtime.TRIES:
+            if tries == bedtime.TRIES + 1:
+                _LOGGER.warning(
+                    "The box %s did not confirm its alarm; it is tried again when it comes online",
+                    box.name,
+                )
+            return
+        self._alarm_sent[box.id] = now
+        self.config_entry.async_create_background_task(
+            self.hass, self._async_alarm_step(box_state, step), f"{DOMAIN} alarm"
+        )
+
+    async def _async_alarm_step(self, box_state: BoxState, step: bedtime.Step) -> None:
+        mac = box_state.box.mac
+        if mac is None:
+            return
+        try:
+            if step[0] == "arm":
+                alarm = step[1]
+                seconds = round((alarm.at - dt_util.utcnow()).total_seconds())
+                await self.push.async_set_alarm(mac, seconds, alarm.schedule.alarm)
+                self._armed[box_state.box.id] = alarm.at
+                _LOGGER.debug("Alarm armed for %s", alarm.at.isoformat())
+            else:
+                await self.push.async_clear_sleep_timer(mac)
+                self._armed.pop(box_state.box.id, None)
+                _LOGGER.debug("An alarm no schedule wants any more was cleared")
+        except CloudError as err:
+            _LOGGER.debug("The alarm of a box was not sent: %s", err)
+        # Should the box not confirm, the next check asks again after the retry time
+        self._check_alarm_later(box_state.box.id, bedtime.RETRY + timedelta(seconds=5))
+
+    async def async_save_schedule(
+        self, box_id: str, schedule_id: str | None, fields: dict[str, Any]
+    ) -> BoxState:
+        """Create or change a bedtime schedule of a box, then read them again."""
+        box_state = self._alarm_box(box_id)
+        if schedule_id is not None and not any(
+            s.id == schedule_id for s in box_state.schedules or ()
+        ):
+            raise BoxError("unknown_schedule")
+        await self.client.async_save_bedtime_schedule(box_state.box, schedule_id, fields)
+        return await self._async_schedules_changed(box_state)
+
+    async def async_delete_schedule(self, box_id: str, schedule_id: str) -> BoxState:
+        """Delete a bedtime schedule of a box, then read them again."""
+        box_state = self._alarm_box(box_id)
+        if not any(s.id == schedule_id for s in box_state.schedules or ()):
+            raise BoxError("unknown_schedule")
+        await self.client.async_delete_bedtime_schedule(box_state.box, schedule_id)
+        return await self._async_schedules_changed(box_state)
+
+    async def async_change_settings(self, box_id: str, changes: dict[str, Any]) -> BoxState:
+        """Change the name or settings of a box (our names) and keep what the cloud answers.
+
+        A setting the box does not have (one of the other generation, or one
+        behind a feature flag the box lacks) is refused before the cloud is asked.
+        """
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        box = box_state.box
+        fields: dict[str, Any] = {}
+        for name, value in changes.items():
+            if name == "name":
+                fields["name"] = value
+                continue
+            if not setting_supported(box, name):
+                raise BoxError("not_supported")
+            fields[SETTING_FIELDS[name][0]] = value
+        answer = await self.client.async_update_box(box, fields)
+        if answer is None:
+            answer = await self.client.async_box(box)
+        if answer is not None:
+            box_state.box = answer
+        self._follow_box_names(self.data)
+        self.async_update_listeners()
+        return box_state
+
+    def _alarm_box(self, box_id: str) -> BoxState:
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        if not box_state.box.alarm_capable:
+            raise BoxError("no_alarm")
+        return box_state
+
+    async def _async_schedules_changed(self, box_state: BoxState) -> BoxState:
+        await self._async_read_schedules(box_state)
+        # A changed schedule is acted on at once, not after the retry time
+        self._alarm_sent.pop(box_state.box.id, None)
+        self._alarm_tries.pop(box_state.box.id, None)
+        self._check_alarm(box_state, self.data)
+        self.async_update_listeners()
+        return box_state
+
     @callback
     def set_push_connected(self, connected: bool) -> None:
         """Note that the push channel came or went."""
@@ -354,6 +991,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 self._stop_playing(box_state)
             self.battery_stats.pause_all()
             self.battery_stats.save_soon()
+        else:
+            for box_state in self.data.boxes.values():
+                self._check_alarm_later(box_state.box.id, bedtime.SETTLE)
         self.async_update_listeners()
 
     def _stop_playing(self, box_state: BoxState) -> None:
@@ -524,6 +1164,15 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         )
         return await self._async_take_creative(tonie, answer)
 
+    async def async_update_figure(self, tonie_id: str, fields: dict[str, Any]) -> Tonie:
+        """Change name or live mode of a creative figure (the cloud's names).
+
+        Bought figures and discs keep the name they came with.
+        """
+        tonie = self._creative(tonie_id)
+        answer = await self.client.async_update_creative(tonie.household_id, tonie_id, fields)
+        return await self._async_take_creative(tonie, answer)
+
     async def async_add_chapter(
         self, tonie_id: str, title: str, data: bytes, filename: str, content_type: str
     ) -> Tonie:
@@ -611,6 +1260,18 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if tonie_id is None:
             return None
         return self.data.tonies.get(tonie_id)
+
+
+def setting_supported(box: Box, name: str) -> bool:
+    """Return whether a box has a setting: by its generation and its feature flags."""
+    if name not in SETTING_FIELDS:
+        return False
+    if name in LIVE_SETTINGS and not box.live:
+        return False
+    if name in CLASSIC_SETTINGS and box.live:
+        return False
+    feature = FEATURE_SETTINGS.get(name)
+    return feature is None or feature in box.features
 
 
 def _clock(seconds: float) -> str:

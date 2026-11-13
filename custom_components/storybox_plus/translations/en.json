@@ -80,6 +80,34 @@
             "name": "Figure ID"
           }
         }
+      },
+      "notification": {
+        "name": "Cloud notification",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Notification"
+            }
+          },
+          "kind": {
+            "name": "Kind"
+          },
+          "text": {
+            "name": "Text"
+          },
+          "time": {
+            "name": "Time"
+          },
+          "tonie_id": {
+            "name": "Figure ID"
+          },
+          "tonie": {
+            "name": "Figure"
+          },
+          "reason": {
+            "name": "Reason"
+          }
+        }
       }
     }
   },
@@ -104,6 +132,15 @@
     },
     "nothing_plays": {
       "message": "No figure is on the box."
+    },
+    "alarm_due": {
+      "message": "An alarm of a bedtime schedule rings at {time}; this would cancel it. Switch the schedule's alarm off on the Storybox Plus page first."
+    },
+    "unknown_chapter": {
+      "message": "The figure has no such chapter."
+    },
+    "other_figure": {
+      "message": "Another figure is on the box now."
     }
   },
   "services": {

@@ -32,6 +32,11 @@ from .const import (
 from .coordinator import RuntimeData, StoryboxConfigEntry, StoryboxCoordinator
 from .favourites import FavouriteChapters
 from .frontend import async_register_frontend, async_unregister_panel
+from .night import NightModes
+from .notices import CloudNotices
+from .preferences import Preferences
+from .shuffle import ShuffleOnSwap
+from .volumes import FigureVolumes
 from .websocket import async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +67,31 @@ def battery_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
 def favourites_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
     """Return the store of the favourite chapters."""
     return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.favourites")
+
+
+def volumes_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the volumes per figure."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.volumes")
+
+
+def notices_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the cloud's notifications passed on already."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.notices")
+
+
+def preferences_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the page's settings and the figures looked at for locking."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.settings")
+
+
+def shuffle_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the figures shuffled on swap and the last figure per box."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.shuffle")
+
+
+def night_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    """Return the store of the night modes of the light rings."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.night")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> bool:
@@ -119,6 +149,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
     await battery_stats.async_load()
     favourites = FavouriteChapters(favourites_store(hass, entry.entry_id))
     await favourites.async_load()
+    night_modes = NightModes(night_store(hass, entry.entry_id))
+    await night_modes.async_load()
+    volumes = FigureVolumes(volumes_store(hass, entry.entry_id))
+    await volumes.async_load()
+    notices = CloudNotices(notices_store(hass, entry.entry_id))
+    await notices.async_load()
+    preferences = Preferences(preferences_store(hass, entry.entry_id))
+    await preferences.async_load()
+    shuffles = ShuffleOnSwap(shuffle_store(hass, entry.entry_id))
+    await shuffles.async_load()
     coordinator = StoryboxCoordinator(
         hass,
         entry,
@@ -128,6 +168,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
         details_store(hass, entry.entry_id),
         battery_stats,
         favourites,
+        night_modes,
+        volumes,
+        notices,
+        preferences,
+        shuffles,
     )
     await coordinator.async_load_details()
     await coordinator.async_config_entry_first_refresh()
@@ -139,6 +184,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
         analytics=analytics,
         battery_stats=battery_stats,
         favourites=favourites,
+        night_modes=night_modes,
+        volumes=volumes,
+        notices=notices,
+        preferences=preferences,
+        shuffles=shuffles,
     )
 
     await async_register_frontend(hass)
@@ -164,6 +214,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
     if entry.runtime_data.analytics is not None:
         await entry.runtime_data.analytics.async_save()
     await entry.runtime_data.battery_stats.async_save()
+    await entry.runtime_data.volumes.async_save()
+    await entry.runtime_data.notices.async_save()
+    await entry.runtime_data.preferences.async_save()
+    await entry.runtime_data.shuffles.async_save()
     if not any(e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e is not entry):
         async_unregister_panel(hass)
     return True
@@ -175,6 +229,11 @@ async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
     await details_store(hass, entry.entry_id).async_remove()
     await battery_store(hass, entry.entry_id).async_remove()
     await favourites_store(hass, entry.entry_id).async_remove()
+    await night_store(hass, entry.entry_id).async_remove()
+    await volumes_store(hass, entry.entry_id).async_remove()
+    await notices_store(hass, entry.entry_id).async_remove()
+    await preferences_store(hass, entry.entry_id).async_remove()
+    await shuffle_store(hass, entry.entry_id).async_remove()
 
 
 async def async_remove_config_entry_device(
@@ -186,4 +245,6 @@ async def async_remove_config_entry_device(
     box; this is for whoever does not want to wait.
     """
     boxes = entry.runtime_data.coordinator.data.boxes
-    return not any(i[0] == DOMAIN and i[1] in boxes for i in device.identifiers)
+    return not any(
+        i[0] == DOMAIN and (i[1] in boxes or i[1] == entry.entry_id) for i in device.identifiers
+    )

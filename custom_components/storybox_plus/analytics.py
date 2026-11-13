@@ -1,9 +1,11 @@
 """Listening time, as daily sums.
 
-Only how long which figure played on which box on which day is kept: no
-single plays, no times of day. The sums live in the integration's own store,
-not in the recorder, and count from the setup on; the cloud has no history.
-Only a Toniebox 2 reports playback, so only its listening is counted.
+Kept are sums only, never single plays: per day how long which figure played
+on which box, how long each chapter of a figure played, and how long anything
+played in each hour of the day (for all boxes and figures together). The
+sums live in the integration's own store, not in the recorder, and count
+from the setup on; the cloud has no history. Only a Toniebox 2 reports
+playback, so only its listening is counted.
 """
 
 from __future__ import annotations
@@ -20,10 +22,14 @@ from .const import ANALYTICS_KEEP_DAYS
 SAVE_DELAY = 60
 
 type DaySums = dict[str, dict[str, int]]  # box_id -> tonie_id -> seconds
+type ChapterSums = dict[str, dict[str, int]]  # tonie_id -> chapter index (from 0) -> seconds
+type HourSums = dict[str, int]  # hour of the day (0 to 23) -> seconds
 
 
-class AnalyticsData(TypedDict):
+class AnalyticsData(TypedDict, total=False):
     days: dict[str, DaySums]  # ISO date -> sums
+    chapters: dict[str, ChapterSums]  # ISO date -> sums per chapter
+    hours: dict[str, HourSums]  # ISO date -> sums per hour
 
 
 class Analytics:
@@ -34,8 +40,10 @@ class Analytics:
         self._store = store
         self._now = now
         self._days: dict[str, DaySums] = {}
-        # box_id -> (tonie_id, playing since)
-        self._active: dict[str, tuple[str, datetime]] = {}
+        self._chapters: dict[str, ChapterSums] = {}
+        self._hours: dict[str, HourSums] = {}
+        # box_id -> (tonie_id, chapter index or None, playing since)
+        self._active: dict[str, tuple[str, int | None, datetime]] = {}
         self._dirty = False
 
     async def async_load(self) -> None:
@@ -49,47 +57,69 @@ class Analytics:
                 }
                 for day, boxes in data["days"].items()
             }
+        if data and isinstance(data.get("chapters"), dict):
+            self._chapters = {
+                day: {
+                    tonie: {index: int(seconds) for index, seconds in chapters.items()}
+                    for tonie, chapters in tonies.items()
+                }
+                for day, tonies in data["chapters"].items()
+            }
+        if data and isinstance(data.get("hours"), dict):
+            self._hours = {
+                day: {hour: int(seconds) for hour, seconds in hours.items()}
+                for day, hours in data["hours"].items()
+            }
         self._prune()
 
     # ------------------------------------------------------------ counting
 
-    def observe(self, box_id: str, tonie_id: str | None, playing: bool) -> None:
-        """Note what a box does now: playing a figure, or not."""
+    def observe(
+        self, box_id: str, tonie_id: str | None, playing: bool, chapter: int | None = None
+    ) -> None:
+        """Note what a box does now: playing a chapter of a figure, or not."""
         now = self._now()
         active = self._active.get(box_id)
-        if active is not None and (not playing or active[0] != tonie_id):
-            self._add(box_id, active[0], active[1], now)
+        if active is not None and (not playing or active[0] != tonie_id or active[1] != chapter):
+            self._add(box_id, active[0], active[1], active[2], now)
             del self._active[box_id]
             active = None
         if playing and tonie_id is not None and active is None:
-            self._active[box_id] = (tonie_id, now)
+            self._active[box_id] = (tonie_id, chapter, now)
 
     def tick(self) -> None:
         """Book the time counted so far, so the sums are current and survive a restart."""
         now = self._now()
-        for box_id, (tonie_id, since) in list(self._active.items()):
-            self._add(box_id, tonie_id, since, now)
-            self._active[box_id] = (tonie_id, now)
+        for box_id, (tonie_id, chapter, since) in list(self._active.items()):
+            self._add(box_id, tonie_id, chapter, since, now)
+            self._active[box_id] = (tonie_id, chapter, now)
 
-    def _add(self, box_id: str, tonie_id: str, start: datetime, end: datetime) -> None:
-        """Add a played span to the days it touches."""
+    def _add(
+        self, box_id: str, tonie_id: str, chapter: int | None, start: datetime, end: datetime
+    ) -> None:
+        """Add a played span to the days and hours it touches."""
         while start < end:
-            midnight = datetime.combine(start.date() + timedelta(days=1), datetime.min.time())
-            midnight = midnight.replace(tzinfo=start.tzinfo)
-            stop = min(end, midnight)
+            hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            stop = min(end, hour_end)
             seconds = int((stop - start).total_seconds())
             if seconds > 0:
-                day = self._days.setdefault(start.date().isoformat(), {})
-                box = day.setdefault(box_id, {})
+                key = start.date().isoformat()
+                box = self._days.setdefault(key, {}).setdefault(box_id, {})
                 box[tonie_id] = box.get(tonie_id, 0) + seconds
+                hours = self._hours.setdefault(key, {})
+                hours[str(start.hour)] = hours.get(str(start.hour), 0) + seconds
+                if chapter is not None:
+                    chapters = self._chapters.setdefault(key, {}).setdefault(tonie_id, {})
+                    chapters[str(chapter)] = chapters.get(str(chapter), 0) + seconds
                 self._dirty = True
             start = stop
 
     def _prune(self) -> None:
         oldest = (self._now().date() - timedelta(days=ANALYTICS_KEEP_DAYS)).isoformat()
-        for day in [d for d in self._days if d < oldest]:
-            del self._days[day]
-            self._dirty = True
+        for sums in (self._days, self._chapters, self._hours):
+            for day in [d for d in sums if d < oldest]:
+                del sums[day]
+                self._dirty = True
 
     # ------------------------------------------------------------ saving
 
@@ -106,7 +136,7 @@ class Analytics:
         await self._store.async_save(self._data_to_save())
 
     def _data_to_save(self) -> AnalyticsData:
-        return {"days": self._days}
+        return {"days": self._days, "chapters": self._chapters, "hours": self._hours}
 
     # ------------------------------------------------------------ queries
 
@@ -148,3 +178,31 @@ class Analytics:
     def total(self, days: int | None = None) -> int:
         """Return the seconds listened over the last days."""
         return sum(self.per_day(days).values())
+
+    def per_chapter(self, days: int | None = None) -> dict[tuple[str, int], int]:
+        """Return seconds per chapter of a figure (index from 0) over the last days."""
+        first = None if days is None else self._first_key(days)
+        result: dict[tuple[str, int], int] = {}
+        for day, tonies in self._chapters.items():
+            if first is not None and day < first:
+                continue
+            for tonie_id, chapters in tonies.items():
+                for index, seconds in chapters.items():
+                    key = (tonie_id, int(index))
+                    result[key] = result.get(key, 0) + seconds
+        return result
+
+    def per_weekday_hour(self, days: int | None = None) -> list[list[int]]:
+        """Return seconds per weekday (Monday first) and hour of the day over the last days."""
+        first = None if days is None else self._first_key(days)
+        grid = [[0] * 24 for _ in range(7)]
+        for day, hours in self._hours.items():
+            if first is not None and day < first:
+                continue
+            weekday = date.fromisoformat(day).weekday()
+            for hour, seconds in hours.items():
+                grid[weekday][int(hour)] += seconds
+        return grid
+
+    def _first_key(self, days: int) -> str:
+        return (self._now().date() - timedelta(days=days - 1)).isoformat()

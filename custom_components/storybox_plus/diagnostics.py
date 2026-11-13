@@ -44,6 +44,19 @@ async def async_get_config_entry_diagnostics(
                     "battery_status": box_state.battery.status if box_state.battery else None,
                     "charging": box_state.battery.charging if box_state.battery else None,
                     "volume_level": box_state.volume.level if box_state.volume else None,
+                    "features": list(box_state.box.features),
+                    "has_timezone": box_state.box.timezone is not None,
+                    "schedules": (
+                        None if box_state.schedules is None else len(box_state.schedules)
+                    ),
+                    "sleep_timer": (
+                        {
+                            "state": box_state.sleep_timer.state,
+                            "alarm": box_state.sleep_timer.alarm,
+                        }
+                        if box_state.sleep_timer
+                        else None
+                    ),
                     "figure_placed": box_state.tonie_id is not None,
                     "playing": box_state.playing,
                     "chapter": playback.chapter if playback else None,
@@ -69,6 +82,9 @@ async def async_get_config_entry_diagnostics(
             "scope": tokens.scope if tokens else None,
         },
         "push_connected": runtime.push.connected,
+        "backend_version": runtime.coordinator.backend_version,
+        "backend_tested": runtime.coordinator.backend_tested,
+        "preferences": runtime.preferences.as_dict(),
         "polled_at_age_s": (
             int((now - data.polled_at).total_seconds()) if data and data.polled_at else None
         ),

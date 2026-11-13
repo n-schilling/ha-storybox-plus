@@ -28,18 +28,31 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.loader import async_get_integration
 from homeassistant.util.hass_dict import HassKey
 
-from . import fetcher
-from .cloud import VOLUME_LEVELS, CloudError, Tonie, TonieKind
-from .const import BUILD_FILE, DOMAIN
+from . import bedtime, fetcher
+from .cloud import (
+    SLEEP_TIMER_MAX_MINUTES,
+    VOLUME_LEVELS,
+    WEEKDAYS,
+    BedtimeSchedule,
+    CloudError,
+    Tonie,
+    TonieKind,
+    Tune,
+)
+from .cloud.models import SETTING_FIELDS
+from .const import BUILD_FILE, DOMAIN, TESTED_BACKEND_RELEASE
 from .coordinator import (
+    BoxError,
     BoxState,
     ChapterError,
     CloudState,
     StoryboxConfigEntry,
     StoryboxCoordinator,
+    setting_supported,
 )
 from .favourites import Favourites
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
+from .night import NightMode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,13 +77,17 @@ _AUDIO_TYPES = {
 # What the page is told when a chapter change is refused
 _CHAPTER_MESSAGES = {
     "unknown_figure": "The figure is not in any account",
-    "not_creative": "Only creative figures take chapters",
+    "not_creative": "Only creative figures can be changed here",
     "unknown_chapter": "The chapter list names chapters the figure does not have",
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
     "fetcher_missing": "The Media Fetcher app is not installed or not running",
     "invalid_url": "Only web links (http or https) can be fetched",
     "not_bought": "Favourites are for bought figures; the chapters of creative figures are arranged instead",
+    "not_lockable": "Only bought figures and discs are locked to a household",
+    "unknown_tune": "The account has no such Tune",
+    "unsuitable_tune": "The Tune does not fit this figure",
+    "no_tune": "No Tune lies on this figure",
 }
 
 
@@ -88,6 +105,20 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_add_link)
     async_register_command(hass, websocket_refresh_figure)
     async_register_command(hass, websocket_set_favourites)
+    async_register_command(hass, websocket_update_figure)
+    async_register_command(hass, websocket_figure_volume)
+    async_register_command(hass, websocket_figure_lock)
+    async_register_command(hass, websocket_figure_tune)
+    async_register_command(hass, websocket_shuffle_on_swap)
+    async_register_command(hass, websocket_preferences)
+    async_register_command(hass, websocket_rename_household)
+    async_register_command(hass, websocket_box_command)
+    async_register_command(hass, websocket_redeem_voucher)
+    async_register_command(hass, websocket_redeem_token)
+    async_register_command(hass, websocket_save_schedule)
+    async_register_command(hass, websocket_delete_schedule)
+    async_register_command(hass, websocket_box_settings)
+    async_register_command(hass, websocket_night_mode)
 
 
 def _loaded_entries(hass: HomeAssistant) -> list[StoryboxConfigEntry]:
@@ -108,7 +139,10 @@ def _on_box(data: CloudState, tonie_id: str) -> str | None:
 
 
 def _tonie_dict(
-    tonie: Tonie, on_box: str | None, favourites: Favourites | None = None
+    tonie: Tonie,
+    on_box: str | None,
+    favourites: Favourites | None = None,
+    volume: int | None = None,
 ) -> dict[str, Any]:
     return {
         "id": tonie.id,
@@ -128,8 +162,33 @@ def _tonie_dict(
         "chapters_remaining": tonie.chapters_remaining,
         "transcoding": tonie.transcoding,
         "transcoding_errors": list(tonie.transcoding_errors),
+        "live": tonie.live,
         "on_box": on_box,
         "favourites": favourites.as_dict() if favourites else None,
+        "volume": volume,
+    }
+
+
+def _tune_dict(tune: Tune) -> dict[str, Any]:
+    return {
+        "id": tune.id,
+        "title": tune.title,
+        "image_url": tune.image_url,
+        "series": tune.series,
+        "seconds": tune.seconds,
+        "remaining": tune.remaining,
+        "assigned": list(tune.assigned),
+        "suitable": list(tune.suitable),
+    }
+
+
+def _figure_answer(coordinator: StoryboxCoordinator, tonie: Tonie) -> dict[str, Any]:
+    """A changed creative figure as the page shows it, with its volume and shuffling."""
+    return {
+        **_tonie_dict(
+            tonie, _on_box(coordinator.data, tonie.id), None, coordinator.volumes.get(tonie.id)
+        ),
+        "shuffle_on_swap": coordinator.shuffles.enabled(tonie.id),
     }
 
 
@@ -181,6 +240,7 @@ def _box_dict(
         "name": box.name,
         "household": household.name if household else None,
         "generation": box.generation.value,
+        "image_url": coordinator.box_picture(box),
         "firmware": box.firmware,
         "online": box_state.online,
         "last_seen": box.last_seen.isoformat() if box.last_seen else None,
@@ -188,9 +248,19 @@ def _box_dict(
         "charging": box_state.battery.charging if box_state.battery else None,
         "volume": box_state.volume.level if box_state.volume else None,
         "volume_max": VOLUME_LEVELS,
+        "headphones": (
+            {
+                "connected": box_state.headphones.connected,
+                "kind": box_state.headphones.kind,
+                "battery": box_state.headphones.battery,
+            }
+            if box_state.headphones and box_state.online is not False
+            else None
+        ),
         "sleep_timer": (
             {
                 "state": box_state.sleep_timer.state,
+                "alarm": box_state.sleep_timer.alarm,
                 "until": (
                     box_state.sleep_timer.until.isoformat() if box_state.sleep_timer.until else None
                 ),
@@ -200,6 +270,74 @@ def _box_dict(
         ),
         "playback": playback,
         "battery_stats": coordinator.battery_stats.summary(box.id) if box.live else None,
+        "bedtime": _bedtime_dict(coordinator, box_state),
+        "settings": _settings_dict(box_state),
+        "night": _night_dict(coordinator, box_state),
+    }
+
+
+def _night_dict(coordinator: StoryboxCoordinator, box_state: BoxState) -> dict[str, Any] | None:
+    """The night mode of a Toniebox 2's light ring and the phase it is in now."""
+    if not box_state.box.live:
+        return None
+    mode = coordinator.night_modes.get(box_state.box.id)
+    return {
+        "mode": mode.as_dict() if mode else None,
+        "phase": coordinator.night_phase(box_state),
+    }
+
+
+def _settings_dict(box_state: BoxState) -> dict[str, Any]:
+    """The settings the box has and the cloud named, with the read-only state beside them."""
+    box = box_state.box
+    values = {
+        name: getattr(box.settings, name)
+        for name in SETTING_FIELDS
+        if setting_supported(box, name) and getattr(box.settings, name) is not None
+    }
+    return {
+        "values": values,
+        "offline_mode": box.settings.offline_mode,
+        "applied": box.settings.settings_applied,
+    }
+
+
+def _schedule_dict(schedule: BedtimeSchedule) -> dict[str, Any]:
+    alarm = schedule.alarm
+    return {
+        "id": schedule.id,
+        "name": schedule.name,
+        "sleep_time": schedule.sleep_time,
+        "wakeup_time": schedule.wakeup_time,
+        "days": list(schedule.days),
+        "enabled": schedule.enabled,
+        "alarm_enabled": schedule.alarm_enabled,
+        "alarm_volume": alarm.volume,
+        "alarm_morning_light": alarm.morning_light,
+    }
+
+
+def _bedtime_dict(coordinator: StoryboxCoordinator, box_state: BoxState) -> dict[str, Any] | None:
+    """The schedules of a box that rings alarms, the next wake-up and whether it is armed."""
+    if not box_state.box.alarm_capable:
+        return None
+    schedules = box_state.schedules
+    upcoming = (
+        bedtime.next_alarm(schedules, coordinator.now_at(box_state.box)) if schedules else None
+    )
+    return {
+        # None: the schedules could not be read yet
+        "schedules": None if schedules is None else [_schedule_dict(s) for s in schedules],
+        "next_alarm": (
+            {
+                "at": upcoming.at.isoformat(),
+                "schedule_id": upcoming.schedule.id,
+                "armed": bedtime.armed_for(box_state.sleep_timer, upcoming.at),
+                "due": coordinator.due_alarm(box_state.box.id) is not None,
+            }
+            if upcoming
+            else None
+        ),
     }
 
 
@@ -221,6 +359,21 @@ def _read_commit() -> str | None:
         return (Path(__file__).parent / BUILD_FILE).read_text(encoding="utf-8").strip() or None
     except OSError:
         return None
+
+
+def _entry_extras(entry: StoryboxConfigEntry) -> dict[str, Any]:
+    """The page's settings of an account and the version its cloud runs."""
+    coordinator = entry.runtime_data.coordinator
+    return {
+        "households": [{"id": h.id, "name": h.name} for h in coordinator.data.households.values()],
+        "preferences": entry.runtime_data.preferences.as_dict(),
+        "cloud": {
+            "version": coordinator.backend_version,
+            "release": coordinator.backend_release,
+            "tested": TESTED_BACKEND_RELEASE,
+            "matches": coordinator.backend_tested,
+        },
+    }
 
 
 @require_admin
@@ -245,6 +398,7 @@ async def websocket_overview(
                     "entry_id": e.entry_id,
                     "title": e.title,
                     "loaded": e.state is ConfigEntryState.LOADED,
+                    **(_entry_extras(e) if e.state is ConfigEntryState.LOADED else {}),
                 }
                 for e in all_entries
             ],
@@ -264,6 +418,7 @@ async def websocket_library(
     """Return the households and figures of all accounts, and whether links can be fetched."""
     households: list[dict[str, Any]] = []
     tonies: list[dict[str, Any]] = []
+    tunes: list[dict[str, Any]] = []
     for entry in _loaded_entries(hass):
         data = entry.runtime_data.coordinator.data
         households.extend(
@@ -271,15 +426,23 @@ async def websocket_library(
             for h in data.households.values()
         )
         favourites = entry.runtime_data.favourites
+        volumes = entry.runtime_data.volumes
+        shuffles = entry.runtime_data.shuffles
         tonies.extend(
-            _tonie_dict(t, _on_box(data, t.id), favourites.get(t.id)) for t in data.tonies.values()
+            {
+                **_tonie_dict(t, _on_box(data, t.id), favourites.get(t.id), volumes.get(t.id)),
+                "shuffle_on_swap": shuffles.enabled(t.id),
+            }
+            for t in data.tonies.values()
         )
+        tunes.extend(_tune_dict(t) for t in entry.runtime_data.coordinator.tunes or ())
     tonies.sort(key=lambda t: str(t["name"]).lower())
     connection.send_result(
         msg["id"],
         {
             "households": households,
             "tonies": tonies,
+            "tunes": tunes,
             # The page offers links only while the Media Fetcher app is there
             "fetcher": await fetcher.async_find(hass) is not None,
         },
@@ -307,7 +470,7 @@ async def _answer_with_figure(
     except CloudError as err:
         connection.send_error(msg["id"], "cloud_error", str(err))
     else:
-        connection.send_result(msg["id"], _tonie_dict(tonie, _on_box(coordinator.data, tonie.id)))
+        connection.send_result(msg["id"], _figure_answer(coordinator, tonie))
 
 
 @require_admin
@@ -444,9 +607,7 @@ async def websocket_add_link(
             _LOGGER.exception("Adding a chapter from a link failed")
             tell({"stage": "error", "code": "unknown_error", "message": str(err)})
         else:
-            tell(
-                {"stage": "done", "figure": _tonie_dict(tonie, _on_box(coordinator.data, tonie.id))}
-            )
+            tell({"stage": "done", "figure": _figure_answer(coordinator, tonie)})
 
     @callback
     def stop() -> None:
@@ -489,6 +650,517 @@ async def websocket_set_favourites(
     connection.send_result(msg["id"], {"favourites": favourites.as_dict() if favourites else None})
 
 
+# ---------------------------------------------------------------- bedtime
+
+_BOX_MESSAGES = {
+    "unknown_box": "The box is not in any account",
+    "no_alarm": "This box has no bedtime schedules",
+    "unknown_schedule": "The box has no such bedtime schedule",
+    "not_supported": "This box does not have that setting",
+    "unknown_household": "The account has no such household",
+    "alarm_due": "The alarm of a bedtime is due; the sleep timer would cancel it",
+    "nothing_plays": "No figure is on the box",
+    "invalid_command": "The command needs a value",
+}
+
+
+def _setting_schema() -> dict[Any, Any]:
+    """The values each setting takes, from the cloud layer's table."""
+    schema: dict[Any, Any] = {}
+    for name, (_api, allowed) in SETTING_FIELDS.items():
+        if allowed is bool:
+            check: Any = bool
+        elif name in ("max_volume", "max_headphone_volume") or isinstance(allowed[0], str):
+            check = probatio.In(allowed)
+        else:
+            check = probatio.All(int, probatio.Range(min=allowed[0], max=allowed[1]))
+        schema[probatio.Optional(name)] = check
+    return schema
+
+
+_CLOCK = probatio.Match(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+# The page's names and the cloud's
+_SCHEDULE_FIELDS = {
+    "name": "name",
+    "sleep_time": "sleepTime",
+    "wakeup_time": "wakeupTime",
+    "days": "days",
+    "enabled": "enabled",
+    "alarm_enabled": "alarmEnabled",
+    "alarm_volume": "alarmVolume",
+    "alarm_morning_light": "alarmMorningLight",
+}
+
+
+def _entry_for_box(hass: HomeAssistant, box_id: str) -> StoryboxConfigEntry | None:
+    return next(
+        (e for e in _loaded_entries(hass) if box_id in e.runtime_data.coordinator.data.boxes),
+        None,
+    )
+
+
+async def _answer_with_box(
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+    entry: StoryboxConfigEntry,
+    change: Coroutine[Any, Any, BoxState],
+) -> None:
+    """Run a change to the schedules of a box and answer with the box as it is then."""
+    try:
+        box_state = await change
+    except BoxError as err:
+        connection.send_error(msg["id"], err.code, _BOX_MESSAGES[err.code])
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        connection.send_result(
+            msg["id"], _box_dict(entry, entry.runtime_data.coordinator, box_state)
+        )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/bedtime/save",
+        probatio.Required("box_id"): str,
+        probatio.Optional("schedule_id"): str,
+        probatio.Optional("name"): probatio.All(str, probatio.Length(max=100)),
+        probatio.Optional("sleep_time"): _CLOCK,
+        probatio.Optional("wakeup_time"): _CLOCK,
+        probatio.Optional("days"): [probatio.In(WEEKDAYS)],
+        probatio.Optional("enabled"): bool,
+        probatio.Optional("alarm_enabled"): bool,
+        probatio.Optional("alarm_volume"): probatio.All(int, probatio.Range(min=0, max=100)),
+        probatio.Optional("alarm_morning_light"): bool,
+    }
+)
+@async_response
+async def websocket_save_schedule(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Create a bedtime schedule of a box, or change the given fields of one.
+
+    A new schedule needs its times and days; the alarm is armed by the
+    integration as soon as the schedule asks for one.
+    """
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    fields = {cloud: msg[page] for page, cloud in _SCHEDULE_FIELDS.items() if page in msg}
+    if "days" in fields:
+        # In the order of the week, each day once
+        fields["days"] = [d for d in WEEKDAYS if d in fields["days"]]
+    schedule_id: str | None = msg.get("schedule_id")
+    if schedule_id is None:
+        missing = [f for f in ("sleep_time", "wakeup_time", "days") if not msg.get(f)]
+        if missing:
+            connection.send_error(
+                msg["id"], "invalid_format", f"A new schedule needs {', '.join(missing)}"
+            )
+            return
+        fields.setdefault("name", "")
+        fields.setdefault("enabled", True)
+        fields.setdefault("alarmEnabled", False)
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_box(
+        connection,
+        msg,
+        entry,
+        coordinator.async_save_schedule(msg["box_id"], schedule_id, fields),
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/box/settings",
+        probatio.Required("box_id"): str,
+        probatio.Optional("name"): probatio.All(
+            str, probatio.Strip, probatio.Length(min=1, max=100)
+        ),
+        **_setting_schema(),
+    }
+)
+@async_response
+async def websocket_box_settings(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Change the name or settings of a box; only the given ones are sent to the cloud."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    changes = {k: v for k, v in msg.items() if k == "name" or k in SETTING_FIELDS}
+    if not changes:
+        connection.send_error(msg["id"], "invalid_format", "Nothing to change")
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_box(
+        connection, msg, entry, coordinator.async_change_settings(msg["box_id"], changes)
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/night/set",
+        probatio.Required("box_id"): str,
+        probatio.Required("enabled"): bool,
+        probatio.Required("start"): _CLOCK,
+        probatio.Required("end"): _CLOCK,
+        probatio.Required("night"): probatio.All(int, probatio.Range(min=0, max=100)),
+        probatio.Required("day"): probatio.All(int, probatio.Range(min=0, max=100)),
+    }
+)
+@async_response
+async def websocket_night_mode(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Keep the night mode of a box's light ring; the ring is set as the mode asks now."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    if msg["start"] == msg["end"]:
+        connection.send_error(msg["id"], "invalid_format", "Start and end are the same time")
+        return
+    mode = NightMode(
+        enabled=msg["enabled"],
+        start=msg["start"],
+        end=msg["end"],
+        night=msg["night"],
+        day=msg["day"],
+    )
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_box(
+        connection, msg, entry, coordinator.async_set_night_mode(msg["box_id"], mode)
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/bedtime/delete",
+        probatio.Required("box_id"): str,
+        probatio.Required("schedule_id"): str,
+    }
+)
+@async_response
+async def websocket_delete_schedule(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Delete a bedtime schedule of a box."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_box(
+        connection,
+        msg,
+        entry,
+        coordinator.async_delete_schedule(msg["box_id"], msg["schedule_id"]),
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/figure/volume",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("level"): probatio.Any(
+            None, probatio.All(int, probatio.Range(min=1, max=VOLUME_LEVELS))
+        ),
+    }
+)
+@async_response
+async def websocket_figure_volume(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Keep the volume level of a figure (None: the box's own volume)."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    await entry.runtime_data.coordinator.async_set_figure_volume(msg["tonie_id"], msg["level"])
+    connection.send_result(msg["id"], {"volume": entry.runtime_data.volumes.get(msg["tonie_id"])})
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/figure/lock",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("locked"): bool,
+    }
+)
+@async_response
+async def websocket_figure_lock(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Lock a bought figure or disc to the household, or unlock it for good."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    try:
+        tonie = await entry.runtime_data.coordinator.async_set_lock(msg["tonie_id"], msg["locked"])
+    except ChapterError as err:
+        connection.send_error(msg["id"], err.code, _chapter_message(err))
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        connection.send_result(msg["id"], {"locked": tonie.locked})
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/figure/shuffle_on_swap",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("enabled"): bool,
+    }
+)
+@async_response
+async def websocket_shuffle_on_swap(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Shuffle a creative figure whenever another figure replaces it on a Toniebox 2."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    tonie = entry.runtime_data.coordinator.data.tonies[msg["tonie_id"]]
+    if tonie.kind is not TonieKind.CREATIVE:
+        connection.send_error(msg["id"], "not_creative", _CHAPTER_MESSAGES["not_creative"])
+        return
+    shuffles = entry.runtime_data.shuffles
+    await shuffles.async_set(msg["tonie_id"], msg["enabled"])
+    connection.send_result(msg["id"], {"shuffle_on_swap": shuffles.enabled(msg["tonie_id"])})
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/figure/tune",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("tune_id"): probatio.Any(None, str),
+    }
+)
+@async_response
+async def websocket_figure_tune(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Lay a bought Tune on a figure, or take it off (tune_id null); answers with the Tunes."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    try:
+        await coordinator.async_set_tune(msg["tonie_id"], msg["tune_id"])
+    except ChapterError as err:
+        connection.send_error(msg["id"], err.code, _chapter_message(err))
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        tonie = coordinator.data.tonies.get(msg["tonie_id"])
+        connection.send_result(
+            msg["id"],
+            {
+                "tunes": [_tune_dict(t) for t in coordinator.tunes or ()],
+                "figure": _figure_answer(coordinator, tonie) if tonie else None,
+            },
+        )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/voucher/redeem",
+        probatio.Required("entry_id"): str,
+        probatio.Required("code"): probatio.All(
+            str, probatio.Strip, probatio.Length(min=1, max=100)
+        ),
+    }
+)
+@async_response
+async def websocket_redeem_voucher(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Redeem a Tunes voucher for an account; answers with how many Tunes it brought."""
+    entry = next((e for e in _loaded_entries(hass) if e.entry_id == msg["entry_id"]), None)
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_entry", "The account is not loaded")
+        return
+    coordinator = entry.runtime_data.coordinator
+    try:
+        count = await coordinator.async_redeem_voucher(msg["code"])
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        connection.send_result(
+            msg["id"],
+            {"count": count, "tunes": [_tune_dict(t) for t in coordinator.tunes or ()]},
+        )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/figure/redeem_token",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("token"): probatio.All(
+            str, probatio.Strip, probatio.Length(min=1, max=100)
+        ),
+    }
+)
+@async_response
+async def websocket_redeem_token(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Put the content of a content token on a creative figure; answers with the figure."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_figure(
+        connection, msg, coordinator, coordinator.async_redeem_token(msg["tonie_id"], msg["token"])
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/box/command",
+        probatio.Required("box_id"): str,
+        probatio.Required("command"): probatio.In(
+            ["play", "pause", "next", "previous", "volume", "sleep", "sleep_clear"]
+        ),
+        probatio.Optional("value"): probatio.All(
+            int, probatio.Range(min=0, max=SLEEP_TIMER_MAX_MINUTES)
+        ),
+    }
+)
+@async_response
+async def websocket_box_command(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Play, pause, skip, change the volume or the sleep timer of a Toniebox 2 from the page."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    value = msg.get("value")
+    if msg["command"] == "volume" and value is not None and value > VOLUME_LEVELS:
+        connection.send_error(msg["id"], "invalid_format", "The box knows 13 volume levels")
+        return
+    if msg["command"] == "sleep" and not value:
+        connection.send_error(msg["id"], "invalid_command", _BOX_MESSAGES["invalid_command"])
+        return
+    try:
+        await entry.runtime_data.coordinator.async_box_command(msg["box_id"], msg["command"], value)
+    except BoxError as err:
+        connection.send_error(msg["id"], err.code, _BOX_MESSAGES[err.code])
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        connection.send_result(msg["id"])
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/household/rename",
+        probatio.Required("household_id"): str,
+        probatio.Required("name"): probatio.All(
+            str, probatio.Strip, probatio.Length(min=1, max=100)
+        ),
+    }
+)
+@async_response
+async def websocket_rename_household(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Rename a household of an account."""
+    entry = next(
+        (
+            e
+            for e in _loaded_entries(hass)
+            if msg["household_id"] in e.runtime_data.coordinator.data.households
+        ),
+        None,
+    )
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_household", _BOX_MESSAGES["unknown_household"])
+        return
+    try:
+        await entry.runtime_data.coordinator.async_rename_household(
+            msg["household_id"], msg["name"]
+        )
+    except BoxError as err:
+        connection.send_error(msg["id"], err.code, _BOX_MESSAGES[err.code])
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+    else:
+        connection.send_result(msg["id"], {"entry_title": entry.title})
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/preferences/set",
+        probatio.Required("entry_id"): str,
+        probatio.Optional("auto_lock"): bool,
+        probatio.Optional("mark_read"): bool,
+    }
+)
+@async_response
+async def websocket_preferences(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Change the settings of an account from the page's settings tab."""
+    entry = next((e for e in _loaded_entries(hass) if e.entry_id == msg["entry_id"]), None)
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_entry", "The account is not loaded")
+        return
+    preferences = entry.runtime_data.preferences
+    await preferences.async_set(msg.get("auto_lock"), msg.get("mark_read"))
+    connection.send_result(msg["id"], preferences.as_dict())
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/figure/update",
+        probatio.Required("tonie_id"): str,
+        probatio.Optional("name"): probatio.All(
+            str, probatio.Strip, probatio.Length(min=1, max=100)
+        ),
+        probatio.Optional("live"): bool,
+    }
+)
+@async_response
+async def websocket_update_figure(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Change name or live mode of a creative figure; only the given ones are sent."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    fields: dict[str, Any] = {k: msg[k] for k in ("name", "live") if k in msg}
+    if not fields:
+        connection.send_error(msg["id"], "invalid_format", "Nothing to change")
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_figure(
+        connection, msg, coordinator, coordinator.async_update_figure(msg["tonie_id"], fields)
+    )
+
+
 @require_admin
 @websocket_command(
     {probatio.Required("type"): f"{DOMAIN}/figure/refresh", probatio.Required("tonie_id"): str}
@@ -506,6 +1178,12 @@ async def websocket_refresh_figure(
     await _answer_with_figure(
         connection, msg, coordinator, coordinator.async_refresh_creative(msg["tonie_id"])
     )
+
+
+def _chapter_title(tonie: Tonie | None, index: int) -> str | None:
+    if tonie is None or not 0 <= index < len(tonie.chapters):
+        return None
+    return tonie.chapters[index].title or None
 
 
 @require_admin
@@ -551,6 +1229,18 @@ def websocket_analytics(
         for day, seconds in runtime.analytics.per_day(days).items():
             per_day[day] = per_day.get(day, 0) + seconds
     top = sorted(per_tonie.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    per_chapter: dict[tuple[str, int], int] = {}
+    heatmap = [[0] * 24 for _ in range(7)]
+    for entry in _loaded_entries(hass):
+        analytics = entry.runtime_data.analytics
+        if analytics is None:
+            continue
+        for key, seconds in analytics.per_chapter(days).items():
+            per_chapter[key] = per_chapter.get(key, 0) + seconds
+        for weekday, hours in enumerate(analytics.per_weekday_hour(days)):
+            for hour, seconds in enumerate(hours):
+                heatmap[weekday][hour] += seconds
+    top_chapters = sorted(per_chapter.items(), key=lambda item: (-item[1], item[0]))[:limit]
     connection.send_result(
         msg["id"],
         {
@@ -568,6 +1258,19 @@ def websocket_analytics(
                 }
                 for tonie_id, seconds in top
             ],
+            "top_chapters": [
+                {
+                    "tonie_id": tonie_id,
+                    "name": names[tonie_id].name if tonie_id in names else None,
+                    "image_url": names[tonie_id].image_url if tonie_id in names else None,
+                    "chapter": index,
+                    "title": _chapter_title(names.get(tonie_id), index),
+                    "seconds": seconds,
+                }
+                for (tonie_id, index), seconds in top_chapters
+            ],
+            # Monday first, 24 hours each
+            "heatmap": heatmap,
             "per_day": [{"day": d, "seconds": s} for d, s in sorted(per_day.items())],
             "per_box": [
                 {"box_id": b, "name": box_names.get(b), "seconds": s}

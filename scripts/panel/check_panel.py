@@ -85,17 +85,36 @@ def _analytics(today: date) -> dict[str, Any]:
     rng = random.Random(4)
     weights = {"fig-fox": 5, "fig-dragon": 4, "fig-moon": 3, "fig-grandma": 2, "fig-sea": 1}
     days: dict[str, Any] = {}
+    chapters: dict[str, Any] = {}
+    hours: dict[str, Any] = {}
+    counts = {"fig-fox": 8, "fig-dragon": 3, "fig-moon": 12, "fig-grandma": 4, "fig-sea": 5}
     for back in range(75):
         day = today - timedelta(days=back)
         if rng.random() < 0.15:
             continue
         weekend = day.weekday() >= 5
         sums: dict[str, int] = {}
+        per_chapter: dict[str, dict[str, int]] = {}
+        per_hour: dict[str, int] = {}
         for _ in range(rng.randint(2, 5 if weekend else 3)):
             figure = rng.choices(list(weights), weights=list(weights.values()))[0]
-            sums[figure] = sums.get(figure, 0) + rng.randint(4, 22) * 60
-        days[day.isoformat()] = {demo_cloud.KIDS_BOX: sums}
-    return {"days": days}
+            seconds = rng.randint(4, 22) * 60
+            sums[figure] = sums.get(figure, 0) + seconds
+            # Early chapters more often than late ones
+            index = str(min(int(rng.expovariate(0.6)), counts[figure] - 1))
+            per_chapter.setdefault(figure, {})[index] = (
+                per_chapter.get(figure, {}).get(index, 0) + seconds
+            )
+            # Mornings at the weekend, evenings always
+            hour = str(
+                rng.choice([8, 9, 10, 17, 18, 19, 19, 20] if weekend else [7, 18, 19, 19, 20])
+            )
+            per_hour[hour] = per_hour.get(hour, 0) + seconds
+        key = day.isoformat()
+        days[key] = {demo_cloud.KIDS_BOX: sums}
+        chapters[key] = per_chapter
+        hours[key] = per_hour
+    return {"days": days, "chapters": chapters, "hours": hours}
 
 
 def _battery(today: date) -> dict[str, Any]:
@@ -213,6 +232,7 @@ class Instance:
         pictures.mkdir(parents=True)
         for figure_id in demo_cloud.COLOURS:
             (pictures / f"{figure_id}.svg").write_text(demo_cloud.picture_svg(figure_id))
+        (pictures / "box-red.svg").write_text(demo_cloud.box_svg())
         (self.config / "configuration.yaml").write_text(_configuration(self.port))
         log = (self.directory / "hass.log").open("wb")
         self.process = subprocess.Popen(
@@ -427,6 +447,13 @@ async def _ready(page: Page, what: str) -> None:
     await page.locator("#ha-launch-screen").wait_for(state="detached")
 
 
+async def _schedules(api: Api, instance: Instance) -> dict[str, dict[str, Any]]:
+    """The bedtime schedules of the Toniebox 2 as the integration has them, by name."""
+    reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+    box = next(b for b in reply["result"]["boxes"] if b["bedtime"])
+    return {s["name"]: s for s in box["bedtime"]["schedules"]}
+
+
 async def _library(api: Api, instance: Instance) -> dict[str, dict[str, Any]]:
     """The figures as the integration has them, by ID."""
     reply = await api.ws(instance.token, {"type": "storybox_plus/library"})
@@ -476,7 +503,7 @@ async def _header_row(page: Page, *, tabs: bool) -> None:
         nav = row["tabs"]
         expect(nav is not None, "no tabs in the header row")
         expect(
-            nav["count"] == 3 and nav["active"] == 1, f"{nav['count']} tabs, {nav['active']} active"
+            nav["count"] == 4 and nav["active"] == 1, f"{nav['count']} tabs, {nav['active']} active"
         )
         expect(nav["left"] >= row["name"]["right"], "the tabs are not right of the name")
         expect(
@@ -506,7 +533,6 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             expect(part in kids, f"{part!r} missing on the box: {kids}")
         expect("The Frozen River" in kids and "Playing" in kids, kids)
         expect("64 %" in kids and "per full charge" in kids, "battery missing")
-        expect("Sleep timer until" in kids, "sleep timer missing")
         living = await cards.nth(1).inner_text()
         expect("Living room" in living and "Last seen" in living, living)
         about = await page.locator(f"{PANEL} .about").inner_text()
@@ -553,6 +579,139 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         "only Home Assistant's elements, header in the sidebar's colour", built_from_home_assistant
     )
 
+    async def bedtimes() -> None:
+        tile = page.locator(f"{PANEL} .tile", has_text="Bedtimes")
+        await tile.wait_for()
+        text = await tile.inner_text()
+        for part in ("Bedtime", "every day", "Weekend lie-in", "Next alarm"):
+            expect(part in text, f"{part!r} missing in the bedtimes: {text}")
+        # The integration arms the alarm half a minute after the box came online
+        await _until(
+            lambda: _has_text(tile.locator(".alarm-next"), "set on the box"),
+            "the alarm armed on the box",
+            seconds=90,
+        )
+        rows = tile.locator(".schedules > li")
+        expect(await rows.count() == 2, f"2 bedtimes expected, got {await rows.count()}")
+        weekend = rows.filter(has_text="Weekend lie-in")
+        await weekend.locator("ha-switch").click()
+
+        async def switched(on: bool) -> bool:
+            return (await _schedules(api, instance))["Weekend lie-in"]["enabled"] is on
+
+        await _until(lambda: switched(True), "the bedtime switched on", seconds=5)
+        await page.wait_for_timeout(300)
+        await weekend.locator("ha-switch").click()
+        await _until(lambda: switched(False), "the bedtime switched off", seconds=5)
+
+    await checks.run("bedtimes: next alarm armed on the box, a switch per bedtime", bedtimes)
+
+    async def bedtime_form() -> None:
+        tile = page.locator(f"{PANEL} .tile", has_text="Bedtimes")
+        await tile.locator("ha-button[data-act^='sadd:']").click()
+        form = tile.locator("ha-form[data-form=schedule]")
+        await form.wait_for()
+        await form.locator("input").first.fill("Nap")
+        await page.wait_for_timeout(300)
+        if shots is not None:
+            await page.set_viewport_size({"width": 1200, "height": 2000})
+            await page.wait_for_timeout(400)
+            await tile.screenshot(path=str(shots / "bedtime.png"))
+            await page.set_viewport_size({"width": 1200, "height": 820})
+        await tile.locator("ha-button[data-act=ssave]").click()
+        await _until(
+            lambda: _has_schedule(api, instance, "Nap", True), "the new bedtime", seconds=5
+        )
+        await form.wait_for(state="detached")
+        nap = await _schedules(api, instance)
+        expect(nap["Nap"]["days"] == ["monday", "tuesday", "wednesday", "thursday", "friday"], nap)
+        row = tile.locator(".schedules > li", has_text="Nap")
+        await row.locator("ha-icon-button[data-act^='sedit:']").click()
+        await form.wait_for()
+        delete = tile.locator("ha-button[data-act=sdel]")
+        await delete.click()
+        await _until(lambda: _has_text(delete, "Really delete"), "the delete to ask", seconds=5)
+        await delete.click()
+        await _until(
+            lambda: _has_schedule(api, instance, "Nap", False), "the bedtime deleted", seconds=5
+        )
+
+    await checks.run(
+        "bedtimes: a new one through the form, deleted after a second click", bedtime_form
+    )
+
+    async def box_settings() -> None:
+        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
+        tile = kids.locator(".tile", has_text="Settings")
+        text = await tile.inner_text()
+        for part in ("Max. 75 %", "light ring 60 %", "skipping on"):
+            expect(part in text, f"{part!r} missing in the settings: {text}")
+        living = page.locator(f"{PANEL} .grid > ha-card").nth(1)
+        expect("LED Dimmed" in await living.locator(".tile").inner_text(), "classic LED missing")
+
+        async def rename(name: str) -> None:
+            await tile.locator("ha-icon-button[data-act^='bedit:']").click()
+            form = tile.locator("ha-form[data-form=settings]")
+            await form.wait_for()
+            await form.locator("input").first.fill(name)
+            await page.wait_for_timeout(300)
+            if shots is not None and name != "Kids room":
+                await page.set_viewport_size({"width": 1200, "height": 2000})
+                await page.wait_for_timeout(400)
+                await tile.screenshot(path=str(shots / "settings.png"))
+                await page.set_viewport_size({"width": 1200, "height": 820})
+            await tile.locator("ha-button[data-act=bsave]").click()
+            await form.wait_for(state="detached")
+
+            async def named() -> bool:
+                reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+                return any(b["name"] == name for b in reply["result"]["boxes"])
+
+            await _until(named, f"the box named {name}", seconds=5)
+
+        await rename("Nursery")
+        expect("Nursery" in await kids.locator(".box-name").inner_text(), "new name not shown")
+        await rename("Kids room")
+
+    await checks.run("box settings: summary per generation, renamed through the form", box_settings)
+
+    async def night_mode() -> None:
+        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
+        tile = kids.locator(".tile", has_text="Settings")
+        await tile.locator("ha-button[data-act^='nedit:']").click()
+        form = tile.locator("ha-form[data-form=night]")
+        await form.wait_for()
+        if shots is not None:
+            await page.set_viewport_size({"width": 1200, "height": 1400})
+            await page.wait_for_timeout(400)
+            await tile.screenshot(path=str(shots / "night.png"))
+            await page.set_viewport_size({"width": 1200, "height": 820})
+        await tile.locator("ha-button[data-act=nsave]").click()
+        await form.wait_for(state="detached")
+
+        async def kids_box() -> dict[str, Any]:
+            reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+            return next(b for b in reply["result"]["boxes"] if b["night"])
+
+        async def ring_follows() -> bool:
+            box = await kids_box()
+            night = box["night"]
+            if not night["mode"] or night["mode"]["applied"] != night["phase"]:
+                return False
+            wanted = night["mode"]["night" if night["phase"] == "night" else "day"]
+            return box["settings"]["values"]["lightring_brightness"] == wanted
+
+        await _until(ring_follows, "the light ring set for the phase", seconds=10)
+        expect("Night mode of the light ring" in await tile.inner_text(), "night mode row missing")
+        await tile.locator("ha-switch[data-act^='non:']").click()
+
+        async def switched_off() -> bool:
+            return (await kids_box())["night"]["mode"]["enabled"] is False
+
+        await _until(switched_off, "the night mode switched off", seconds=5)
+
+    await checks.run("night mode: set up through the form, the light ring follows", night_mode)
+
     async def charge_history() -> None:
         await page.locator(f"{PANEL} .tile [data-fold]").click()
         rows = page.locator(f"{PANEL} table.cycles tbody tr")
@@ -564,7 +723,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         if shots is not None:
             await page.locator(f"{PANEL} .tile [data-fold]").click()
             await rows.first.wait_for()
-            await page.set_viewport_size({"width": 1200, "height": 560})
+            await page.set_viewport_size({"width": 1200, "height": 1320})
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "boxes.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
@@ -605,7 +764,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "figures.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
-        await fox.locator("ha-switch").click()
+        await fox.locator("ha-switch[data-act^='favon:']").click()
 
         async def switched_off() -> bool:
             fav = (await _library(api, instance))["fig-fox"]["favourites"]
@@ -663,26 +822,286 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     await checks.run("an uploaded file becomes a chapter; links need the app", upload)
 
+    async def figure_tools() -> None:
+        await go("figures", ".figure")
+        lib = await _library(api, instance)
+        creative = next(
+            f for f in lib.values() if f["kind"] == "creative" and len(f["chapters"]) > 2
+        )
+        # By its ID: the name changes on the way
+        figure = page.locator(f"{PANEL} .figure:has([data-fold='{creative['id']}'])")
+        await figure.locator("[data-fold]").click()
+        # A volume of its own, chosen from Home Assistant's dropdown
+        volume = figure.locator("ha-form[data-form^='vol:']")
+        await volume.wait_for()
+        await volume.evaluate(
+            """(form) => form.dispatchEvent(new CustomEvent("value-changed",
+                 { detail: { value: { level: "5" } }, bubbles: true, composed: true }))"""
+        )
+
+        async def has_volume() -> bool:
+            return (await _library(api, instance))[creative["id"]]["volume"] == 5
+
+        await _until(has_volume, "the figure's volume", seconds=5)
+        await _until(
+            lambda: _has_text(figure.locator(".badges"), "volume 5 / 13"),
+            "the volume chip",
+            seconds=5,
+        )
+        # Renamed and sorted by title in the edit mode, saved together
+        await figure.locator("ha-button[data-act^='edit:']").click()
+        name = figure.locator("ha-form[data-form=figname] input[name=name]")
+        await name.wait_for()
+        await name.fill("Renamed figure")
+        await page.wait_for_timeout(300)
+        await figure.locator("ha-button[data-act=sorttitle]").click()
+        await figure.locator("ha-button[data-act=save]").click()
+
+        async def saved() -> bool:
+            f = (await _library(api, instance))[creative["id"]]
+            titles = [c["title"] for c in f["chapters"]]
+            return f["name"] == "Renamed figure" and titles == sorted(titles, key=str.lower)
+
+        await _until(saved, "the new name and order", seconds=5)
+        # Live mode switched on in the edit mode, shuffling on swap outside it
+        await figure.locator("ha-button[data-act^='edit:']").click()
+        live = figure.locator("ha-form[data-form=figname] ha-switch").first
+        await live.wait_for()
+        await live.click()
+        await page.wait_for_timeout(300)
+        await figure.locator("ha-button[data-act=save]").click()
+
+        async def is_live() -> bool:
+            return (await _library(api, instance))[creative["id"]]["live"] is True
+
+        await _until(is_live, "the live mode saved", seconds=5)
+        swap = figure.locator("ha-switch[data-act^='swapshuffle:']")
+        await swap.wait_for()
+        await swap.click()
+
+        async def shuffles() -> bool:
+            return (await _library(api, instance))[creative["id"]]["shuffle_on_swap"] is True
+
+        await _until(shuffles, "shuffling on swap switched on", seconds=5)
+        # Later checks know the figure by its old name
+        await api.ws(
+            instance.token,
+            {
+                "type": "storybox_plus/figure/update",
+                "tonie_id": creative["id"],
+                "name": creative["name"],
+            },
+        )
+
+    await checks.run(
+        "figures: a volume per figure, renamed and sorted in the edit mode", figure_tools
+    )
+
+    async def preferences() -> None:
+        await go("preferences", ".pref-head")
+        text = await page.locator(f"{PANEL} .sheet").inner_text()
+        for part in ("Lock new figures", "Mark notifications as read", "Backend version", "tested"):
+            expect(part in text, f"{part!r} missing in the settings: {text}")
+        # Another commit of the tested release counts as tested
+        expect("tested with" not in text, "the demo cloud runs the tested release")
+        expect(
+            await page.locator(f"{PANEL} ha-alert[alert-type=warning]").count() == 0, "a cloud note"
+        )
+        if shots is not None:
+            await page.wait_for_timeout(400)
+            await page.locator(f"{PANEL} ha-card").first.screenshot(
+                path=str(shots / "preferences.png")
+            )
+        await page.locator(f"{PANEL} ha-switch[data-act^='pmarkread:']").click()
+
+        async def marks() -> bool:
+            reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+            return bool(reply["result"]["entries"][0]["preferences"]["mark_read"])
+
+        await _until(marks, "the preference saved", seconds=5)
+        await page.locator(f"{PANEL} ha-switch[data-act^='pmarkread:']").click()
+        await _until(lambda: _negate(marks), "the preference saved back", seconds=5)
+        # The household renamed and back
+        home = page.locator(f"{PANEL} ha-form[data-form^='home:'] input")
+        await home.fill("Our flat")
+        await page.wait_for_timeout(300)
+        await page.locator(f"{PANEL} ha-button[data-act^='homesave:']").click()
+
+        async def renamed(name: str) -> bool:
+            reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+            return reply["result"]["entries"][0]["households"][0]["name"] == name
+
+        await _until(lambda: renamed("Our flat"), "the household renamed", seconds=5)
+        await api.ws(
+            instance.token,
+            {"type": "storybox_plus/household/rename", "household_id": "home", "name": "Home"},
+        )
+        # A bought figure can be unlocked on its page
+        await go("figures", ".figure")
+        fox = page.locator(f"{PANEL} .figure", has_text="The Clever Fox")
+        await fox.locator("[data-fold]").click()
+        lock = fox.locator("ha-switch[data-act^='lock:']")
+        await lock.wait_for()
+        await lock.click()
+
+        async def unlocked() -> bool:
+            return (await _library(api, instance))["fig-fox"]["locked"] is False
+
+        await _until(unlocked, "the figure unlocked", seconds=5)
+        await lock.click()
+        await _until(lambda: _negate(unlocked), "the figure locked again", seconds=5)
+        # The box card shows the box's picture
+        await go("boxes", ".tile")
+        expect(await page.locator(f"{PANEL} img.box-pic").count() == 1, "box picture missing")
+
+    await checks.run("settings tab, a figure unlocked and locked, the box's picture", preferences)
+
+    async def clear_all() -> None:
+        await go("figures", ".figure")
+        empty = page.locator(f"{PANEL} .figure:has([data-fold='fig-empty'])")
+        await empty.locator("[data-fold]").click()
+        await empty.locator("ha-button[data-act^='edit:']").click()
+        rows = empty.locator("ol.chapters li")
+        before = await rows.count()
+        expect(before > 0, "the figure has no chapter to remove")
+        ask = empty.locator(".clear-ask")
+        # Asked twice; keeping them at the second question changes nothing
+        await empty.locator("ha-button[data-act=clearall]").click()
+        await _until(lambda: _has_text(ask, "Really remove all"), "the first question", seconds=5)
+        await empty.locator("ha-button[data-act=clearyes]").click()
+        await _until(lambda: _has_text(ask, "keeps no copy"), "the second question", seconds=5)
+        if shots is not None:
+            await empty.scroll_into_view_if_needed()
+            await page.wait_for_timeout(400)
+            await empty.screenshot(path=str(shots / "clear.png"))
+        await empty.locator("ha-button[data-act=clearno]").click()
+        await ask.wait_for(state="detached")
+        expect(await rows.count() == before, "chapters removed without both answers")
+        await empty.locator("ha-button[data-act=clearall]").click()
+        await empty.locator("ha-button[data-act=clearyes]").click()
+        await _until(
+            lambda: _has_text(ask, "keeps no copy"), "the second question again", seconds=5
+        )
+        await empty.locator("ha-button[data-act=clearyes]").click()
+        await _until(lambda: _count_is(rows, 0), "the list emptied", seconds=5)
+        # Nothing is sent before saving: cancelled, the figure keeps its chapters
+        await empty.locator("ha-button[data-act=cancel]").click()
+        chapters = (await _library(api, instance))["fig-empty"]["chapters"]
+        expect(len(chapters) == before, f"chapters changed without saving: {chapters}")
+
+    await checks.run("removing all chapters asks twice and waits for saving", clear_all)
+
+    async def tunes() -> None:
+        await go("figures", ".figure")
+        empty = page.locator(f"{PANEL} .figure", has_text="Creative figure")
+        await empty.locator("[data-fold]").click()
+        await empty.locator("ha-form[data-form^='tune:']").wait_for()
+        await empty.locator("ha-button[data-act^='tuneon:']").click()
+
+        async def laid_on() -> bool:
+            lib = await api.ws(instance.token, {"type": "storybox_plus/library"})
+            return any("fig-empty" in t["assigned"] for t in lib["result"]["tunes"])
+
+        await _until(laid_on, "the Tune laid on", seconds=5)
+        await _until(
+            lambda: _has_text(empty.locator(".tune-row"), "Tune on it:"),
+            "the Tune shown",
+            seconds=5,
+        )
+        await _until(
+            lambda: _has_text(empty.locator(".badges"), "Tune"), "the Tune chip", seconds=5
+        )
+        if shots is not None:
+            await empty.scroll_into_view_if_needed()
+            await page.wait_for_timeout(400)
+            await empty.screenshot(path=str(shots / "tune.png"))
+        await empty.locator("ha-button[data-act^='tuneoff:']").click()
+        await _until(lambda: _negate(laid_on), "the Tune taken off", seconds=5)
+
+    await checks.run("Tunes: one laid on a creative figure and taken off again", tunes)
+
     async def listening() -> None:
         await go("listening", ".chart")
         text = await page.locator(f"{PANEL} #sheet").inner_text()
-        for part in ("Listening time", "Most played", "Per day", "Per box"):
+        for part in (
+            "Listening time",
+            "Most played",
+            "Most played chapters",
+            "When it is listened to",
+            "Per day",
+            "Per box",
+        ):
             expect(part in text, f"{part!r} missing")
         note = page.locator(f"{PANEL} ha-alert[alert-type='info'][title='Counted locally']")
         expect(await note.count() == 1, "the note on where the numbers come from is missing")
         expect("The Clever Fox" in text, "the most played figure is missing")
+        cells = await page.locator(f"{PANEL} .heatmap .hm-cell").count()
+        expect(cells == 7 * 24, f"the heatmap has {cells} cells")
         bars = await page.locator(f"{PANEL} .chart rect.fill").count()
         expect(bars > 15, f"too few bars: {bars}")
         await page.locator(f"{PANEL} [data-range='all']").click()
         await page.get_by_text("Since", exact=False).first.wait_for()
         await page.locator(f"{PANEL} [data-range='30']").click()
         if shots is not None:
-            await page.set_viewport_size({"width": 1200, "height": 1500})
+            await page.set_viewport_size({"width": 1200, "height": 2300})
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "listening.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
 
-    await checks.run("listening times with the note, ranking and chart", listening)
+    await checks.run("listening times with the note, rankings, chart and heatmap", listening)
+
+    async def extras() -> None:
+        # Headphones and the player's buttons on the card of the Toniebox 2
+        await go("boxes", ".tile")
+        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
+        expect("Headphones 80 %" in await kids.inner_text(), "headphones missing on the card")
+        controls = kids.locator(".controls")
+        for act in ("previous", "pause", "next", "volume:8", "volume:10"):
+            expect(
+                await controls.locator(f"[data-act$=':{act}']").count() == 1,
+                f"button {act} missing",
+            )
+        # The demo's bedtime alarm is due: the sleep timer stays out of its way
+        sleep = await controls.locator("[data-act*=':sleep']").count()
+        expect(sleep == 0, f"{sleep} sleep timer buttons while an alarm is due")
+        await controls.locator("[data-act$=':pause']").click()
+        await page.wait_for_timeout(600)
+        expect(await kids.locator("ha-alert[alert-type=error]").count() == 0, "the command failed")
+        # A voucher on the settings tab: a wrong one is refused, the right one adds a Tune
+        await go("preferences", ".pref-head")
+        code = page.locator(f"{PANEL} ha-form[data-form^='voucher:'] input")
+        await code.fill("WRONG")
+        await page.wait_for_timeout(300)
+        await page.locator(f"{PANEL} ha-button[data-act^='voucher:']").click()
+        await page.locator(f"{PANEL} ha-alert[alert-type=error]").first.wait_for()
+        await code.fill("DEMO-VOUCHER")
+        await page.wait_for_timeout(300)
+        await page.locator(f"{PANEL} ha-button[data-act^='voucher:']").click()
+        await page.locator(f"{PANEL} ha-alert[alert-type=success]").first.wait_for()
+
+        async def new_tune() -> bool:
+            lib = await api.ws(instance.token, {"type": "storybox_plus/library"})
+            return any(t["title"] == "Moon Lullabies" for t in lib["result"]["tunes"])
+
+        await _until(new_tune, "the voucher's Tune", seconds=5)
+        # Content from a code on a creative figure
+        await go("figures", ".figure")
+        empty = page.locator(f"{PANEL} .figure:has([data-fold='fig-empty'])")
+        await empty.locator("[data-fold]").click()
+        await empty.locator("ha-button[data-act^='code:']").click()
+        token = empty.locator("ha-form[data-form=code] input")
+        await token.wait_for()
+        await token.fill("CARD-123")
+        await page.wait_for_timeout(300)
+        await empty.locator("ha-button[data-act=codeadd]").click()
+
+        async def from_card() -> bool:
+            chapters = (await _library(api, instance))["fig-empty"]["chapters"]
+            return any(c["title"] == "Song from a card" for c in chapters)
+
+        await _until(from_card, "the content from the code", seconds=5)
+
+    await checks.run("player buttons, headphones, a voucher and content from a code", extras)
 
     async def header() -> None:
         # Every message the page sends is noted and the integration's answers are held
@@ -789,7 +1208,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     async def phone_dark() -> None:
         await _ready(phone, ".tile")
         expect(
-            await phone.locator(f"{PANEL} .bottom-tabs .tab").count() == 3, "no tabs at the bottom"
+            await phone.locator(f"{PANEL} .bottom-tabs .tab").count() == 4, "no tabs at the bottom"
         )
         expect(await phone.locator(f"{PANEL} nav.tabs").count() == 0, "tabs at the top on a phone")
         await _header_row(phone, tabs=False)
@@ -828,6 +1247,22 @@ def _mdi(name: str) -> str:
     script = (INTEGRATION / "frontend" / "storybox-plus-panel.js").read_text()
     start = script.index(f'    {name}: "') + len(f'    {name}: "')
     return script[start : script.index('"', start)]
+
+
+async def _negate(check: Callable[[], Awaitable[bool]]) -> bool:
+    return not await check()
+
+
+async def _count_is(locator: Any, count: int) -> bool:
+    return bool(await locator.count() == count)
+
+
+async def _has_text(locator: Any, text: str) -> bool:
+    return text in await locator.inner_text()
+
+
+async def _has_schedule(api: Api, instance: Instance, name: str, present: bool) -> bool:
+    return (name in await _schedules(api, instance)) is present
 
 
 async def _stamped(locator: Any) -> bool:

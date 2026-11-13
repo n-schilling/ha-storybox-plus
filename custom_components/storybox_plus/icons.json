@@ -3,6 +3,9 @@
     "event": {
       "figure": {
         "default": "mdi:teddy-bear"
+      },
+      "notification": {
+        "default": "mdi:bell-badge"
       }
     }
   },

@@ -244,7 +244,7 @@ async def test_connects_and_subscribes(broker: FakeBroker, channel: Channel) -> 
     assert client.kwargs["clean_start"] is False
     assert client.kwargs["properties"].SessionExpiryInterval == SESSION_EXPIRY
     assert set(client.subscriptions) == topics(MAC)
-    assert len(client.subscriptions) == 5
+    assert len(client.subscriptions) == len(SUBSCRIBED)
     assert channel.connections == [True]
     assert channel.push.connected
     assert channel.auth.refreshes == 1
@@ -254,20 +254,20 @@ async def test_boxes_followed_while_connected(broker: FakeBroker, channel: Chann
     """Boxes that join are subscribed on the open connection, boxes that leave unsubscribed."""
     client = broker.current
     channel.push.set_boxes([MAC, OTHER_MAC, ""])
-    await channel.until(lambda: len(client.subscriptions) == 10)
+    await channel.until(lambda: len(client.subscriptions) == 2 * len(SUBSCRIBED))
     assert set(client.subscriptions) == topics(MAC) | topics(OTHER_MAC)
     assert client.unsubscriptions == []
 
     channel.push.set_boxes([OTHER_MAC])
-    await channel.until(lambda: len(client.unsubscriptions) == 5)
+    await channel.until(lambda: len(client.unsubscriptions) == len(SUBSCRIBED))
     assert set(client.unsubscriptions) == topics(MAC)
-    assert len(client.subscriptions) == 10
+    assert len(client.subscriptions) == 2 * len(SUBSCRIBED)
 
     # The same set changes nothing
     channel.push.set_boxes([OTHER_MAC])
     await asyncio.sleep(0)
-    assert len(client.subscriptions) == 10
-    assert len(client.unsubscriptions) == 5
+    assert len(client.subscriptions) == 2 * len(SUBSCRIBED)
+    assert len(client.unsubscriptions) == len(SUBSCRIBED)
 
 
 async def test_boxes_set_before_connecting(broker: FakeBroker, sleeps: list[float]) -> None:
@@ -277,7 +277,7 @@ async def test_boxes_set_before_connecting(broker: FakeBroker, sleeps: list[floa
     await running.until(lambda: running.push.connected)
     assert broker.current.subscriptions == []
     running.push.set_boxes([MAC])
-    await running.until(lambda: len(broker.current.subscriptions) == 5)
+    await running.until(lambda: len(broker.current.subscriptions) == len(SUBSCRIBED))
     await running.stop()
     assert running.connections == [True, False]
 

@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), the versions
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-13
+
+### Added
+
+- Bedtimes of a Toniebox 2 on the page: on the box's card with a switch each, added, changed and deleted through a form (name, days of the wake-up, bedtime, wake-up, alarm with volume and morning light).
+- The alarm of a bedtime is set on the box by the integration every evening, as soon as the box is online, because the app sets it only once; the page shows the next alarm and whether the box has it. An alarm of the integration that no bedtime wants any more is cleared.
+- The diagnostics name a box's feature flags, whether it has a time zone, how many bedtimes it has and whether its timer carries an alarm.
+- Page checks for the bedtimes: the alarm set on the box, a switch, a new bedtime through the form and deleting it.
+- Settings of a box on the page, as the cloud names them, changed through a form: name and maximum volumes for every box; light ring, the limits at bedtime, skipping and winding on a Toniebox 2; tilt and tap, tap direction and LED on a classic box; age mode and language where the box has the feature. The page shows whether the box has taken them and whether it is in offline mode.
+- Page checks for the settings: the summary per generation and renaming a box through the form.
+- A chapter of the figure on a Toniebox 2 can be picked from the media browser and played from its start (`media_player.play_media`).
+- Creative figures are renamed in the edit mode, where their chapters can also be sorted by title or shuffled.
+- A volume level per figure: placed on a Toniebox 2, the figure plays at its level; taken off or replaced, the box's level from before comes back exactly, also after a restart.
+- The cloud's notifications (the account's unread ones and the broadcasts) are passed on once each as events of `event.<account>_cloud_notification`, on a device of the account.
+- Creative figures: live mode (the newest chapter first) as a switch in the edit mode, and a button to remove all chapters there, which asks twice: whether all should go, and whether the audio files are kept elsewhere, because the cloud keeps no copy.
+- Shuffle on swap per creative figure: replaced by another figure on a Toniebox 2, it gets a new order; taken off and put back, it keeps where it was.
+- The household is renamed on the settings tab; the entry's title and the account's device follow.
+- Buttons on the card of a Toniebox 2: play, pause, previous and next chapter, quieter and louder, and a sleep timer of 15, 30, 45 or 60 minutes or cancelling it; the sleep timer buttons are left out while the alarm of a bedtime is due.
+- Headphones on a Toniebox 2 shown on its card, with their battery (push channel `metrics/headphones`).
+- A Tunes voucher is redeemed on the settings tab; ready-made content goes on a creative figure from a code.
+- Listening times also per chapter and per hour of the day: the page ranks the most played chapters and shows a grid of weekdays and hours. Still no single plays are kept.
+- Bought Tunes on the figures tab: one laid on a fitting figure and taken off again; a creative figure keeps its chapters meanwhile.
+- A settings tab on the page, per account: locking new figures and discs to the household (on), marking passed-on notifications as read in the cloud (off), and the cloud backend's version.
+- New bought figures and discs are locked to the household once; every one has a lock switch on its page entry, and one unlocked stays unlocked.
+- Passed-on notifications can be marked as read in the cloud; broadcasts are dismissed.
+- The box's device takes the name the box has in the cloud, also one given in the app.
+- Box cards show the box in its colour, with the app's picture.
+- The cloud backend's version is read once an hour; the settings tab says when its release differs from the tested one (v2026.11.10). The commit behind a release is not compared.
+- Night mode of the light ring for a Toniebox 2: a span, a brightness for it and one for the rest of the day, set up on the page. The integration sets the light ring at the start and the end of the span, makes up a change missed while Home Assistant was not running and sends a refused one again with the next poll; switched off at night, the normal brightness comes back at once. Kept in the store `storybox_plus.<entry>.night`.
+
+### Changed
+
+- While the alarm of a bedtime is due, `storybox_plus.set_sleep_timer`, `storybox_plus.clear_sleep_timer` and turning the media player off are refused, because each would replace the alarm; the error names the time of the alarm.
+- A sleep timer that ends with an alarm is shown with the bedtimes, not as a sleep timer.
+
 ## [0.4.0] - 2026-11-11
 
 ### Changed

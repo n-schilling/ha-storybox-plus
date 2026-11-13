@@ -27,11 +27,14 @@ from .auth import Auth
 from .errors import CloudAuthError, CloudConnectionError, CloudError
 from .models import (
     VOLUME_LEVELS,
+    Alarm,
     Battery,
+    Headphones,
     Playback,
     SleepTimer,
     Volume,
     parse_battery,
+    parse_headphones,
     parse_online,
     parse_playback,
     parse_sleep_timer,
@@ -48,12 +51,22 @@ TOPIC_ONLINE = "online-state"
 TOPIC_PLAYBACK = "playback/state"
 TOPIC_VOLUME = "volume/state"
 TOPIC_SLEEP_TIMER = "app-reply/bedtime-state"
-SUBSCRIBED = (TOPIC_BATTERY, TOPIC_ONLINE, TOPIC_PLAYBACK, TOPIC_VOLUME, TOPIC_SLEEP_TIMER)
+TOPIC_HEADPHONES = "metrics/headphones"
+SUBSCRIBED = (
+    TOPIC_BATTERY,
+    TOPIC_ONLINE,
+    TOPIC_PLAYBACK,
+    TOPIC_VOLUME,
+    TOPIC_SLEEP_TIMER,
+    TOPIC_HEADPHONES,
+)
 
 COMMAND_PLAYBACK = "playback"
 COMMAND_VOLUME = "volume"
 COMMAND_SLEEP_TIMER = "stl"
 COMMAND_SLEEP = "sleep"
+# The app sends this before it arms an alarm; without it the box jumps to full volume
+COMMAND_ALARM_PREVIEW = "alarm-preview"
 # The box keeps the timer as an unsigned 16-bit number of seconds; more wraps around
 SLEEP_TIMER_MAX_SECONDS = 65_535
 SLEEP_TIMER_MAX_MINUTES = SLEEP_TIMER_MAX_SECONDS // 60
@@ -66,7 +79,7 @@ KEEPALIVE = 60
 # Seconds the broker should keep the session (and queue messages) between reconnects
 SESSION_EXPIRY = 600
 
-type PushData = Battery | Playback | Volume | SleepTimer | bool | None
+type PushData = Battery | Playback | Volume | SleepTimer | Headphones | bool | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +258,8 @@ class PushClient:
             return PushEvent(mac, subtopic, parse_volume(data))
         if subtopic == TOPIC_SLEEP_TIMER:
             return PushEvent(mac, subtopic, parse_sleep_timer(data))
+        if subtopic == TOPIC_HEADPHONES:
+            return PushEvent(mac, subtopic, parse_headphones(data))
         return None
 
     # ------------------------------------------------------------ commands
@@ -287,6 +302,28 @@ class PushClient:
             mac,
             COMMAND_SLEEP_TIMER,
             {"state": "on", "duration": max(1, min(SLEEP_TIMER_MAX_SECONDS, seconds))},
+        )
+
+    async def async_set_alarm(self, mac: str, seconds: int, alarm: Alarm) -> None:
+        """Let the alarm ring once after the given seconds, the way the app arms it.
+
+        The alarm is part of the sleep timer: it replaces a running timer, and
+        a timer set afterwards replaces the alarm.
+        """
+        await self.async_command(mac, COMMAND_ALARM_PREVIEW, {"tone": None})
+        await self.async_command(
+            mac,
+            COMMAND_SLEEP_TIMER,
+            {
+                "state": "on",
+                "duration": max(1, min(SLEEP_TIMER_MAX_SECONDS, seconds)),
+                "oneTimeAlarm": True,
+                "alarm": {
+                    "morningLight": alarm.morning_light,
+                    "tone": alarm.tone,
+                    "volume": alarm.volume,
+                },
+            },
         )
 
     async def async_clear_sleep_timer(self, mac: str) -> None:

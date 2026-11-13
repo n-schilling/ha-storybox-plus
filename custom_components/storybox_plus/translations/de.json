@@ -80,6 +80,34 @@
             "name": "Figur-ID"
           }
         }
+      },
+      "notification": {
+        "name": "Cloud-Benachrichtigung",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Benachrichtigung"
+            }
+          },
+          "kind": {
+            "name": "Art"
+          },
+          "text": {
+            "name": "Text"
+          },
+          "time": {
+            "name": "Zeit"
+          },
+          "tonie_id": {
+            "name": "Figuren-ID"
+          },
+          "tonie": {
+            "name": "Figur"
+          },
+          "reason": {
+            "name": "Grund"
+          }
+        }
       }
     }
   },
@@ -104,6 +132,15 @@
     },
     "nothing_plays": {
       "message": "Auf der Box liegt keine Figur."
+    },
+    "alarm_due": {
+      "message": "Um {time} klingelt der Wecker einer Schlafenszeit; das würde ihn löschen. Zuerst den Wecker der Schlafenszeit auf der Seite Storybox Plus ausschalten."
+    },
+    "unknown_chapter": {
+      "message": "Die Figur hat dieses Kapitel nicht."
+    },
+    "other_figure": {
+      "message": "Auf der Box steht inzwischen eine andere Figur."
     }
   },
   "services": {

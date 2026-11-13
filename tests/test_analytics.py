@@ -227,7 +227,11 @@ def test_save_soon_writes_once_per_change(analytics: Analytics, clock: Clock, st
     store.async_delay_save.assert_called_once()
     data_func, delay = store.async_delay_save.call_args.args
     assert delay == SAVE_DELAY
-    assert data_func() == {"days": {TODAY: {"box1": {"t1": 10}}}}
+    assert data_func() == {
+        "days": {TODAY: {"box1": {"t1": 10}}},
+        "chapters": {},
+        "hours": {TODAY: {"10": 10}},
+    }
     clock.advance(5)
     analytics.tick()
     analytics.save_soon()
@@ -239,10 +243,12 @@ async def test_async_save_books_what_plays(analytics: Analytics, clock: Clock, s
     analytics.observe("box1", "t1", True)
     clock.advance(42)
     await analytics.async_save()
-    store.async_save.assert_awaited_once_with({"days": {TODAY: {"box1": {"t1": 42}}}})
+    store.async_save.assert_awaited_once_with(
+        {"days": {TODAY: {"box1": {"t1": 42}}}, "chapters": {}, "hours": {TODAY: {"10": 42}}}
+    )
     clock.advance(8)
     await analytics.async_save()
-    assert store.async_save.await_args.args == ({"days": {TODAY: {"box1": {"t1": 50}}}},)
+    assert store.async_save.await_args.args[0]["days"] == {TODAY: {"box1": {"t1": 50}}}
     analytics.save_soon()
     store.async_delay_save.assert_not_called()
 
@@ -255,15 +261,41 @@ async def test_with_the_real_store(
     store: Store[Any] = Store(hass, 1, key)
     analytics = Analytics(store, clock.now)
     await analytics.async_load()
-    analytics.observe("box1", "t1", True)
+    analytics.observe("box1", "t1", True, 2)
     clock.advance(30)
     analytics.tick()
     analytics.save_soon()
     assert key not in hass_storage
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=SAVE_DELAY + 1))
     await hass.async_block_till_done()
-    assert hass_storage[key]["data"] == {"days": {TODAY: {"box1": {"t1": 30}}}}
+    assert hass_storage[key]["data"] == {
+        "days": {TODAY: {"box1": {"t1": 30}}},
+        "chapters": {TODAY: {"t1": {"2": 30}}},
+        "hours": {TODAY: {"10": 30}},
+    }
 
     again = Analytics(Store(hass, 1, key), clock.now)
     await again.async_load()
     assert again.total() == 30
+
+
+def test_chapters_and_hours(analytics: Analytics, clock: Clock) -> None:
+    """Chapters are counted on their own; a span across the hour lands in both hours."""
+    clock.advance(50 * 60)  # 10:50
+    analytics.observe("box1", "t1", True, 0)
+    clock.advance(20 * 60)  # 11:10, chapter 1 begins
+    analytics.observe("box1", "t1", True, 1)
+    clock.advance(5 * 60)
+    analytics.observe("box1", "t2", True, None)
+    clock.advance(60)
+    analytics.observe("box1", None, False)
+    assert analytics.per_chapter() == {("t1", 0): 1200, ("t1", 1): 300}
+    grid = analytics.per_weekday_hour()
+    weekday = START.weekday()
+    assert grid[weekday][10] == 600
+    assert grid[weekday][11] == 600 + 300 + 60
+    assert sum(map(sum, grid)) == 1560
+    assert analytics.per_chapter(1) == analytics.per_chapter()
+    clock.advance(3 * 86400)
+    assert analytics.per_chapter(1) == {}
+    assert sum(map(sum, analytics.per_weekday_hour(1))) == 0

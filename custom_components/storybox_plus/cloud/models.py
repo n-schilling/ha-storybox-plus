@@ -15,6 +15,10 @@ from typing import Any
 
 # The highest volume level of a box; the app shows levels, not percent.
 VOLUME_LEVELS = 13
+# The days of a bedtime schedule, as the cloud names them
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# The alarm tone the app uses unless another is chosen
+DEFAULT_ALARM_TONE = "alarmLoop1.opus"
 
 
 class Generation(StrEnum):
@@ -72,6 +76,8 @@ class Tonie:
     transcoding_errors: tuple[str, ...] = ()
     # The length of the content as the library states it, where the chapters carry none
     seconds_total: float | None = None
+    # Creative figures only: the newest chapter plays first (live mode)
+    live: bool | None = None
 
     @property
     def seconds(self) -> float:
@@ -96,6 +102,66 @@ class TonieDetails:
     status: str | None = None
 
 
+# The settings of a box the API takes, by our name: the API's name and the values it allows
+# (a tuple of choices, a (min, max) range, or bool). The volumes are documented as
+# 25/50/75/100 only; the light ring and the bedtime limits as percent.
+VOLUME_STEPS = (25, 50, 75, 100)
+SETTING_FIELDS: dict[str, tuple[str, Any]] = {
+    "max_volume": ("maxVolume", VOLUME_STEPS),
+    "max_headphone_volume": ("maxHeadphoneVolume", VOLUME_STEPS),
+    "lightring_brightness": ("lightringBrightness", (0, 100)),
+    "bedtime_lightring_brightness": ("bedtimeLightringBrightness", (0, 100)),
+    "bedtime_max_volume": ("bedtimeMaxVolume", (1, 100)),
+    "bedtime_max_headphone_volume": ("bedtimeMaxHeadphoneVolume", (1, 100)),
+    "skipping_enabled": ("skippingEnabled", bool),
+    "skipping_direction": ("skippingDirection", ("left", "right")),
+    "scrubbing_enabled": ("scrubbingEnabled", bool),
+    "accelerometer_enabled": ("accelerometerEnabled", bool),
+    "tap_direction": ("tapDirection", ("left", "right")),
+    "led_level": ("ledLevel", ("on", "dimmed", "off")),
+    "age_mode": ("ageMode", ("1+", "3+")),
+    "language": ("language", ("de", "en", "en-us", "fr")),
+}
+# The settings only a Toniebox 2 has (feature tngSettings), and those only the classic box has
+LIVE_SETTINGS = frozenset(
+    {
+        "lightring_brightness",
+        "bedtime_lightring_brightness",
+        "bedtime_max_volume",
+        "bedtime_max_headphone_volume",
+        "skipping_enabled",
+        "skipping_direction",
+        "scrubbing_enabled",
+    }
+)
+CLASSIC_SETTINGS = frozenset({"accelerometer_enabled", "tap_direction", "led_level"})
+# Settings a box has only with its feature flag
+FEATURE_SETTINGS = {"age_mode": "ageMode", "language": "language"}
+
+
+@dataclass(frozen=True, slots=True)
+class BoxSettings:
+    """The settings of a box, as far as the cloud names them; None where it does not."""
+
+    max_volume: int | None = None
+    max_headphone_volume: int | None = None
+    lightring_brightness: int | None = None
+    bedtime_lightring_brightness: int | None = None
+    bedtime_max_volume: int | None = None
+    bedtime_max_headphone_volume: int | None = None
+    skipping_enabled: bool | None = None
+    skipping_direction: str | None = None
+    scrubbing_enabled: bool | None = None
+    accelerometer_enabled: bool | None = None
+    tap_direction: str | None = None
+    led_level: str | None = None
+    age_mode: str | None = None
+    language: str | None = None
+    # Read only: the box does not contact the internet; the box has the latest settings
+    offline_mode: bool | None = None
+    settings_applied: bool | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class Box:
     """A box as the REST API describes it."""
@@ -109,10 +175,17 @@ class Box:
     last_seen: datetime | None = None
     firmware: str | None = None
     color_id: str | None = None
+    # The picture the cloud names for the box itself (front view first)
+    image_url: str | None = None
     placed_tonie_id: str | None = None
-    max_volume: int | None = None
-    max_headphone_volume: int | None = None
+    settings: BoxSettings = field(default_factory=BoxSettings)
     raw_generation: str | None = None
+    # The box rings an alarm at the end of its sleep timer (feature sleepTimerAlarm)
+    alarm_capable: bool = False
+    # The box's own time zone; the times of its bedtime schedules are local to it
+    timezone: str | None = None
+    # The feature flags as the cloud lists them, for the diagnostics
+    features: tuple[str, ...] = ()
 
     @property
     def live(self) -> bool:
@@ -188,6 +261,99 @@ class SleepTimer:
     state: str | None
     duration: int | None = None
     until: datetime | None = None
+    # An alarm rings when the timer ends
+    alarm: bool = False
+
+    @property
+    def running(self) -> bool:
+        """Return whether the timer runs."""
+        return self.state == "on"
+
+
+@dataclass(frozen=True, slots=True)
+class Headphones:
+    """Headphones on a Toniebox 2, from the push channel (metrics/headphones)."""
+
+    connected: bool
+    # The kind the box names (bluetooth, cable …), and the battery of wireless ones
+    kind: str | None = None
+    battery: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Alarm:
+    """How the alarm at the end of a sleep timer rings."""
+
+    tone: str = DEFAULT_ALARM_TONE
+    volume: int = 100
+    morning_light: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class Tune:
+    """A Tune the account bought: an audio play that can be laid on fitting figures.
+
+    id is the account's own copy (myTune), which laying it on a figure names;
+    assigned are the figures it lies on, suitable those it can be laid on.
+    """
+
+    id: str
+    title: str
+    image_url: str | None = None
+    series: str | None = None
+    seconds: float | None = None
+    remaining: int | None = None
+    assigned: tuple[str, ...] = ()
+    suitable: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CloudNotice:
+    """A notification the cloud keeps for the account, or a broadcast to all users.
+
+    kind is the cloud's ``ntype`` (for example a figure whose conversion
+    failed, an invitation), or "system" for a broadcast.
+    """
+
+    id: str
+    text: str
+    kind: str
+    read: bool = False
+    # The ID the cloud knows the notification by (id carries a prefix for broadcasts)
+    cloud_id: str = ""
+    timestamp: datetime | None = None
+    tonie_id: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BedtimeSchedule:
+    """A recurring bedtime of a Toniebox 2, as the app keeps it in the cloud.
+
+    The times are "HH:MM" in the box's time zone. The schedule alone makes
+    no box ring: the alarm has to be armed through the sleep timer every
+    evening.
+    """
+
+    id: str
+    name: str
+    sleep_time: str | None
+    wakeup_time: str | None
+    days: tuple[str, ...] = ()
+    enabled: bool = False
+    alarm_enabled: bool = False
+    alarm_tone: str | None = None
+    alarm_volume: int | None = None
+    alarm_morning_light: bool | None = None
+
+    @property
+    def alarm(self) -> Alarm:
+        """Return how the alarm of this schedule rings."""
+        return Alarm(
+            tone=self.alarm_tone or DEFAULT_ALARM_TONE,
+            volume=100 if self.alarm_volume is None else max(0, min(100, self.alarm_volume)),
+            morning_light=True if self.alarm_morning_light is None else self.alarm_morning_light,
+        )
 
 
 # ---------------------------------------------------------------- parsing
@@ -267,8 +433,13 @@ def parse_box(data: dict[str, Any], household_id: str) -> Box | None:
     box_id = _text(data, "id")
     if box_id is None:
         return None
-    features = data.get("features")
-    live = isinstance(features, list) and "tngSettings" in features
+    raw_features = data.get("features")
+    features = (
+        tuple(f for f in raw_features if isinstance(f, str))
+        if isinstance(raw_features, list)
+        else ()
+    )
+    live = "tngSettings" in features
     online = _ONLINE_STATES.get((_text(data, "onlineState") or "").lower())
     placement = data.get("placement")
     placed: str | None = None
@@ -293,10 +464,31 @@ def parse_box(data: dict[str, Any], household_id: str) -> Box | None:
         last_seen=parse_datetime(data.get("lastSeen", data.get("last_seen"))),
         firmware=firmware or None,
         color_id=_color_id(data.get("bleColorId")),
+        image_url=_text(data, "frontImageUrl", "imageUrl"),
         placed_tonie_id=placed,
-        max_volume=_integer(data.get("maxVolume")),
-        max_headphone_volume=_integer(data.get("maxHeadphoneVolume")),
+        settings=parse_box_settings(data),
         raw_generation=_text(data, "generation"),
+        alarm_capable=live and "sleepTimerAlarm" in features,
+        timezone=_text(data, "timezone"),
+        features=features,
+    )
+
+
+def parse_box_settings(data: dict[str, Any]) -> BoxSettings:
+    """Take the settings the cloud names; a value of the wrong kind counts as unnamed."""
+    values: dict[str, Any] = {}
+    for name, (api, allowed) in SETTING_FIELDS.items():
+        raw = data.get(api)
+        if allowed is bool:
+            values[name] = raw if isinstance(raw, bool) else None
+        elif isinstance(allowed[0], int):
+            values[name] = _integer(raw)
+        else:
+            values[name] = raw if isinstance(raw, str) and raw else None
+    return BoxSettings(
+        **values,
+        offline_mode=raw if isinstance(raw := data.get("offlineMode"), bool) else None,
+        settings_applied=raw if isinstance(raw := data.get("settingsApplied"), bool) else None,
     )
 
 
@@ -347,6 +539,7 @@ def parse_creative_tonie(data: dict[str, Any], household_id: str) -> Tonie | Non
         chapters_remaining=_integer(data.get("chaptersRemaining")),
         transcoding=bool(data.get("transcoding")),
         transcoding_errors=_transcoding_errors(data.get("transcodingErrors")),
+        live=_flag(data.get("live")),
     )
 
 
@@ -520,6 +713,24 @@ def parse_playback(data: dict[str, Any], now: float | None = None) -> Playback:
     )
 
 
+def parse_headphones(data: dict[str, Any]) -> Headphones:
+    """Parse metrics/headphones: the list of what is connected, the first one counts."""
+    connected = data.get("connected")
+    first = (
+        connected[0]
+        if isinstance(connected, list) and connected and isinstance(connected[0], dict)
+        else None
+    )
+    if first is None:
+        return Headphones(connected=bool(isinstance(connected, list) and connected))
+    battery = _integer(first.get("battery"))
+    return Headphones(
+        connected=True,
+        kind=_text(first, "type"),
+        battery=battery if battery is not None and 0 <= battery <= 100 else None,
+    )
+
+
 def parse_sleep_timer(data: dict[str, Any]) -> SleepTimer:
     """Parse app-reply/bedtime-state."""
     stl = data.get("stl")
@@ -529,4 +740,84 @@ def parse_sleep_timer(data: dict[str, Any]) -> SleepTimer:
         state=_text(stl, "state"),
         duration=_integer(stl.get("duration")),
         until=parse_datetime(stl.get("until")),
+        alarm=isinstance(stl.get("alarm"), dict) and bool(stl["alarm"]),
+    )
+
+
+def _tonie_ids(items: Any) -> tuple[str, ...]:
+    if not isinstance(items, list):
+        return ()
+    return tuple(i for item in items if isinstance(item, dict) and (i := _text(item, "id")))
+
+
+def parse_tune(data: dict[str, Any]) -> Tune | None:
+    """Parse one node of the GraphQL field tunesItems (owned ones)."""
+    mine = data.get("myTune")
+    tune_id = _text(mine, "id") if isinstance(mine, dict) else None
+    if tune_id is None or not isinstance(mine, dict):
+        return None
+    series = data.get("series")
+    info = data.get("contentInfo")
+    return Tune(
+        id=tune_id,
+        title=_text(data, "title") or "Tune",
+        image_url=_text(data, "thumbnail"),
+        series=_text(series, "name") if isinstance(series, dict) else None,
+        seconds=_number(info.get("seconds")) if isinstance(info, dict) else None,
+        remaining=_integer(mine.get("assignCountRemaining")),
+        assigned=_tonie_ids(mine.get("assignedTonies")),
+        suitable=_tonie_ids(mine.get("suitableTonies")),
+    )
+
+
+def parse_notice(data: dict[str, Any], system: bool = False) -> CloudNotice | None:
+    """Parse one entry of GET /notifications or GET /system-notifications."""
+    notice_id = _text(data, "id")
+    text = _text(data, "translatedText", "text")
+    if notice_id is None or text is None:
+        return None
+    return CloudNotice(
+        id=("system:" if system else "") + notice_id,
+        cloud_id=notice_id,
+        text=text,
+        kind="system" if system else (_text(data, "ntype") or "unknown"),
+        read=data.get("read") is True,
+        timestamp=parse_datetime(data.get("timestamp")),
+        tonie_id=_text(data, "tonieId"),
+        reason=_text(data, "tonieReason"),
+    )
+
+
+def _clock_time(value: Any) -> str | None:
+    """A time of day as "HH:MM"; the cloud has also sent seconds."""
+    if not isinstance(value, str):
+        return None
+    parts = value.split(":")
+    if len(parts) < 2 or not all(p.isdigit() for p in parts[:2]):
+        return None
+    hour, minute = int(parts[0]), int(parts[1])
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def parse_bedtime_schedule(data: dict[str, Any]) -> BedtimeSchedule | None:
+    """Parse one schedule of GET .../tonieboxes/{id}/bedtime-schedules."""
+    schedule_id = _text(data, "id")
+    if schedule_id is None:
+        return None
+    days = data.get("days")
+    return BedtimeSchedule(
+        id=schedule_id,
+        name=_text(data, "name") or "",
+        sleep_time=_clock_time(data.get("sleepTime")),
+        wakeup_time=_clock_time(data.get("wakeupTime")),
+        days=tuple(
+            d for d in WEEKDAYS if isinstance(days, list) and d in {str(x).lower() for x in days}
+        ),
+        enabled=data.get("enabled") is True,
+        alarm_enabled=data.get("alarmEnabled") is True,
+        alarm_tone=_text(data, "alarmTone"),
+        alarm_volume=_integer(data.get("alarmVolume")),
+        alarm_morning_light=_flag(data.get("alarmMorningLight")),
     )

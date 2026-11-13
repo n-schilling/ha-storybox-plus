@@ -23,6 +23,7 @@ from custom_components.storybox_plus.const import CONF_ANALYTICS, DOMAIN
 from custom_components.storybox_plus.websocket import _content_type
 
 from .conftest import (
+    BACKEND_VERSION,
     BOX_ID,
     BOX_NAME,
     CLASSIC_BOX_ID,
@@ -76,7 +77,19 @@ async def test_overview(
     result = await _ask(client, {"type": f"{DOMAIN}/overview"})
     assert result["success"]
     assert result["result"]["entries"] == [
-        {"entry_id": setup_entry.entry_id, "title": HOUSEHOLD_NAME, "loaded": True}
+        {
+            "entry_id": setup_entry.entry_id,
+            "title": HOUSEHOLD_NAME,
+            "loaded": True,
+            "households": [{"id": "hh1", "name": HOUSEHOLD_NAME}],
+            "preferences": {"auto_lock": True, "mark_read": False},
+            "cloud": {
+                "version": BACKEND_VERSION,
+                "release": "v2026.11.10",
+                "tested": "v2026.11.10",
+                "matches": True,
+            },
+        }
     ]
     assert result["result"]["push_connected"] is True
     box = _box(result, BOX_ID)
@@ -87,6 +100,7 @@ async def test_overview(
         "name": BOX_NAME,
         "household": HOUSEHOLD_NAME,
         "generation": "toniebox_2",
+        "image_url": "https://img.example.com/box-red.png",
         "firmware": "1.2.3",
         "online": True,
         "last_seen": "2026-11-04T10:00:00+00:00",
@@ -94,8 +108,12 @@ async def test_overview(
         "charging": True,
         "volume": 7,
         "volume_max": 13,
-        "sleep_timer": {"state": "on", "until": "2026-11-04T20:00:00+00:00"},
+        "headphones": None,
+        "sleep_timer": {"state": "on", "alarm": False, "until": "2026-11-04T20:00:00+00:00"},
         "battery_stats": {"current": None, "cycles": [], "count": 0, "average_full_hours": None},
+        "bedtime": {"schedules": [], "next_alarm": None},
+        "settings": {"values": {"max_volume": 10}, "offline_mode": None, "applied": None},
+        "night": {"mode": None, "phase": None},
     }
     received_at = playback.pop("received_at")
     assert isinstance(received_at, str)
@@ -120,6 +138,7 @@ async def test_overview(
     assert classic["sleep_timer"] is None
     assert classic["playback"] is None
     assert classic["battery_stats"] is None
+    assert classic["bedtime"] is None
 
 
 async def test_overview_before_any_push(
@@ -236,6 +255,9 @@ async def test_library(
         "transcoding_errors": [],
         "on_box": BOX_ID,
         "favourites": None,
+        "volume": None,
+        "live": None,
+        "shuffle_on_swap": False,
     }
     creative = tonies[1]
     assert creative["id"] == CREATIVE_ID
@@ -268,6 +290,27 @@ async def test_analytics(
     client = await hass_ws_client(hass)
     result = await _ask(client, {"type": f"{DOMAIN}/analytics"})
     assert result["success"]
+    heatmap = result["result"].pop("heatmap")
+    assert len(heatmap) == 7
+    assert sum(map(sum, heatmap)) == 150
+    assert result["result"].pop("top_chapters") == [
+        {
+            "tonie_id": TONIE_ID,
+            "name": TONIE_NAME,
+            "image_url": f"https://img.example.com/{TONIE_ID}.png",
+            "chapter": 1,
+            "title": "Kapitel 2",
+            "seconds": 120,
+        },
+        {
+            "tonie_id": "unknown-figure",
+            "name": None,
+            "image_url": None,
+            "chapter": 1,
+            "title": None,
+            "seconds": 30,
+        },
+    ]
     assert result["result"] == {
         "enabled": True,
         "days": None,
@@ -318,6 +361,8 @@ async def test_analytics_switched_off(
         "first_day": None,
         "total_seconds": 0,
         "top": [],
+        "top_chapters": [],
+        "heatmap": [[0] * 24 for _ in range(7)],
         "per_day": [],
         "per_box": [],
     }
@@ -761,7 +806,7 @@ async def test_add_link(
 @pytest.mark.parametrize(
     ("tonie_id", "prepare", "code", "message"),
     [
-        (TONIE_ID, None, "not_creative", "Only creative figures take chapters"),
+        (TONIE_ID, None, "not_creative", "Only creative figures can be changed here"),
         (
             CREATIVE_ID,
             lambda app: app.info.update(duration=6000),

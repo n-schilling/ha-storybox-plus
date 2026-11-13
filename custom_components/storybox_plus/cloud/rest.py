@@ -8,24 +8,32 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 
 from .auth import Auth
 from .errors import CloudAuthError, CloudConnectionError, CloudResponseError
 from .models import (
+    BedtimeSchedule,
     Box,
     Chapter,
+    CloudNotice,
     Household,
     Library,
     Tonie,
     TonieDetails,
+    TonieKind,
+    Tune,
+    parse_bedtime_schedule,
     parse_box,
     parse_content_tonie,
     parse_creative_tonie,
     parse_disc,
     parse_household,
+    parse_notice,
     parse_playback_info,
+    parse_tune,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,7 +53,20 @@ _CONTENT_TONIE_FIELDS = "id title lock imageUrl coverUrl languageUnicode series 
 _CONTENT_TONIE_NODE_FIELDS = (
     "id householdId title imageUrl coverUrl lock languageName salesId series { name }"
 )
+# The Tunes the account bought, as the web app's audio library asks for them
+_TUNE_FIELDS = (
+    "id title thumbnail series { name } contentInfo { seconds } allCreativeTonies "
+    "myTune { id assignCountRemaining assignedTonies { id tonieType householdId } "
+    "suitableTonies { id tonieType householdId } }"
+)
 _DISC_FIELDS = "id householdId title coverImageUrl discImageUrl lock language salesId"
+
+
+def _color_key(value: Any) -> str | None:
+    """A box colour as the models keep it: the number as text."""
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        return None
+    return str(value) or None
 
 
 def _shape(node: dict[str, Any]) -> dict[str, Any]:
@@ -166,12 +187,15 @@ class CloudClient:
             raise CloudResponseError("GraphQL answered no data", 200)
         return data
 
-    async def _graphql_nodes(self, field: str, selection: str) -> list[dict[str, Any]]:
-        """Read every node of a paginated GraphQL connection."""
+    async def _graphql_nodes(
+        self, field: str, selection: str, arguments: str = ""
+    ) -> list[dict[str, Any]]:
+        """Read every node of a paginated GraphQL connection; arguments filter it."""
         nodes: list[dict[str, Any]] = []
         cursor: str | None = None
+        extra = f"{arguments}, " if arguments else ""
         query = (
-            f"query($cursor: String) {{ {field}(first: {PAGE_SIZE}, after: $cursor) "
+            f"query($cursor: String) {{ {field}({extra}first: {PAGE_SIZE}, after: $cursor) "
             f"{{ pageInfo {{ hasNextPage endCursor }} edges {{ node {{ {selection} }} }} }} }}"
         )
         while True:
@@ -209,10 +233,137 @@ class CloudClient:
         items = await self._get_list("/households", "households", "results")
         return [h for item in items if (h := parse_household(item))]
 
+    async def async_rename_household(self, household_id: str, name: str) -> None:
+        """Give a household a new name."""
+        await self._request("PATCH", f"/households/{household_id}", {"name": name})
+
     async def async_boxes(self, household_id: str) -> list[Box]:
         """Return the boxes of a household."""
         items = await self._get_list(f"/households/{household_id}/tonieboxes", "results")
         return [b for item in items if (b := parse_box(item, household_id))]
+
+    async def async_tunes(self) -> list[Tune]:
+        """Return the Tunes the account bought, with the figures they lie on and fit."""
+        nodes = await self._graphql_nodes("tunesItems", _TUNE_FIELDS, 'myTuneStatus: "owned"')
+        return [t for node in nodes if (t := parse_tune(node))]
+
+    async def async_assign_tune(self, tonie: Tonie, tune_id: str) -> None:
+        """Lay a bought Tune on a figure; a creative figure keeps its chapters for later."""
+        await self._request(
+            "PUT", f"/households/{tonie.household_id}/tonie/{tonie.id}/tune/{tune_id}", {}
+        )
+
+    async def async_redeem_voucher(self, code: str) -> int:
+        """Redeem a Tunes voucher; return how many Tunes it brought."""
+        data = await self._request("POST", f"/tunes-vouchers/{quote(code, safe='')}", {})
+        tunes = data.get("tunes") if isinstance(data, dict) else None
+        return len(tunes) if isinstance(tunes, list) else 0
+
+    async def async_redeem_token(self, tonie: Tonie, token: str) -> None:
+        """Put ready-made content (a content token) on a creative figure; the cloud converts it."""
+        await self._request(
+            "POST",
+            f"/households/{tonie.household_id}/creativetonies/{tonie.id}/redeem-token",
+            {"token": token},
+        )
+
+    async def async_remove_tune(self, tonie: Tonie) -> None:
+        """Take the Tune off a figure; it plays what it had before again."""
+        await self._request("DELETE", f"/households/{tonie.household_id}/tonie/{tonie.id}/tune")
+
+    async def async_mark_notice_read(self, notice: CloudNotice) -> None:
+        """Mark a notification as read; a broadcast, which has no read state, is dismissed."""
+        if notice.kind == "system":
+            await self._request("DELETE", f"/system-notifications/{notice.cloud_id}")
+        else:
+            await self._request("PATCH", f"/notifications/{notice.cloud_id}", {"read": True})
+
+    async def async_lock(self, tonie: Tonie, locked: bool) -> None:
+        """Lock a bought figure or a disc to the household, or unlock it.
+
+        A locked one cannot be claimed into another household.
+        """
+        kind = "discs" if tonie.kind is TonieKind.DISC else "contenttonies"
+        await self._request(
+            "PATCH", f"/households/{tonie.household_id}/{kind}/{tonie.id}", {"lock": locked}
+        )
+
+    async def async_box_pictures(self) -> dict[str, str]:
+        """Return the pictures of the boxes by colour, as the app shows them."""
+        items = await self._get_list("/box-item-previews", "results")
+        return {
+            color: thumbnail
+            for item in items
+            if (color := _color_key(item.get("bleColorId"))) is not None
+            and isinstance(thumbnail := item.get("thumbnail"), str)
+            and thumbnail.startswith("https://")
+        }
+
+    async def async_backend_version(self) -> str:
+        """Return the version of the cloud's backend; it answers without a sign-in."""
+        try:
+            async with self._session.get(f"{self._base}/version", timeout=TIMEOUT) as resp:
+                if resp.status >= 400:
+                    raise CloudResponseError(f"GET /version answered {resp.status}", resp.status)
+                text = (await resp.text()).strip().strip('"')
+        except TimeoutError as err:
+            raise CloudConnectionError("Timeout for GET /version") from err
+        except aiohttp.ClientError as err:
+            raise CloudConnectionError(
+                f"Cannot reach the cloud for GET /version: {type(err).__name__}"
+            ) from err
+        if not text or len(text) > 100:
+            raise CloudResponseError("GET /version answered no version", 200)
+        return text
+
+    async def async_notices(self) -> list[CloudNotice]:
+        """Return the account's notifications and the cloud's broadcasts to all users."""
+        own = await self._get_list("/notifications", "results", "notifications")
+        system = await self._get_list("/system-notifications", "results", "notifications")
+        if own:
+            _LOGGER.debug("Notification: shape of the answer: %s", _shape(own[0]))
+        return [n for item in own if (n := parse_notice(item))] + [
+            n for item in system if (n := parse_notice(item, system=True))
+        ]
+
+    def _schedules_path(self, box: Box) -> str:
+        return f"/households/{box.household_id}/tonieboxes/{box.id}/bedtime-schedules"
+
+    async def async_bedtime_schedules(self, box: Box) -> list[BedtimeSchedule]:
+        """Return the bedtime schedules of a Toniebox 2 that rings alarms."""
+        items = await self._get_list(self._schedules_path(box), "results", "bedtimeSchedules")
+        if items:
+            _LOGGER.debug("Bedtime schedule: shape of the answer: %s", _shape(items[0]))
+        return [s for item in items if (s := parse_bedtime_schedule(item))]
+
+    async def async_save_bedtime_schedule(
+        self, box: Box, schedule_id: str | None, fields: dict[str, Any]
+    ) -> None:
+        """Create a bedtime schedule, or change the given fields of an existing one.
+
+        The fields carry the cloud's names (sleepTime, wakeupTime, days,
+        enabled, alarmEnabled, alarmTone, alarmVolume, alarmMorningLight, name).
+        """
+        if schedule_id is None:
+            await self._request("POST", self._schedules_path(box), fields)
+        else:
+            await self._request("PATCH", f"{self._schedules_path(box)}/{schedule_id}", fields)
+
+    async def async_update_box(self, box: Box, fields: dict[str, Any]) -> Box | None:
+        """Change settings of a box (the API's names) and return the box as the cloud answers."""
+        data = await self._request(
+            "PATCH", f"/households/{box.household_id}/tonieboxes/{box.id}", fields
+        )
+        return parse_box(data, box.household_id) if isinstance(data, dict) else None
+
+    async def async_box(self, box: Box) -> Box | None:
+        """Read one box again."""
+        data = await self._request("GET", f"/households/{box.household_id}/tonieboxes/{box.id}")
+        return parse_box(data, box.household_id) if isinstance(data, dict) else None
+
+    async def async_delete_bedtime_schedule(self, box: Box, schedule_id: str) -> None:
+        """Delete a bedtime schedule."""
+        await self._request("DELETE", f"{self._schedules_path(box)}/{schedule_id}")
 
     async def async_creative_tonies(self, household_id: str) -> list[Tonie]:
         """Return the creative figures of a household, with their chapters."""
@@ -341,6 +492,15 @@ class CloudClient:
         }
         data = await self._request(
             "PATCH", f"/households/{household_id}/creativetonies/{tonie_id}", payload
+        )
+        return parse_creative_tonie(data, household_id) if isinstance(data, dict) else None
+
+    async def async_update_creative(
+        self, household_id: str, tonie_id: str, fields: dict[str, Any]
+    ) -> Tonie | None:
+        """Change name or live mode of a creative figure; neither makes the cloud convert it."""
+        data = await self._request(
+            "PATCH", f"/households/{household_id}/creativetonies/{tonie_id}", fields
         )
         return parse_creative_tonie(data, household_id) if isinstance(data, dict) else None
 

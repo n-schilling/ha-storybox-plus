@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 import os
 import time
 from typing import Any
+from zoneinfo import ZoneInfo
 
 USER_ID = "4f9b3c2e-0000-4000-8000-000000000001"
 HOUSEHOLD = "home"
@@ -116,22 +117,39 @@ def picture_svg(figure_id: str) -> str:
     )
 
 
+def box_svg() -> str:
+    """A made-up picture of a red Toniebox 2: a rounded cube with a light ring."""
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">'
+        '<rect x="10" y="18" width="76" height="70" rx="14" fill="#d9483b"/>'
+        '<rect x="10" y="18" width="76" height="14" rx="7" fill="#b8382d"/>'
+        '<circle cx="48" cy="60" r="14" fill="none" stroke="#ffd6cf" stroke-width="4"/></svg>'
+    )
+
+
 def install() -> None:
     """Put the made-up cloud in place of the real one."""
     from custom_components import storybox_plus as integration
     from custom_components.storybox_plus import config_flow
     from custom_components.storybox_plus.cloud import (
         TOPIC_BATTERY,
+        TOPIC_HEADPHONES,
         TOPIC_ONLINE,
         TOPIC_PLAYBACK,
         TOPIC_SLEEP_TIMER,
         TOPIC_VOLUME,
+        WEEKDAYS,
         Auth,
         Battery,
+        BedtimeSchedule,
         Box,
+        BoxSettings,
         Chapter,
         CloudClient,
+        CloudNotice,
+        CloudResponseError,
         Generation,
+        Headphones,
         Household,
         Playback,
         PushClient,
@@ -141,8 +159,11 @@ def install() -> None:
         Tonie,
         TonieDetails,
         TonieKind,
+        Tune,
         Volume,
     )
+    from custom_components.storybox_plus.cloud.models import SETTING_FIELDS
+    from custom_components.storybox_plus.const import TESTED_BACKEND_RELEASE
 
     base = os.environ["STORYBOX_DEMO_BASE"]
 
@@ -171,6 +192,7 @@ def install() -> None:
             image_url=picture(figure_id),
             chapters=chapters(items, figure_id),
             seconds_remaining=5400 - sum(s for _, s in items),
+            live=False,
             chapters_remaining=99 - len(items),
         )
         for figure_id, name, items in CREATIVE
@@ -199,6 +221,94 @@ def install() -> None:
         chapters=bought_chapters(DISC[2]),
     )
     uploads: dict[str, tuple[str, int]] = {}
+    # Two bought Tunes that fit the creative figures
+    tunes: dict[str, Tune] = {
+        "tune-ocean": Tune(
+            id="tune-ocean",
+            title="Songs of the Ocean",
+            series="Sea Tales",
+            seconds=2860.0,
+            remaining=2,
+            suitable=("fig-grandma", "fig-empty"),
+        ),
+        "tune-stars": Tune(
+            id="tune-stars",
+            title="Counting Stars",
+            series="Night Sky",
+            seconds=1900.0,
+            remaining=1,
+            suitable=("fig-grandma", "fig-empty"),
+        ),
+    }
+    # Every night an alarm the box's timer reaches, so it is armed whenever the checks run:
+    # 6:30 in the morning when that is close enough, else about ten hours from the start;
+    # at the weekend a later wake-up, switched off
+    zone = "Europe/Berlin"
+    now_there = datetime.now(ZoneInfo(zone))
+    wake = now_there.replace(hour=6, minute=30, second=0, microsecond=0)
+    if wake <= now_there:
+        wake += timedelta(days=1)
+    if wake - now_there > timedelta(hours=17):
+        wake = now_there + timedelta(hours=10)
+        wake -= timedelta(minutes=wake.minute % 5)
+    schedules: dict[str, BedtimeSchedule] = {
+        "bed-night": BedtimeSchedule(
+            id="bed-night",
+            name="Bedtime",
+            sleep_time="19:00",
+            wakeup_time=wake.strftime("%H:%M"),
+            days=WEEKDAYS,
+            enabled=True,
+            alarm_enabled=True,
+            alarm_volume=40,
+            alarm_morning_light=True,
+        ),
+        "bed-weekend": BedtimeSchedule(
+            id="bed-weekend",
+            name="Weekend lie-in",
+            sleep_time="20:00",
+            wakeup_time="08:30",
+            days=("saturday", "sunday"),
+            enabled=False,
+            alarm_enabled=False,
+        ),
+    }
+    box_settings: dict[str, BoxSettings] = {
+        "box-kids": BoxSettings(
+            max_volume=75,
+            max_headphone_volume=50,
+            lightring_brightness=60,
+            bedtime_lightring_brightness=10,
+            bedtime_max_volume=40,
+            bedtime_max_headphone_volume=30,
+            skipping_enabled=True,
+            skipping_direction="right",
+            scrubbing_enabled=False,
+            settings_applied=True,
+            offline_mode=False,
+        ),
+        "box-living": BoxSettings(
+            max_volume=100,
+            max_headphone_volume=75,
+            accelerometer_enabled=True,
+            tap_direction="left",
+            led_level="dimmed",
+            settings_applied=True,
+            offline_mode=False,
+        ),
+    }
+    household_name = ["Home"]
+    box_names = {"box-kids": "Kids room", "box-living": "Living room"}
+    names = {
+        "name": "name",
+        "sleepTime": "sleep_time",
+        "wakeupTime": "wakeup_time",
+        "days": "days",
+        "enabled": "enabled",
+        "alarmEnabled": "alarm_enabled",
+        "alarmVolume": "alarm_volume",
+        "alarmMorningLight": "alarm_morning_light",
+    }
 
     class DemoAuth(Auth):
         """Hands out tokens without a login server."""
@@ -224,7 +334,10 @@ def install() -> None:
             return USER_ID
 
         async def async_households(self) -> list[Household]:
-            return [Household(HOUSEHOLD, "Home")]
+            return [Household(HOUSEHOLD, household_name[0])]
+
+        async def async_rename_household(self, household_id: str, name: str) -> None:
+            household_name[0] = name
 
         async def async_boxes(self, household_id: str) -> list[Box]:
             now = datetime.now(UTC)
@@ -232,22 +345,56 @@ def install() -> None:
                 Box(
                     id=KIDS_BOX,
                     household_id=HOUSEHOLD,
-                    name="Kids room",
+                    name=box_names["box-kids"],
                     mac=KIDS_MAC,
                     generation=Generation.TONIEBOX_2,
                     firmware="1.6.30",
                     placed_tonie_id="fig-fox",
-                    max_volume=75,
+                    color_id="2",
+                    settings=box_settings["box-kids"],
+                    alarm_capable=True,
+                    timezone=zone,
                 ),
                 Box(
                     id=LIVING_BOX,
                     household_id=HOUSEHOLD,
-                    name="Living room",
+                    name=box_names["box-living"],
                     mac=None,
                     generation=Generation.CLASSIC,
                     last_seen=now - timedelta(hours=2, minutes=14),
+                    settings=box_settings["box-living"],
                 ),
             ]
+
+        async def async_update_box(self, box: Box, fields: dict[str, Any]) -> Box | None:
+            by_api = {api: name for name, (api, _allowed) in SETTING_FIELDS.items()}
+            changes = {by_api[k]: v for k, v in fields.items() if k in by_api}
+            if "name" in fields:
+                box_names[box.id] = fields["name"]
+            box_settings[box.id] = replace(box_settings[box.id], **changes)
+            return next(b for b in await self.async_boxes(box.household_id) if b.id == box.id)
+
+        async def async_box(self, box: Box) -> Box | None:
+            return next(
+                (b for b in await self.async_boxes(box.household_id) if b.id == box.id), None
+            )
+
+        async def async_bedtime_schedules(self, box: Box) -> list[BedtimeSchedule]:
+            return list(schedules.values())
+
+        async def async_save_bedtime_schedule(
+            self, box: Box, schedule_id: str | None, fields: dict[str, Any]
+        ) -> None:
+            changes = {names[k]: tuple(v) if k == "days" else v for k, v in fields.items()}
+            if schedule_id is None:
+                schedule_id = f"bed-{len(schedules) + 1}"
+                base = BedtimeSchedule(id=schedule_id, name="", sleep_time=None, wakeup_time=None)
+            else:
+                base = schedules[schedule_id]
+            schedules[schedule_id] = replace(base, **changes)
+
+        async def async_delete_bedtime_schedule(self, box: Box, schedule_id: str) -> None:
+            schedules.pop(schedule_id, None)
 
         async def async_creative_tonies(self, household_id: str) -> list[Tonie]:
             return list(creative.values())
@@ -288,6 +435,79 @@ def install() -> None:
             )
             return tonie
 
+        async def async_redeem_voucher(self, code: str) -> int:
+            if code != "DEMO-VOUCHER":
+                raise CloudResponseError(
+                    "POST /tunes-vouchers answered 404 (voucher_not_found)", 404
+                )
+            tunes["tune-moon"] = Tune(
+                id="tune-moon",
+                title="Moon Lullabies",
+                series="Night Sky",
+                seconds=1500.0,
+                remaining=1,
+                suitable=("fig-grandma", "fig-empty"),
+            )
+            return 1
+
+        async def async_redeem_token(self, tonie: Tonie, token: str) -> None:
+            figure = creative[tonie.id]
+            added = Chapter(id=f"token-{token}", title="Song from a card", seconds=95.0, file=token)
+            creative[tonie.id] = replace(figure, chapters=(*figure.chapters, added))
+
+        async def async_tunes(self) -> list[Tune]:
+            return list(tunes.values())
+
+        async def async_assign_tune(self, tonie: Tonie, tune_id: str) -> None:
+            tune = tunes[tune_id]
+            tunes[tune_id] = replace(
+                tune,
+                assigned=(*tune.assigned, tonie.id),
+                suitable=tuple(s for s in tune.suitable if s != tonie.id),
+                remaining=(tune.remaining or 1) - 1,
+            )
+
+        async def async_remove_tune(self, tonie: Tonie) -> None:
+            for tune_id, tune in tunes.items():
+                if tonie.id in tune.assigned:
+                    tunes[tune_id] = replace(
+                        tune,
+                        assigned=tuple(a for a in tune.assigned if a != tonie.id),
+                        suitable=(*tune.suitable, tonie.id),
+                        remaining=(tune.remaining or 0) + 1,
+                    )
+
+        async def async_backend_version(self) -> str:
+            # Another commit of the tested release: no note
+            return f"{TESTED_BACKEND_RELEASE}/0d3m0c0de"
+
+        async def async_box_pictures(self) -> dict[str, str]:
+            return {"2": f"{base}/local/storybox-demo/box-red.svg"}
+
+        async def async_lock(self, tonie: Tonie, locked: bool) -> None:
+            for i, item in enumerate(bought):
+                if item.id == tonie.id:
+                    bought[i] = replace(item, locked=locked)
+
+        async def async_mark_notice_read(self, notice: CloudNotice) -> None:
+            return None
+
+        async def async_update_creative(
+            self, household_id: str, tonie_id: str, fields: dict[str, Any]
+        ) -> Tonie | None:
+            tonie = creative[tonie_id] = replace(creative[tonie_id], **fields)
+            return tonie
+
+        async def async_notices(self) -> list[CloudNotice]:
+            return [
+                CloudNotice(
+                    id="notice-1",
+                    text="A chapter of your Creative-Tonie could not be converted.",
+                    kind="tonie_transcoding_failed",
+                    timestamp=datetime.now(UTC) - timedelta(hours=1),
+                )
+            ]
+
         async def async_upload_file(self, data: bytes, filename: str, content_type: str) -> str:
             file_id = f"upload-{len(uploads) + 1}"
             uploads[file_id] = (filename, len(data))
@@ -317,7 +537,7 @@ def install() -> None:
                 (TOPIC_ONLINE, True),
                 (TOPIC_BATTERY, Battery(percent=64, charging=False, status="discharging")),
                 (TOPIC_VOLUME, Volume(level=9)),
-                (TOPIC_SLEEP_TIMER, SleepTimer(state="active", until=now + timedelta(minutes=35))),
+                (TOPIC_HEADPHONES, Headphones(connected=True, kind="bluetooth", battery=80)),
                 (
                     TOPIC_PLAYBACK,
                     Playback(
@@ -335,7 +555,17 @@ def install() -> None:
             await asyncio.Event().wait()
 
         async def async_command(self, mac: str, command: str, payload: dict[str, Any]) -> None:
-            return None
+            # The box answers a sleep timer with its state, an alarm included
+            if command == "stl":
+                on = payload.get("state") == "on"
+                until = datetime.now(UTC) + timedelta(seconds=payload.get("duration", 0))
+                timer = SleepTimer(
+                    state=payload.get("state"),
+                    duration=payload.get("duration"),
+                    until=until if on else None,
+                    alarm=on and bool(payload.get("alarm")),
+                )
+                self._on_event(PushEvent(mac, TOPIC_SLEEP_TIMER, timer))
 
     integration.Auth = DemoAuth  # type: ignore[misc]
     integration.CloudClient = DemoClient  # type: ignore[misc]

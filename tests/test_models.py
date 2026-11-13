@@ -109,8 +109,8 @@ def test_parse_box_toniebox_2() -> None:
     assert box.firmware == "1.2.3"
     assert box.color_id == "red"
     assert box.placed_tonie_id == "t1"
-    assert box.max_volume == 10
-    assert box.max_headphone_volume is None
+    assert box.settings.max_volume == 10
+    assert box.settings.max_headphone_volume is None
 
 
 def test_parse_box_classic() -> None:
@@ -162,8 +162,8 @@ def test_parse_box_variants() -> None:
     assert box.placed_tonie_id == "t9"
     assert box.firmware == "2.0"
     assert box.last_seen == datetime(2025, 11, 4, 10, 0, tzinfo=UTC)
-    assert box.max_volume == 7
-    assert box.max_headphone_volume == 3
+    assert box.settings.max_volume == 7
+    assert box.settings.max_headphone_volume == 3
     assert box.raw_generation is None
     odd = parse_box(
         {

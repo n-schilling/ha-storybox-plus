@@ -4,18 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from typing import Any
 
 import probatio
 
-from homeassistant.components.media_player import MediaPlayerEntity
+from homeassistant.components.media_player import BrowseMedia, MediaPlayerEntity
 from homeassistant.components.media_player.const import (
+    MediaClass,
     MediaPlayerDeviceClass,
     MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -27,6 +29,8 @@ from .entity import BoxEntity, async_follow_boxes
 
 # Commands go one at a time to the cloud
 PARALLEL_UPDATES = 1
+# The media IDs of the chapters: chapter:<figure>:<index from 0>
+CHAPTER_PREFIX = "chapter:"
 
 
 async def async_setup_entry(
@@ -62,8 +66,8 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
     """A Toniebox 2.
 
     The box plays whatever figure stands on it; Home Assistant cannot choose
-    the figure, only pause, continue, change the volume, jump within it and
-    put the box to sleep.
+    the figure, only pause, continue, change the volume, jump within it (also
+    to a chapter picked from the media browser) and put the box to sleep.
     """
 
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
@@ -79,6 +83,8 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
         | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.BROWSE_MEDIA
+        | MediaPlayerEntityFeature.PLAY_MEDIA
     )
 
     def __init__(self, coordinator: StoryboxCoordinator, box_id: str) -> None:
@@ -245,14 +251,88 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
             chapter = min(chapter, len(tonie.chapters) - 1)
         await self._send(lambda mac: self.coordinator.push.async_set_position(mac, chapter, 0))
 
+    def _refuse_if_alarm(self) -> None:
+        """Refuse a command that would replace the alarm of a bedtime schedule.
+
+        The box keeps one timer; the sleep timer and putting the box to sleep
+        would cancel the alarm the integration arms for the next wake-up.
+        """
+        alarm = self.coordinator.due_alarm(self._box_id)
+        if alarm is not None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="alarm_due",
+                translation_placeholders={"time": alarm.at.strftime("%H:%M")},
+            )
+
+    async def async_browse_media(
+        self,
+        media_content_type: MediaType | str | None = None,
+        media_content_id: str | None = None,
+    ) -> BrowseMedia:
+        """List the chapters of the figure on the box; each can be played from its start."""
+        playback = self._playback
+        tonie = self.coordinator.tonie(playback.tonie_id) if playback else None
+        if tonie is None:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="nothing_plays")
+        return BrowseMedia(
+            media_class=MediaClass.ALBUM,
+            media_content_id=f"{CHAPTER_PREFIX}{tonie.id}",
+            media_content_type=MediaType.ALBUM,
+            title=tonie.name,
+            can_play=False,
+            can_expand=True,
+            thumbnail=tonie.image_url,
+            children_media_class=MediaClass.TRACK,
+            children=[
+                BrowseMedia(
+                    media_class=MediaClass.TRACK,
+                    media_content_id=f"{CHAPTER_PREFIX}{tonie.id}:{index}",
+                    media_content_type=MediaType.TRACK,
+                    title=f"{index + 1}. {chapter.title}" if chapter.title else str(index + 1),
+                    can_play=True,
+                    can_expand=False,
+                )
+                for index, chapter in enumerate(tonie.chapters)
+            ],
+        )
+
+    async def async_play_media(
+        self, media_type: MediaType | str, media_id: str, **kwargs: Any
+    ) -> None:
+        """Play a chapter of the figure on the box from its start.
+
+        The ID names the figure and the chapter (``chapter:<figure>:<index>``,
+        as browsing hands it out), so a chapter of a figure that was taken off
+        meanwhile is refused instead of playing another figure's chapter.
+        """
+        figure, _, index = media_id.removeprefix(CHAPTER_PREFIX).rpartition(":")
+        playback = self._playback
+        if not media_id.startswith(CHAPTER_PREFIX) or not index.isdigit():
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="unknown_chapter"
+            )
+        if playback is None or playback.tonie_id is None or playback.tonie_id != figure:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="other_figure")
+        chapter = int(index)
+        tonie = self.coordinator.tonie(figure)
+        if tonie is not None and tonie.chapters and chapter >= len(tonie.chapters):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="unknown_chapter"
+            )
+        await self._send(lambda mac: self.coordinator.push.async_set_position(mac, chapter, 0))
+
     async def async_turn_off(self) -> None:
         """Put the box to sleep; the cloud cannot wake it again."""
+        self._refuse_if_alarm()
         await self._send(self.coordinator.push.async_sleep)
 
     async def async_set_sleep_timer(self, minutes: int) -> None:
         """Let the box fall asleep after the given minutes."""
+        self._refuse_if_alarm()
         await self._send(lambda mac: self.coordinator.push.async_set_sleep_timer(mac, minutes * 60))
 
     async def async_clear_sleep_timer(self) -> None:
         """Cancel the sleep timer."""
+        self._refuse_if_alarm()
         await self._send(self.coordinator.push.async_clear_sleep_timer)

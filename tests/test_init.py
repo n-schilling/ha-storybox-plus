@@ -77,6 +77,7 @@ async def test_setup_creates_devices_and_entities(
         f"{BOX_ID}_battery",
         f"{BOX_ID}_figure",
         f"{CLASSIC_BOX_ID}_connectivity",
+        f"{setup_entry.entry_id}_notification",
     }
     assert hass.states.get(entity_id(hass, "binary_sensor", f"{BOX_ID}_connectivity")).name == (
         "Kinderzimmer Connectivity"

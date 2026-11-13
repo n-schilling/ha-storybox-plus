@@ -44,7 +44,12 @@ from custom_components.storybox_plus.cloud.auth import TOKEN_URL
 from custom_components.storybox_plus.cloud.models import parse_battery
 from custom_components.storybox_plus.cloud.push import PushData
 from custom_components.storybox_plus.cloud.rest import API_BASE
-from custom_components.storybox_plus.const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN
+from custom_components.storybox_plus.const import (
+    CONF_REFRESH_TOKEN,
+    CONF_USER_ID,
+    DOMAIN,
+    TESTED_BACKEND_RELEASE,
+)
 
 # The account, the household and what is in it
 USER_ID = "0f3c5f2a-1111-4d2e-9c3b-000000000001"
@@ -71,6 +76,8 @@ DISC_NAME = "Disc Eins"
 S3_URL = "https://uploads.example.com/bucket"
 
 JSON_HEADERS = {"Content-Type": "application/json"}
+# What GET /version answers: the version this release was tested with
+BACKEND_VERSION = f"{TESTED_BACKEND_RELEASE}/602b7aff2"
 
 
 # The mocked response lacks aiohttp's content_length, which the client reads
@@ -97,7 +104,8 @@ def tb2_box(
         "id": box_id,
         "name": name,
         "generation": "tb2g2",
-        "features": ["tngSettings", "bedtime", "volumeLimit"],
+        "features": ["tngSettings", "bedtime", "volumeLimit", "sleepTimerAlarm"],
+        "timezone": "Europe/Berlin",
         "lastSeen": "2026-11-04T10:00:00Z",
         "firmware": {"version": "1.2.3"},
         "bleColorId": "red",
@@ -191,6 +199,34 @@ def creative_tonie(tonie_id: str = CREATIVE_ID, name: str = CREATIVE_NAME) -> di
     }
 
 
+def tune(
+    tune_id: str = "my-tune-1",
+    title: str = "Bakabu",
+    suitable: tuple[str, ...] = (CREATIVE_ID,),
+    assigned: tuple[str, ...] = (),
+    remaining: int = 2,
+) -> dict[str, Any]:
+    """Return a node of the GraphQL field tunesItems for a bought Tune."""
+    return {
+        "id": f"item-{tune_id}",
+        "title": title,
+        "thumbnail": "https://img.example.com/tune.png",
+        "series": {"name": "Bakabu"},
+        "contentInfo": {"seconds": 3138},
+        "allCreativeTonies": True,
+        "myTune": {
+            "id": tune_id,
+            "assignCountRemaining": remaining,
+            "assignedTonies": [
+                {"id": i, "tonieType": "creative", "householdId": HOUSEHOLD_ID} for i in assigned
+            ],
+            "suitableTonies": [
+                {"id": i, "tonieType": "creative", "householdId": HOUSEHOLD_ID} for i in suitable
+            ],
+        },
+    }
+
+
 def disc(disc_id: str = DISC_ID, name: str = DISC_NAME) -> dict[str, Any]:
     """Return a node of the GraphQL field myDiscs."""
     return {
@@ -267,6 +303,20 @@ class Account:
     chapters_error: tuple[int, dict[str, Any]] | None = None
     # Changing chapters answers without a body
     chapters_no_body: bool = False
+    # Reading the bedtime schedules answers this status
+    schedules_status: int | None = None
+    # Changing a box answers without a body
+    box_patch_no_body: bool = False
+    # The account's notifications and the broadcasts, as the cloud lists them
+    notices: list[dict[str, Any]] = field(default_factory=list)
+    system_notices: list[dict[str, Any]] = field(default_factory=list)
+    # Reading the notifications answers this status
+    notices_status: int | None = None
+    # Locking a figure answers this status
+    lock_status: int | None = None
+    # The Tunes the account bought, as nodes of tunesItems; reading them answers this status
+    tunes: list[dict[str, Any]] = field(default_factory=list)
+    tunes_status: int | None = None
     page_size: int = 100
     households: list[dict[str, Any]] = field(default_factory=list)
     boxes: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -278,6 +328,8 @@ class Account:
     # What the detail query answers per figure; a figure not listed answers with its
     # node from content_tonies, None means the cloud does not find it
     content_tonie_details: dict[str, dict[str, Any] | None] = field(default_factory=dict)
+    # The bedtime schedules per box, as the cloud answers them
+    schedules: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     tokens_issued: int = 0
     refresh_token: str = ""
     access_tokens: set[str] = field(default_factory=set)
@@ -334,6 +386,30 @@ class FakeCloud:
         # Chapter changes: (household, figure, payload) of every PATCH and every added chapter
         self.chapter_patches: list[tuple[str, str, Any]] = []
         self.chapter_adds: list[tuple[str, str, Any]] = []
+        # Renamed creative figures: (figure, payload)
+        self.renames: list[tuple[str, Any]] = []
+        # What GET /version answers (None: an error), the box pictures by colour
+        self.version: str | None = BACKEND_VERSION
+        self.box_pictures: list[dict[str, Any]] = [
+            {"bleColorId": "red", "thumbnail": "https://img.example.com/box-red.png"},
+            {"bleColorId": 9, "thumbnail": "http://insecure.example.com/x.png"},
+        ]
+        self.version_calls = 0
+        # Vouchers redeemed (their codes) and content tokens put on figures (figure, payload)
+        self.vouchers: list[str] = []
+        self.tokens: list[tuple[str, Any]] = []
+        # Renamed households: (household, payload)
+        self.household_patches: list[tuple[str, Any]] = []
+        # Tunes laid on and taken off: (method, figure, tune or None)
+        self.tune_changes: list[tuple[str, str, str | None]] = []
+        # Locks of bought figures and discs: (kind, figure, payload)
+        self.lock_patches: list[tuple[str, str, Any]] = []
+        # Notifications marked as read: (method, path, payload)
+        self.notice_changes: list[tuple[str, str, Any]] = []
+        # Changes of a box's settings: (box, payload)
+        self.box_patches: list[tuple[str, Any]] = []
+        # Changes of bedtime schedules: (method, box, schedule or None, payload)
+        self.schedule_changes: list[tuple[str, str, str | None, Any]] = []
         # Upload tickets handed out, and what reached the storage: per upload the form's
         # fields as (name, filename, content type, size) and whether a bearer token came along
         self.upload_tickets = 0
@@ -345,6 +421,8 @@ class FakeCloud:
         mocker.post(f"{API_BASE}/graphql", side_effect=self._graphql)
         mocker.post(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
         mocker.patch(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
+        mocker.delete(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
+        mocker.put(re.compile(rf"^{re.escape(API_BASE)}/"), side_effect=self._rest)
         mocker.post(S3_URL, side_effect=self._s3)
 
     def add_account(self, name: str, **kwargs: Any) -> Account:
@@ -419,6 +497,20 @@ class FakeCloud:
         return account
 
     async def _rest(self, method: str, url: URL, data: Any) -> AiohttpClientMockResponse:
+        if url.path == "/v2/version":
+            # Answered without a sign-in, as plain text
+            self.version_calls += 1
+            if self.unreachable:
+                raise aiohttp.ClientConnectionError("api down")
+            if self.version is None:
+                return _json(method, url, 500, {"message": "error"})
+            return AiohttpClientMockResponse(
+                method=method,
+                url=url,
+                status=200,
+                text=self.version,
+                headers={"Content-Type": "text/plain"},
+            )
         account = self._authorize(method, url)
         if isinstance(account, AiohttpClientMockResponse):
             return account
@@ -427,6 +519,56 @@ class FakeCloud:
             return _json(method, url, 200, {"uuid": account.user_id, "email": account.email})
         if path == "/households":
             return _json(method, url, 200, account.households)
+        if (match := re.fullmatch(r"/households/([^/]+)", path)) and method.upper() == "PATCH":
+            household = next((h for h in account.households if h["id"] == match[1]), None)
+            if household is None:
+                return _json(method, url, 404, {"message": "not found"})
+            self.household_patches.append((match[1], data))
+            household.update(data)
+            return _json(method, url, 200, household)
+        if match := re.fullmatch(r"/tunes-vouchers/(.+)", path):
+            self.vouchers.append(match[1])
+            if match[1] != "GOOD-CODE":
+                return _json(method, url, 404, {"errors": [{"code": "voucher_not_found"}]})
+            new = tune("my-tune-new", "New Tune", remaining=1)
+            account.tunes.append(new)
+            return _json(method, url, 200, {"tunes": [new["myTune"]]})
+        if match := re.fullmatch(r"/households/([^/]+)/creativetonies/([^/]+)/redeem-token", path):
+            self.tokens.append((match[2], data))
+            if (data or {}).get("token") != "toniesong":
+                return _json(method, url, 400, {"errors": [{"code": "invalid_token"}]})
+            return _json(method, url, 200, {})
+        if path == "/box-item-previews":
+            return _json(method, url, 200, self.box_pictures)
+        if match := re.fullmatch(r"/households/([^/]+)/(contenttonies|discs)/([^/]+)", path):
+            if account.lock_status is not None:
+                return _json(method, url, account.lock_status, {"message": "error"})
+            self.lock_patches.append((match[2], match[3], data))
+            return _json(method, url, 200, {"id": match[3], **(data or {})})
+        if match := re.fullmatch(r"/households/([^/]+)/tonie/([^/]+)/tune(?:/([^/]+))?", path):
+            return self._tune(account, method, url, *match.groups())
+        if match := re.fullmatch(r"/(notifications|system-notifications)/([^/]+)", path):
+            self.notice_changes.append((method.upper(), path, data))
+            return AiohttpClientMockResponse(method=method, url=url, status=204)
+        if path in ("/notifications", "/system-notifications"):
+            if account.notices_status is not None:
+                return _json(method, url, account.notices_status, {"message": "error"})
+            items = account.notices if path == "/notifications" else account.system_notices
+            return _json(method, url, 200, items)
+        if match := re.fullmatch(r"/households/([^/]+)/tonieboxes/([^/]+)", path):
+            box = next((b for b in account.boxes.get(match[1], []) if b["id"] == match[2]), None)
+            if box is None:
+                return _json(method, url, 404, {"message": "not found"})
+            if method.upper() == "PATCH":
+                self.box_patches.append((match[2], data))
+                box.update(data)
+                if account.box_patch_no_body:
+                    return AiohttpClientMockResponse(method=method, url=url, status=204)
+            return _json(method, url, 200, box)
+        if match := re.fullmatch(
+            r"/households/([^/]+)/tonieboxes/([^/]+)/bedtime-schedules(?:/([^/]+))?", path
+        ):
+            return self._schedules(account, method, url, data, *match.groups())
         if match := re.fullmatch(r"/households/([^/]+)/(tonieboxes|creativetonies)", path):
             household, kind = match.groups()
             items = account.boxes if kind == "tonieboxes" else account.creative_tonies
@@ -454,6 +596,63 @@ class FakeCloud:
                 return _json(method, url, 404, {"message": "not found"})
             return _json(method, url, 200, info)
         return _json(method, url, 404, {"message": "not found"})
+
+    def _tune(
+        self,
+        account: Account,
+        method: str,
+        url: URL,
+        household: str,
+        tonie_id: str,
+        tune_id: str | None,
+    ) -> AiohttpClientMockResponse:
+        """Lay a Tune on a figure (PUT …/tune/{id}) or take it off (DELETE …/tune)."""
+        method = method.upper()
+        self.tune_changes.append((method, tonie_id, tune_id))
+        for node in account.tunes:
+            mine = node["myTune"]
+            assigned = mine["assignedTonies"]
+            if method == "DELETE":
+                mine["assignedTonies"] = [a for a in assigned if a["id"] != tonie_id]
+            elif mine["id"] == tune_id:
+                if mine["assignCountRemaining"] < 1:
+                    return _json(method, url, 400, {"message": "no assignments left"})
+                assigned.append({"id": tonie_id, "tonieType": "content", "householdId": household})
+                mine["assignCountRemaining"] -= 1
+        return AiohttpClientMockResponse(method=method, url=url, status=204)
+
+    def _schedules(
+        self,
+        account: Account,
+        method: str,
+        url: URL,
+        data: Any,
+        household: str,
+        box_id: str,
+        schedule_id: str | None,
+    ) -> AiohttpClientMockResponse:
+        method = method.upper()
+        if account.schedules_status is not None and method == "GET":
+            return _json(method, url, account.schedules_status, {"message": "error"})
+        schedules = account.schedules.setdefault(box_id, [])
+        if method == "GET" and schedule_id is None:
+            return _json(method, url, 200, schedules)
+        if method == "POST" and schedule_id is None:
+            self.schedule_changes.append((method, box_id, None, data))
+            created = {"id": f"s{len(self.schedule_changes)}", **data}
+            schedules.append(created)
+            return _json(method, url, 201, created)
+        found = next((s for s in schedules if s["id"] == schedule_id), None)
+        if found is None:
+            return _json(method, url, 404, {"message": "not found"})
+        self.schedule_changes.append((method, box_id, schedule_id, data))
+        if method == "PATCH":
+            found.update(data)
+            return _json(method, url, 200, found)
+        if method == "DELETE":
+            schedules.remove(found)
+            return AiohttpClientMockResponse(method=method, url=url, status=204)
+        return _json(method, url, 405, {"message": "method not allowed"})
 
     def _creative(
         self,
@@ -490,6 +689,11 @@ class FakeCloud:
                     "transcoding": True,
                 }
             )
+        elif not chapters_path and method.upper() == "PATCH" and "chapters" not in data:
+            # A new name: the cloud does not convert the figure for it
+            self.renames.append((tonie_id, data))
+            tonie.update(data)
+            return _json(method, url, 200, tonie)
         elif not chapters_path and method.upper() == "PATCH":
             self.chapter_patches.append((household, tonie_id, data))
             tonie["chapters"] = [dict(c) for c in data["chapters"]]
@@ -569,6 +773,10 @@ class FakeCloud:
             nodes = [connection_node(t) for t in account.content_tonies]
         elif "myDiscs" in query:
             fld, nodes = "myDiscs", account.discs
+        elif "tunesItems" in query:
+            if account.tunes_status is not None:
+                return _json(method, url, account.tunes_status, {"message": "error"})
+            fld, nodes = "tunesItems", account.tunes
         else:
             return _json(method, url, 400, {"errors": [{"message": "unknown field"}]})
         self.graphql_calls.append((fld, cursor))
@@ -673,10 +881,16 @@ class FakePush(PushClient):
         self.send(TOPIC_VOLUME, Volume(level=level), mac)
 
     def sleep_timer(
-        self, state: str | None = "on", until: datetime | None = None, mac: str = MAC
+        self,
+        state: str | None = "on",
+        until: datetime | None = None,
+        alarm: bool = False,
+        mac: str = MAC,
     ) -> None:
         """Deliver app-reply/bedtime-state."""
-        self.send(TOPIC_SLEEP_TIMER, SleepTimer(state=state, duration=600, until=until), mac)
+        self.send(
+            TOPIC_SLEEP_TIMER, SleepTimer(state=state, duration=600, until=until, alarm=alarm), mac
+        )
 
     async def async_command(self, mac: str, command: str, payload: dict[str, Any]) -> None:
         """Record the command instead of publishing it."""
