@@ -234,11 +234,14 @@ async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
 async def async_remove_config_entry_device(
     hass: HomeAssistant, entry: StoryboxConfigEntry, device: dr.DeviceEntry
 ) -> bool:
-    """Let the user remove the device of a box the account no longer has.
+    """Let the user remove the device of a box the account no longer has, or of a Toniebox 1.
 
-    The integration removes such a device itself after an hour without the
-    box; this is for whoever does not want to wait.
+    The integration removes such a device itself after an hour; this is for
+    whoever does not want to wait.
     """
     if account_identifier(entry) in device.identifiers:
         return False
-    return box_of(entry, device.identifiers) not in entry.runtime_data.coordinator.data.boxes
+    box_state = entry.runtime_data.coordinator.data.boxes.get(
+        box_of(entry, device.identifiers) or ""
+    )
+    return box_state is None or not box_state.box.live

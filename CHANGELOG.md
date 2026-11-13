@@ -18,7 +18,7 @@ All notable changes to this project are documented here. The format follows
 - The volume of a Toniebox 2 shows in the percent the box reports, on the page and in the media player; the levels stay what the buttons set.
 - Error messages say in plain words what went wrong and what to do, in the language of Home Assistant; a lost connection says so instead of showing "[object Object]".
 - A Toniebox 1 shows as a small card of its own: its settings in a line and when it was last seen, the settings behind the cog; it shows no connection state, as the cloud reports none for it. The page, the device model and the documentation call it Toniebox 1.
-- A Toniebox 1 gets no device and no entity: the cloud reports no connection state for it, so its connectivity sensor never knew anything. A device left from before can be deleted.
+- A Toniebox 1 gets no device and no entity: the cloud reports no connection state for it, so its connectivity sensor never knew anything. A device left from before goes after an hour, or at once by hand.
 - The settings of a creative figure hold its name, saved by its own button, and the live mode; the edit mode keeps to the chapters. A Tune has an overlay of its own, opened by the icon beside the figure's cog.
 - The head of a Toniebox 2's card holds its name, a coloured dot for online or offline (the word in its tooltip), the battery's level and the cog; it names no generation.
 - The unique IDs of a box's entities and the identifier of its device start with the config entry, so two accounts of one household no longer collide over their shared box. Installed boxes get new devices and entities; the old ones are left behind and can be deleted.

@@ -563,18 +563,19 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             _LOGGER.debug("Bedtime schedules of a box not read: %s", err)
 
     def _remove_stale_devices(self, state: CloudState) -> None:
-        """Remove the devices of boxes that left the account.
+        """Remove the devices of boxes that left the account, and of each Toniebox 1.
 
         A box counts as gone only after an hour of polls without it, so an
         answer of the cloud that lacks it once does not cost its entities
-        and what the user made of them.
+        and what the user made of them. A Toniebox 1 has no entities, so a
+        device of it stands for nothing and goes the same way.
         """
         registry = dr.async_get(self.hass)
         seen: set[str] = set()
         for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
             # The account's own device stands for no box
             key = box_of(self.config_entry, device.identifiers)
-            if key is None or key in state.boxes:
+            if key is None or (key in state.boxes and state.boxes[key].box.live):
                 continue
             seen.add(key)
             self._missing_polls[key] = self._missing_polls.get(key, 0) + 1

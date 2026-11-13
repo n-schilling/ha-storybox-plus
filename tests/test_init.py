@@ -486,3 +486,41 @@ async def test_two_accounts_of_one_household(
     # Each entry removes only devices of its own; the other's box is not gone
     await setup_entry.runtime_data.coordinator.async_refresh()
     assert device(hass, second, BOX_ID) is not None
+
+
+async def test_device_of_a_toniebox_1_goes(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """A device of a Toniebox 1 stands for nothing: removable by hand, gone after an hour."""
+    config_entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+    registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={box_identifier(config_entry, CLASSIC_BOX_ID)},
+        name="Alt",
+    )
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert await async_setup_component(hass, "config", {})
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": "config/device_registry/remove_config_entry",
+            "config_entry_id": config_entry.entry_id,
+            "device_id": device(hass, config_entry, CLASSIC_BOX_ID).id,
+        }
+    )
+    assert (await client.receive_json())["success"] is True
+    assert device(hass, config_entry, CLASSIC_BOX_ID) is None
+    registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={box_identifier(config_entry, CLASSIC_BOX_ID)},
+        name="Alt",
+    )
+    await _polls(hass, config_entry, STALE_AFTER_POLLS)
+    assert device(hass, config_entry, CLASSIC_BOX_ID) is None
+    assert device(hass, config_entry, BOX_ID) is not None
