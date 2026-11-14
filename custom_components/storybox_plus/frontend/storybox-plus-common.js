@@ -44,6 +44,9 @@ export const TEXTS = {
   en: {
     cardName: "Toniebox", cardDescription: "The live state of a Toniebox 2 with its buttons.", cardEntity: "Toniebox 2 (media player)",
     cardNoEntity: "Choose the media player of a Toniebox 2.", cardUnknown: "This is no Toniebox 2 of Storybox Plus.", cardDenied: "You may not see this Toniebox.",
+    cardShow: "Show", show_picture: "Picture of the box", show_battery: "Battery", show_volume: "Volume", show_headphones: "Headphones",
+    show_sleep_timer: "Running sleep timer", show_next_alarm: "Next alarm", show_night_mode: "Night mode of the light ring",
+    show_playback: "What plays", show_controls: "Buttons",
     tabBoxes: "Boxes", tabFigures: "Figures", tabListening: "Listening", tabPreferences: "Settings",
     prefVoucher: "Tunes voucher", voucherCode: "Voucher code", voucherRedeem: "Redeem",
     voucherDone: "Redeemed: {n} Tunes added.", voucherNone: "Redeemed, but the cloud names no new Tune.", voucherFailed: "Redeeming failed: {e}",
@@ -192,6 +195,9 @@ export const TEXTS = {
   de: {
     cardName: "Toniebox", cardDescription: "Der Live-Stand einer Toniebox 2 mit ihren Knöpfen.", cardEntity: "Toniebox 2 (Media Player)",
     cardNoEntity: "Wähle den Media Player einer Toniebox 2.", cardUnknown: "Das ist keine Toniebox 2 von Storybox Plus.", cardDenied: "Diese Toniebox darfst du nicht sehen.",
+    cardShow: "Anzeigen", show_picture: "Bild der Box", show_battery: "Akku", show_volume: "Lautstärke", show_headphones: "Kopfhörer",
+    show_sleep_timer: "Laufender Schlaf-Timer", show_next_alarm: "Nächster Wecker", show_night_mode: "Nachtmodus des Lichtrings",
+    show_playback: "Was gerade läuft", show_controls: "Knöpfe",
     tabBoxes: "Boxen", tabFigures: "Figuren", tabListening: "Hörzeit", tabPreferences: "Einstellungen",
     prefVoucher: "Tunes-Gutschein", voucherCode: "Gutscheincode", voucherRedeem: "Einlösen",
     voucherDone: "Eingelöst: {n} Tunes hinzugefügt.", voucherNone: "Eingelöst, die Cloud nennt aber keinen neuen Tune.", voucherFailed: "Einlösen fehlgeschlagen: {e}",
@@ -703,16 +709,18 @@ export const BoxView = (Base) => class extends Base {
       return `<span class="dot ${state}" role="img" title="${esc(label + seen)}" aria-label="${esc(label + seen)}"></span>`;
     }
 
-    // card: the dashboard card, which has neither the cog nor the battery's overlay
-    _box(b, showHousehold, card = false) {
+    // card: the dashboard card's configuration, null on the page. The card has neither the
+    // cog nor the battery's overlay, and leaves out each part its show_<part> turns off.
+    _box(b, showHousehold, card = null) {
       const t = this._t;
       const live = b.generation === "toniebox_2";
+      const show = (part) => !card || card[`show_${part}`] !== false;
       const chips = showHousehold && b.household ? this._chip(b.household) : "";
-      const pic = safeUrl(b.image_url);
+      const pic = show("picture") ? safeUrl(b.image_url) : null;
       // Settings, night mode and bedtimes sit behind the box's cog
       const cog = !card && (b.settings || b.bedtime) ? iconButton("cog", t.boxSettingsOf, `class="box-cog" data-act="boxset:${esc(b.id)}"`) : "";
       // The battery's level sits in the head; on the page the rest of the battery opens in the overlay
-      const batt = !live ? "" : card
+      const batt = !live || !show("battery") ? "" : card
         ? `<span class="fact">${this._batteryLevel(b)}</span>`
         : b.battery_stats
           ? `<button class="fact fact-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}" aria-label="${esc(t.batteryDetails)}">${this._batteryLevel(b)}</button>`
@@ -720,32 +728,31 @@ export const BoxView = (Base) => class extends Base {
       const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span>${this._dot(b)}` +
         `<span class="chips">${chips}</span><span class="status">${batt}</span>${cog}`;
       const facts = [];
-      if (Number.isFinite(b.volume)) {
+      if (Number.isFinite(b.volume) && show("volume")) {
         // The box's own percent once it reported the level; a level just sent shows as a level
         const sent = this._volSent?.box === b.id;
         const shown = Number.isFinite(b.volume_percent) && !sent ? `${b.volume_percent} %` : fill(t.volumeLevel, { v: b.volume, max: b.volume_max ?? 13 });
         facts.push(`<span class="fact${sent ? " pending" : ""}" title="${esc(fill(t.volumeLevel, { v: b.volume, max: b.volume_max ?? 13 }))}">${icon("volume")}${esc(shown)}</span>`);
       }
-      if (b.headphones?.connected) {
+      if (b.headphones?.connected && show("headphones")) {
         const hp = Number.isFinite(b.headphones.battery) ? fill(t.headphonesBattery, { p: b.headphones.battery }) : t.headphones;
         facts.push(`<span class="fact">${icon("headphones")}${esc(hp)}</span>`);
       }
       const sleep = this._sleep(b.sleep_timer);
-      if (sleep) facts.push(`<span class="fact">${icon("sleep")}${esc(sleep)}</span>`);
+      if (sleep && show("sleep_timer")) facts.push(`<span class="fact">${icon("sleep")}${esc(sleep)}</span>`);
       // The next alarm and a night mode at work stay on the card; the rest is behind the cog
       const next = b.bedtime?.next_alarm;
-      if (next) {
+      if (next && show("next_alarm")) {
         const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
         facts.push(`<span class="fact">${icon("alarm")}${esc(fill(t.nextAlarm, { t: when }))}</span>`);
       }
-      if (b.night?.mode?.enabled && b.night.phase === "night") facts.push(this._chip(t.nightMode, "on"));
+      if (b.night?.mode?.enabled && b.night.phase === "night" && show("night_mode")) facts.push(this._chip(t.nightMode, "on"));
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
-      if (live) body += this._playback(b.playback) + this._controls(b);
+      if (live) body += (show("playback") ? this._playback(b.playback) : "") + (show("controls") ? this._controls(b) : "");
       else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
       if (!live && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
-      // The battery is a section of its own at the bottom of the card
       return this._card(title, body);
     }
 

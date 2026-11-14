@@ -9,6 +9,8 @@ const {
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 const CARD = "storybox-plus-box-card";
+// What the card can leave out, each on by default (show_<part>: false hides it)
+const PARTS = ["picture", "battery", "volume", "headphones", "sleep_timer", "next_alarm", "night_mode", "playback", "controls"];
 const EDITOR = `${CARD}-editor`;
 // The card asks again this often, for what has no entity of its own (ms)
 const REFRESH = 30000;
@@ -154,7 +156,7 @@ if (!customElements.get(CARD)) {
         const text = this._error === "denied" ? t.cardDenied : this._error === "unknown" ? t.cardUnknown : `${t.failed}: ${this._errorText}`;
         body = this._card("", this._alert(text, this._error === "failed" ? "error" : "warning"));
       } else if (!this._box_) body = this._card("", `<div class="muted">${t.loading}</div>`);
-      else body = this._box(this._box_, false, true);
+      else body = this._box(this._box_, false, this._config);
       const html = `<style>${STYLE}${CARD_STYLE}</style>${body}`;
       if (html === this._html) return;
       this._html = html;
@@ -180,7 +182,11 @@ if (!customElements.get(CARD)) {
       if (!this._form) {
         this._form = document.createElement("ha-form");
         this._form.addEventListener("value-changed", (e) => {
-          this._config = { ...this._config, ...e.detail.value };
+          const value = { ...e.detail.value };
+          // Only what is turned off is written; on is the default
+          for (const part of PARTS) if (value[`show_${part}`] !== false) delete value[`show_${part}`];
+          const kept = Object.fromEntries(Object.entries(this._config).filter(([k]) => !k.startsWith("show_")));
+          this._config = { ...kept, ...value };
           this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
         });
         this.appendChild(this._form);
@@ -188,9 +194,15 @@ if (!customElements.get(CARD)) {
       this._form.hass = this._hass;
       this._form.schema = [
         { name: "entity", required: true, selector: { entity: { domain: "media_player", integration: "storybox_plus" } } },
+        {
+          name: "show", type: "expandable", flatten: true, title: t.cardShow, expanded: true,
+          schema: [{ type: "grid", name: "", flatten: true, column_min_width: "200px",
+            schema: PARTS.map((part) => ({ name: `show_${part}`, selector: { boolean: {} } })) }],
+        },
       ];
-      this._form.data = { entity: this._config.entity || "" };
-      this._form.computeLabel = () => t.cardEntity;
+      // A part shows unless turned off
+      this._form.data = { entity: this._config.entity || "", ...Object.fromEntries(PARTS.map((part) => [`show_${part}`, this._config[`show_${part}`] !== false])) };
+      this._form.computeLabel = (field) => (field.name === "entity" ? t.cardEntity : t[field.name] || field.name);
     }
   }
 

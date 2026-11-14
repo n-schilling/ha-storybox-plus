@@ -1459,6 +1459,14 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             if e["platform"] == "storybox_plus" and e["entity_id"].startswith("media_player.")
         )
         card_config = {"type": "custom:storybox-plus-box-card", "entity": player}
+        # A second card that leaves parts out
+        slim_config = {
+            **card_config,
+            "show_battery": False,
+            "show_picture": False,
+            "show_next_alarm": False,
+            "show_controls": False,
+        }
         created = await api.ws(
             instance.token,
             {
@@ -1474,13 +1482,17 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             {
                 "type": "lovelace/config/save",
                 "url_path": "storybox-test",
-                "config": {"views": [{"title": "Kids", "path": "kids", "cards": [card_config]}]},
+                "config": {
+                    "views": [
+                        {"title": "Kids", "path": "kids", "cards": [card_config, slim_config]}
+                    ]
+                },
             },
         )
         expect(saved["success"], str(saved))
         user = await _open(browser, instance, USER, path="/storybox-test/kids")
         try:
-            card = user.locator("storybox-plus-box-card ha-card")
+            card = user.locator("storybox-plus-box-card ha-card").first
             await card.locator(".card-header").wait_for(timeout=90000)
             text = await card.inner_text()
             for part in ("Kids room", "The Clever Fox", "Headphones 80 %", "Next alarm"):
@@ -1504,6 +1516,37 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await user.wait_for_timeout(600)
             alerts = await card.locator("ha-alert[alert-type=error]").count()
             expect(alerts == 0, "a button failed for the user")
+            # The second card leaves out what its options turn off, and keeps the rest
+            slim = user.locator("storybox-plus-box-card ha-card").nth(1)
+            await slim.locator(".card-header").wait_for()
+            slim_text = await slim.inner_text()
+            expect("Next alarm" not in slim_text and "The Clever Fox" in slim_text, slim_text)
+            for left_out in (".batt", ".box-pic", ".controls"):
+                expect(await slim.locator(left_out).count() == 0, f"{left_out} on the slim card")
+            # The editor writes only the parts turned off
+            written = await user.evaluate(
+                """async (player) => {
+                  const editor = document.createElement("storybox-plus-box-card-editor");
+                  editor.hass = document.querySelector("home-assistant").hass;
+                  editor.setConfig({ type: "custom:storybox-plus-box-card", entity: player });
+                  let config = null;
+                  editor.addEventListener("config-changed", (e) => { config = e.detail.config; });
+                  editor.querySelector("ha-form").dispatchEvent(new CustomEvent("value-changed", {
+                    detail: { value: { entity: player, show_battery: false, show_volume: true } },
+                  }));
+                  return config;
+                }""",
+                player,
+            )
+            expect(
+                written
+                == {
+                    "type": "custom:storybox-plus-box-card",
+                    "entity": player,
+                    "show_battery": False,
+                },
+                f"editor wrote {written}",
+            )
             offered = await user.evaluate("(window.customCards || []).map((c) => c.type)")
             expect("storybox-plus-box-card" in offered, f"not in the card picker: {offered}")
             if shots is not None:

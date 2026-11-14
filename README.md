@@ -280,6 +280,22 @@ entity: media_player.kids_room
 
 It shows what the page's card shows (online or offline, the battery's level, volume, headphones, the sleep timer, the next alarm, the night mode at work, what plays) and has the same buttons: play, pause, skip chapters, louder and quieter, a sleep timer of 30 or 60 minutes. It leaves out what only administrators see: the settings, the bedtimes and the charge history.
 
+Each part can be left out, in the card's editor or in its YAML; all of them show unless turned off:
+
+| Option | Leaves out when `false` |
+|---|---|
+| `show_picture` | the picture of the box in the head |
+| `show_battery` | the battery's level in the head |
+| `show_volume` | the volume |
+| `show_headphones` | the headphones while connected |
+| `show_sleep_timer` | a running sleep timer |
+| `show_next_alarm` | the next alarm of a bedtime |
+| `show_night_mode` | the chip of the light ring's night mode at work |
+| `show_playback` | the figure that plays, its chapter and progress |
+| `show_controls` | the buttons |
+
+The name and the dot for online or offline always show.
+
 Every user who may read the box's media player sees the card, not only administrators; the buttons are the media player's actions and `storybox_plus.set_sleep_timer`. The card asks the integration again when the media player changes and every 30 seconds.
 
 ## Examples
