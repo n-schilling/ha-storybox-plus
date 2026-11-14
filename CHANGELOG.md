@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A dashboard card for a Toniebox 2, `custom:storybox-plus-box-card`: the live state and the buttons of the page's card, without settings, bedtimes or charge history. It loads with the integration and is open to every user who may read the box's media player; its data come from the new command `storybox_plus/box/card`, its buttons are the media player's actions.
+
 ## [0.9.0] - 2026-11-13
 
 The last steps before 1.0.0: what is left are checks on a real box.

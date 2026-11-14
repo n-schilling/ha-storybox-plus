@@ -32,6 +32,10 @@ The boxes with their live state; the Toniebox 2 with its bedtimes, its battery a
 
 <img src="docs/screenshots/boxes.png" alt="Boxes tab with the header row of icon, name and tabs, the stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
 
+The dashboard card of a Toniebox 2, here seen by a user without administrator rights:
+
+<img src="docs/screenshots/card.png" alt="The dashboard card of a Toniebox 2: name, online dot and battery in the head, volume, headphones and the next alarm, the figure that plays with its chapter and progress, and the buttons" width="450">
+
 The settings of a Toniebox 2 being changed; a Toniebox 1 shows its own:
 
 <img src="docs/screenshots/settings.png" alt="The settings form of a Toniebox 2: name, maximum volumes, light ring brightness, the limits at bedtime, skipping by tapping with its ear and winding by tilting" width="400">
@@ -265,6 +269,19 @@ The header is one row: the integration's icon, its name and right after it the t
 
 At the bottom it shows the version of the integration. On a phone the tabs move to the bottom.
 
+### Dashboard card
+
+The card of a Toniebox 2 from the page, for any dashboard: `custom:storybox-plus-box-card`, offered in the card picker as **Storybox Plus · Toniebox**. It loads with the integration; there is no resource to add.
+
+```yaml
+type: custom:storybox-plus-box-card
+entity: media_player.kids_room
+```
+
+It shows what the page's card shows (online or offline, the battery's level, volume, headphones, the sleep timer, the next alarm, the night mode at work, what plays) and has the same buttons: play, pause, skip chapters, louder and quieter, a sleep timer of 30 or 60 minutes. It leaves out what only administrators see: the settings, the bedtimes and the charge history.
+
+Every user who may read the box's media player sees the card, not only administrators; the buttons are the media player's actions and `storybox_plus.set_sleep_timer`. The card asks the integration again when the media player changes and every 30 seconds.
+
 ## Examples
 
 Pause the box in the children's room with the bedtime scene:
@@ -376,7 +393,7 @@ Both target the media player of a Toniebox 2. While the alarm of a bedtime is du
 
 ### WebSocket commands
 
-For administrators only; the page uses them. Their answers serve the page and are not part of this interface.
+For administrators only, but one; the page uses them. Their answers serve the page and are not part of this interface. `storybox_plus/box/card` (`entity_id` of a box's media player) serves the dashboard card: it answers every user who may read that entity, with the box's live state and nothing of its settings.
 
 | Command | Parameters |
 |---|---|

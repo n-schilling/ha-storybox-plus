@@ -421,9 +421,15 @@ async def _until(check: Callable[[], Awaitable[bool]], what: str, seconds: float
 
 
 async def _open(
-    browser: Browser, instance: Instance, user: tuple[str, str], tab: str = "boxes", **options: Any
+    browser: Browser,
+    instance: Instance,
+    user: tuple[str, str],
+    tab: str = "boxes",
+    path: str | None = None,
+    **options: Any,
 ) -> Page:
-    """A new page, logged in, on a tab of the Storybox Plus page."""
+    """A new page, logged in, on a tab of the Storybox Plus page or at another path."""
+    target = f"{instance.base}{path}" if path else f"{instance.base}/storybox-plus#{tab}"
     context = await browser.new_context(
         viewport=options.pop("viewport", {"width": 1200, "height": 820}),
         device_scale_factor=2,
@@ -431,15 +437,26 @@ async def _open(
         timezone_id=TIME_ZONE.key,
         color_scheme=options.pop("color_scheme", "light"),
     )
+    # A rejected promise nobody handles shows with what it carried, not as "Object"
+    await context.add_init_script(
+        "window.addEventListener('unhandledrejection', (e) => console.error("
+        "'unhandled rejection: ' + JSON.stringify(e.reason) + ' ' + (e.reason?.stack || '')));"
+    )
     page = await context.new_page()
-    await page.goto(f"{instance.base}/storybox-plus#{tab}")
+    # Errors of the page's scripts show in the output, where a failed check needs them
+    page.on("pageerror", lambda err: print(f"     page error: {err}", flush=True))
+    page.on(
+        "console",
+        lambda m: print(f"     console: {m.text}", flush=True) if m.type == "error" else None,
+    )
+    await page.goto(target)
     await page.get_by_label("Username").fill(user[0])
     await page.get_by_label("Password", exact=True).fill(user[1])
     await page.keyboard.press("Enter")
     await page.wait_for_load_state("networkidle")
     # Keep the sidebar out of the pictures
     await page.evaluate("localStorage.setItem('dockedSidebar', JSON.stringify('always_hidden'))")
-    await page.goto(f"{instance.base}/storybox-plus#{tab}")
+    await page.goto(target)
     await page.reload()
     await page.wait_for_load_state("networkidle")
     return page
@@ -1432,6 +1449,69 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     await checks.run(
         "users without administrator rights get neither page nor commands", no_page_for_users
     )
+
+    async def dashboard_card() -> None:
+        # The card on a dashboard, seen by a user without administrator rights
+        registry = await api.ws(instance.token, {"type": "config/entity_registry/list"})
+        player = next(
+            e["entity_id"]
+            for e in registry["result"]
+            if e["platform"] == "storybox_plus" and e["entity_id"].startswith("media_player.")
+        )
+        card_config = {"type": "custom:storybox-plus-box-card", "entity": player}
+        created = await api.ws(
+            instance.token,
+            {
+                "type": "lovelace/dashboards/create",
+                "url_path": "storybox-test",
+                "title": "Storybox test",
+                "mode": "storage",
+            },
+        )
+        expect(created["success"], str(created))
+        saved = await api.ws(
+            instance.token,
+            {
+                "type": "lovelace/config/save",
+                "url_path": "storybox-test",
+                "config": {"views": [{"title": "Kids", "path": "kids", "cards": [card_config]}]},
+            },
+        )
+        expect(saved["success"], str(saved))
+        user = await _open(browser, instance, USER, path="/storybox-test/kids")
+        try:
+            card = user.locator("storybox-plus-box-card ha-card")
+            await card.locator(".card-header").wait_for(timeout=90000)
+            text = await card.inner_text()
+            for part in ("Kids room", "The Clever Fox", "Headphones 80 %", "Next alarm"):
+                expect(part in text, f"{part!r} missing on the card: {text}")
+            # Neither the settings nor the charge history: no cog, the battery is no button
+            expect(await card.locator("[data-act^='boxset:'], .fact-btn").count() == 0, text)
+            expect(await card.locator(".card-header .batt").count() == 1, "battery not in the head")
+            # The buttons are the media player's actions, which a user may call
+            volume = card.locator(".fact[title^='level']")
+            before = await volume.inner_text()
+            plus = card.locator("[data-act*=':volume:']").nth(1)
+            await plus.click()
+
+            async def answered() -> bool:
+                now = await volume.inner_text()
+                pending = await card.locator(".fact.pending").count()
+                return now != before and "%" in now and not pending
+
+            await _until(answered, "the volume the box reports after a press", seconds=10)
+            await card.locator("[data-act$=':pause'], [data-act$=':play']").first.click()
+            await user.wait_for_timeout(600)
+            alerts = await card.locator("ha-alert[alert-type=error]").count()
+            expect(alerts == 0, "a button failed for the user")
+            offered = await user.evaluate("(window.customCards || []).map((c) => c.type)")
+            expect("storybox-plus-box-card" in offered, f"not in the card picker: {offered}")
+            if shots is not None:
+                await card.screenshot(path=str(shots / "card.png"))
+        finally:
+            await user.context.close()
+
+    await checks.run("the dashboard card for a user without administrator rights", dashboard_card)
     await page.context.close()
 
     phone = await _open(
@@ -1481,8 +1561,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
 def _mdi(name: str) -> str:
     """An icon path as the page has it."""
-    script = (INTEGRATION / "frontend" / "storybox-plus-panel.js").read_text()
-    start = script.index(f'    {name}: "') + len(f'    {name}: "')
+    script = (INTEGRATION / "frontend" / "storybox-plus-common.js").read_text()
+    start = script.index(f'  {name}: "') + len(f'  {name}: "')
     return script[start : script.index('"', start)]
 
 

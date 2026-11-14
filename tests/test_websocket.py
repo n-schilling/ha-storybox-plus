@@ -42,6 +42,7 @@ from .conftest import (
     PushChannels,
     content_tonie,
     counting_off,
+    entity_id,
     entry_for,
     tb2_box,
 )
@@ -1184,3 +1185,46 @@ async def test_shared_household_shows_and_counts_once(
     assert await hass.config_entries.async_unload(setup_entry.entry_id)
     overview = await _ask(client, {"type": f"{DOMAIN}/overview"})
     assert [b["entry_id"] for b in overview["result"]["boxes"]] == [second.entry_id]
+
+
+async def test_box_card(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_read_only_access_token: str,
+    hass_admin_user: Any,
+) -> None:
+    """The card's data: for whoever may read the media player, without the settings."""
+    channel = push.last
+    channel.connect()
+    channel.battery(80, "discharging")
+    channel.volume(7)
+    channel.playback(chapter=1, duration=200.0, position=50.0)
+    player = entity_id(hass, "media_player", BOX_ID)
+    # Read-only users see the card; nothing of what only administrators see comes along
+    reader = await hass_ws_client(hass, access_token=hass_read_only_access_token)
+    result = await _ask(reader, {"type": f"{DOMAIN}/box/card", "entity_id": player})
+    assert result["success"]
+    card = result["result"]
+    assert card["id"] == BOX_ID
+    assert card["name"] == BOX_NAME
+    assert card["online"] is True
+    assert card["battery"] == 80
+    assert card["volume"] == 7
+    assert card["playback"]["tonie_id"] == TONIE_ID
+    assert card["playback"]["chapter"] == 1
+    for hidden in ("settings", "firmware", "household", "battery_stats", "entry_id", "last_seen"):
+        assert hidden not in card
+    assert card["bedtime"] is None or set(card["bedtime"]) == {"next_alarm"}
+    assert card["night"] is None or set(card["night"]["mode"]) == {"enabled"}
+    # A Toniebox 1 has no media player; another entity is no box
+    for other in ("sensor.nothing_here", entity_id(hass, "sensor", f"{BOX_ID}_battery")):
+        result = await _ask(reader, {"type": f"{DOMAIN}/box/card", "entity_id": other})
+        assert result["error"]["code"] == "unknown_box"
+    # Without the right to read the entity, nothing
+    client = await hass_ws_client(hass)
+    hass_admin_user.groups = []
+    result = await _ask(client, {"type": f"{DOMAIN}/box/card", "entity_id": player})
+    assert result["error"]["code"] == "unauthorized"

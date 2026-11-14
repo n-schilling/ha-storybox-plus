@@ -243,10 +243,27 @@ async def test_unload_saves_analytics_and_removes_panel(
 
 
 async def test_unload_keeps_panel_for_other_account(
-    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
+    hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, config_entry: MockConfigEntry
 ) -> None:
-    """The page stays while another account is still loaded."""
-    from homeassistant.components.frontend import async_panel_exists
+    """The page and the dashboard card stay while another account is still loaded."""
+    from homeassistant.components.frontend import (
+        DATA_EXTRA_MODULE_URL,
+        UrlManager,
+        async_panel_exists,
+    )
+
+    # What the frontend holds for extra modules; the frontend itself does not start in tests
+    hass.config.components.add("frontend")
+    hass.data[DATA_EXTRA_MODULE_URL] = UrlManager(lambda *_: None, [])
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    setup_entry = config_entry
+
+    def cards() -> list[str]:
+        return [u for u in hass.data[DATA_EXTRA_MODULE_URL].urls if "storybox-plus-card.js?v=" in u]
+
+    assert len(cards()) == 1
 
     second = entry_for(cloud.add_account("second", households=[{"id": "hh2", "name": "Zwei"}]))
     second.add_to_hass(hass)
@@ -256,8 +273,10 @@ async def test_unload_keeps_panel_for_other_account(
 
     assert await hass.config_entries.async_unload(setup_entry.entry_id)
     assert async_panel_exists(hass, PANEL_URL_PATH)
+    assert len(cards()) == 1
     assert await hass.config_entries.async_unload(second.entry_id)
     assert not async_panel_exists(hass, PANEL_URL_PATH)
+    assert cards() == []
 
 
 async def test_remove_entry_deletes_analytics(

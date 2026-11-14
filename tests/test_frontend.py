@@ -35,9 +35,13 @@ from .conftest import FakeCloud, PushChannels, entry_for
 async def test_panel_is_registered_for_admins(
     hass: HomeAssistant, cloud: FakeCloud, push: PushChannels, setup_entry: MockConfigEntry
 ) -> None:
-    """The panel loads our module, with a hash of its content, and is for administrators only."""
-    script = Path(frontend.__file__).parent / "frontend" / PANEL_FILENAME
-    digest = hashlib.sha256(script.read_bytes()).hexdigest()[:12]
+    """The panel loads our module, with a hash of the scripts it uses, and is for administrators only."""
+    folder = Path(frontend.__file__).parent / "frontend"
+    combined = hashlib.sha256()
+    for script in sorted(folder.glob("*.js")):
+        combined.update(script.read_bytes())
+    digest = combined.hexdigest()[:12]
+    assert (folder / PANEL_FILENAME).exists()
     assert async_panel_exists(hass, PANEL_URL_PATH)
     panel = hass.data[DATA_PANELS][PANEL_URL_PATH]
     assert panel.component_name == "custom"
