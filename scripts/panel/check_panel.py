@@ -1547,6 +1547,39 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 },
                 f"editor wrote {written}",
             )
+            # Laid out by its width: side by side in half of a wall display (748 x 262 px),
+            # stacked and still whole in a third of it (370 x 262 px), compact in a quarter
+            for width, height, columns in ((748, 262, 2), (370, 262, 1), (200, 0, 1)):
+                size = await user.evaluate(
+                    """async ([player, w, h]) => {
+                      const box = document.createElement("div");
+                      box.id = "card-size";
+                      box.style.cssText = `position:fixed;left:0;top:0;width:${w}px;` +
+                        (h ? `height:${h}px;` : "") + "z-index:99";
+                      const card = document.createElement("storybox-plus-box-card");
+                      card.setConfig({ type: "custom:storybox-plus-box-card", entity: player });
+                      box.appendChild(card);
+                      document.body.appendChild(box);
+                      card.hass = document.querySelector("home-assistant").hass;
+                      await new Promise((r) => setTimeout(r, 1500));
+                      const root = card.shadowRoot;
+                      const result = {
+                        content: root.querySelector("ha-card").scrollHeight,
+                        columns: getComputedStyle(root.querySelector(".box-body"))
+                          .gridTemplateColumns.split(" ").length,
+                        buttons: root.querySelectorAll(".controls ha-icon-button").length,
+                      };
+                      return result;
+                    }""",
+                    [player, width, height],
+                )
+                if shots is not None and width == 748:
+                    await user.locator("#card-size").screenshot(path=str(shots / "card-wide.png"))
+                await user.evaluate("document.getElementById('card-size').remove()")
+                expect(size["columns"] == columns, f"{width} px: {size}")
+                expect(size["buttons"] == 5, f"{width} px without its buttons: {size}")
+                if height:
+                    expect(size["content"] <= height, f"{width} x {height} px overflows: {size}")
             offered = await user.evaluate("(window.customCards || []).map((c) => c.type)")
             expect("storybox-plus-box-card" in offered, f"not in the card picker: {offered}")
             if shots is not None:

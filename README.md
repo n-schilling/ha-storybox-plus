@@ -296,6 +296,10 @@ Each part can be left out, in the card's editor or in its YAML; all of them show
 
 The name and the dot for online or offline always show.
 
+The card takes any width from a quarter of a section on (half by default); its height follows the content. It lays itself out by the width it gets: from 600 px what plays stands beside the facts and buttons, so it fits a wide, low tile such as half of a wall display (748 × 262 px); narrower it stacks, tighter, and still fits 370 × 262 px; under 300 px it is compact.
+
+<img src="docs/screenshots/card-wide.png" alt="The dashboard card at 748 by 262 pixels: name, online dot and battery in the head; on the left the figure that plays with its progress, on the right volume, headphones, the next alarm and the buttons" width="600">
+
 Every user who may read the box's media player sees the card, not only administrators; the buttons are the media player's actions and `storybox_plus.set_sleep_timer`. The card asks the integration again when the media player changes and every 30 seconds.
 
 ## Examples

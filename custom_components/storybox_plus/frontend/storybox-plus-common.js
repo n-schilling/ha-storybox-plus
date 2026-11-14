@@ -748,8 +748,12 @@ export const BoxView = (Base) => class extends Base {
       }
       if (b.night?.mode?.enabled && b.night.phase === "night" && show("night_mode")) facts.push(this._chip(t.nightMode, "on"));
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
-      if (live) body += (show("playback") ? this._playback(b.playback) : "") + (show("controls") ? this._controls(b) : "");
-      else body += `<div class="muted">${esc(t.classicNote)}</div>`;
+      if (live) {
+        // In parts the dashboard card can lay out side by side when it is wide
+        const now = show("playback") ? `<div class="now">${this._playback(b.playback)}</div>` : "";
+        const ctl = show("controls") ? this._controls(b) : "";
+        body = `<div class="box-body">${body}${now}${ctl ? `<div class="ctl">${ctl}</div>` : ""}</div>`;
+      } else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
       if (!live && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;

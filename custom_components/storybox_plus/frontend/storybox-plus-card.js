@@ -17,10 +17,42 @@ const REFRESH = 30000;
 // A changed entity is asked about after this pause, so a burst of changes asks once (ms)
 const SETTLE = 400;
 
-// The page's sheet, without its full-window frame
+// The page's sheet, without its full-window frame, and the card's own layouts by its
+// width: side by side from 600 px (a wide, low tile such as half of a wall display),
+// stacked below, compact under 300 px (a quarter of a sections view)
 const CARD_STYLE = `
   :host { display: block; height: auto; background: none; }
-  ha-card { height: 100%; }
+  ha-card { height: 100%; container-type: inline-size; overflow: hidden; }
+  .box-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "facts" "now" "ctl"; }
+  .box-body > .facts { grid-area: facts; }
+  .box-body > .now { grid-area: now; min-width: 0; }
+  .box-body > .ctl { grid-area: ctl; min-width: 0; }
+  @container (min-width: 600px) {
+    .box-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "now facts" "now ctl";
+      gap: 0 24px; align-items: start; }
+    .box-body > .facts { margin-bottom: 4px; }
+    .box-body > .ctl .controls { margin-top: 0; }
+  }
+  /* Narrower than side by side: a tighter head, spacing and buttons, so the card
+     still fits a low tile such as the third of a wall display (370 x 262 px) */
+  @container (max-width: 599px) {
+    ha-card .card-header { padding: 12px 16px 8px; font-size: 20px; line-height: 28px; }
+    .box-pic { width: 32px; height: 32px; }
+    .facts { gap: 4px 16px; margin-bottom: 8px; }
+    .progress { margin-top: 6px; }
+    .controls { margin: 2px 0 0; --mdc-icon-button-size: 40px; }
+    .card-content { padding-bottom: 8px; }
+  }
+  @container (max-width: 299px) {
+    ha-card .card-header { gap: 6px; }
+    .box-pic { width: 28px; height: 28px; }
+    .box-name { font-size: var(--ha-font-size-l, 16px); }
+    .facts { gap: 2px 12px; margin-bottom: 8px; font-size: var(--ha-font-size-s, 13px); }
+    .pic { width: 40px; height: 40px; }
+    .controls { flex-wrap: wrap; gap: 0; }
+    .controls .ctl-gap { display: none; }
+    .sleep-pick { display: none; }
+  }
 `;
 
 const texts = (hass) => ((hass?.locale?.language || hass?.language || "en").toLowerCase().startsWith("de") ? TEXTS.de : TEXTS.en);
@@ -94,8 +126,9 @@ if (!customElements.get(CARD)) {
       return 4;
     }
 
+    // Any width from a quarter of a section on; the height follows the content
     getGridOptions() {
-      return { columns: 12, min_columns: 6 };
+      return { columns: 6, min_columns: 3, rows: "auto" };
     }
 
     async _load() {
