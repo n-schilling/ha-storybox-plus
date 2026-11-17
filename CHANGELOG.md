@@ -6,9 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-17
+
+The page follows the changed page standard: Home Assistant's own frame, areas and subpages.
+
 ### Added
 
 - A dashboard card for a Toniebox 2, `custom:storybox-plus-box-card`: the live state and the buttons of the page's card, without settings, bedtimes or charge history. It loads with the integration and is open to every user who may read the box's media player; its data come from the new command `storybox_plus/box/card`, its buttons are the media player's actions. Options `show_picture`, `show_battery`, `show_volume`, `show_headphones`, `show_sleep_timer`, `show_next_alarm`, `show_night_mode`, `show_playback` and `show_controls` leave parts out; the editor offers them as switches. The card takes any width from a quarter of a section on and lays itself out by it: side by side from 600 px (fits 748 × 262 px), stacked and tighter below (fits 370 × 262 px), compact under 300 px.
+
+### Changed
+
+- The page sits in Home Assistant's frame for settings pages, with four areas as tabs (at the bottom on a phone) and their pages as tabs below: **Boxes**, **Figures** (figures, Tunes), **Listening** (summary, times) and **Setup** (overview, household, preferences). Addresses are `/storybox-plus/<area>/<page>`; the old `#boxes`, `#figures`, `#listening` and `#preferences` lead to the page that took their place, and without an account loaded the page starts at the setup.
+- A box and a figure open as pages of their own with a back arrow (`?key=…&view=…`) instead of an overlay: a box with its settings, night mode, bedtimes and battery, a figure with its chapters, settings, Tune and what can be added.
+- Settings are rows with their explanation behind an (i), saved together with one button that shows while something differs; percent values are text fields with their unit instead of sliders. Bedtimes keep their own add, switch and delete.
+- The setup overview lists the steps with their state and leads to the first open one; the version of the integration shows at its bottom only.
+- Errors read one line by their kind, Home Assistant's message behind an (i); the dashboard card shows the line only. Numbers follow the number format of the user's profile, on the page, in the fields and on the card, and fields take a point or a comma.
+- The kind filter and the period are Home Assistant's filter chips and segmented control, states are its badges; the chart and every cell of the weekday and hour grid say their values in words for screen readers. The integration button in the header is labelled "Integration in Home Assistant".
 
 ## [0.9.0] - 2026-11-13
 

@@ -63,7 +63,8 @@ if (!customElements.get(CARD)) {
       super();
       this.attachShadow({ mode: "open" });
       this._box_ = null;
-      this._error = null;
+      // Why the card shows no box: "denied", "unknown" or the error of the call
+      this._failure = null;
       this._upgrade(["hass"]);
       this.shadowRoot.addEventListener("click", (e) => {
         const target = e.composedPath().find((el) => el instanceof Element && el.hasAttribute?.("data-act"));
@@ -92,7 +93,7 @@ if (!customElements.get(CARD)) {
       if (!config || typeof config !== "object") throw new Error("Invalid configuration");
       this._config = { ...config };
       this._box_ = null;
-      this._error = null;
+      this._failure = null;
       this._seen = undefined;
       if (this._hass) this._load();
       this._render();
@@ -136,13 +137,12 @@ if (!customElements.get(CARD)) {
       if (!this._hass || !entity || document.visibilityState === "hidden") return this._render();
       try {
         this._box_ = await this._hass.callWS({ type: "storybox_plus/box/card", entity_id: entity });
-        this._error = null;
+        this._failure = null;
         // The box's word on the volume counts again
         this._volSent = null;
       } catch (err) {
         this._box_ = null;
-        this._error = err?.code === "unauthorized" ? "denied" : err?.code === "unknown_box" ? "unknown" : "failed";
-        this._errorText = err?.message || "";
+        this._failure = err?.code === "unauthorized" ? "denied" : err?.code === "unknown_box" ? "unknown" : err;
       }
       this._render();
     }
@@ -174,7 +174,7 @@ if (!customElements.get(CARD)) {
           this._volSent = { box: b.id };
         }
       } catch (err) {
-        this._ctlError = { id: b.id, message: err?.message || String(err) };
+        this._ctlError = { id: b.id, err };
       }
       this._ctlBusy = null;
       this._render();
@@ -185,9 +185,11 @@ if (!customElements.get(CARD)) {
       const t = this._t;
       let body;
       if (!this._config?.entity) body = this._card("", this._alert(t.cardNoEntity, "info"));
-      else if (this._error) {
-        const text = this._error === "denied" ? t.cardDenied : this._error === "unknown" ? t.cardUnknown : `${t.failed}: ${this._errorText}`;
-        body = this._card("", this._alert(text, this._error === "failed" ? "error" : "warning"));
+      else if (this._failure === "denied" || this._failure === "unknown") {
+        body = this._card("", this._alert(this._failure === "denied" ? t.cardDenied : t.cardUnknown, "warning"));
+      } else if (this._failure) {
+        // A card for every user shows the line only, not Home Assistant's message
+        body = this._card("", this._errHtml(this._error(this._failure)));
       } else if (!this._box_) body = this._card("", `<div class="muted">${t.loading}</div>`);
       else body = this._box(this._box_, false, this._config);
       const html = `<style>${STYLE}${CARD_STYLE}</style>${body}`;

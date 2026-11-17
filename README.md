@@ -30,43 +30,43 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes with their live state; the Toniebox 2 with its bedtimes, its battery and the charge history, made up for these pictures:
 
-<img src="docs/screenshots/boxes.png" alt="Boxes tab with the header row of icon, name and tabs, the stamp, refresh and settings buttons: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
+<img src="docs/screenshots/boxes.png" alt="The area Boxes with the areas as tabs in the header, the stamp, refresh and the integration button: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
 
 The dashboard card of a Toniebox 2, here seen by a user without administrator rights:
 
 <img src="docs/screenshots/card.png" alt="The dashboard card of a Toniebox 2: name, online dot and battery in the head, volume, headphones and the next alarm, the figure that plays with its chapter and progress, and the buttons" width="450">
 
-The settings of a Toniebox 2 being changed; a Toniebox 1 shows its own:
+The settings of a Toniebox 2 being changed, each with its (i), saved with the one button; a Toniebox 1 shows its own:
 
-<img src="docs/screenshots/settings.png" alt="The settings form of a Toniebox 2: name, maximum volumes, light ring brightness, the limits at bedtime, skipping by tapping with its ear and winding by tilting" width="400">
+<img src="docs/screenshots/settings.png" alt="The view Settings of a Toniebox 2 as rows grouped by topic, the save button at the bottom: name, maximum volumes, light ring brightness, the limits at bedtime, skipping by tapping with its ear and winding by tilting" width="400">
 
-The night mode of the light ring being set up:
+The night mode of the light ring, a view of the box:
 
-<img src="docs/screenshots/night.png" alt="The night mode form: active, from 19:00 until 07:00, light ring at night 10 percent, otherwise 60 percent" width="400">
+<img src="docs/screenshots/night.png" alt="The night mode as rows: active, from 19:00 until 07:00, light ring at night 10 percent, otherwise 60 percent" width="400">
 
-The settings tab of an account:
+The preferences of an account in the area Setup:
 
-<img src="docs/screenshots/preferences.png" alt="Settings tab: the household with its members, lock new figures and discs, mark notifications as read in the cloud, and the cloud's backend version marked as tested" width="700">
+<img src="docs/screenshots/preferences.png" alt="The page Preferences: count listening time, lock new figures and discs, mark notifications as read in the cloud, and the cloud's backend version marked as tested" width="700">
 
 A new bedtime with its days, times and alarm:
 
 <img src="docs/screenshots/bedtime.png" alt="The bedtimes of a Toniebox 2 with the form for a new one: name, days of the wake-up, bedtime and wake-up time, switches for active, alarm and morning light, and the alarm volume" width="400">
 
-The figures of the household; a bought figure opened, with its favourite chapters and the switch that steers the box:
+A bought figure opened as its own page, with its favourite chapters:
 
-<img src="docs/screenshots/figures.png" alt="Figures tab: a bought figure with eight chapters, four of them starred, and the favourites switch on" width="700">
+<img src="docs/screenshots/figures.png" alt="The page of a bought figure with its views as tabs and eight chapters, four of them starred" width="700">
 
-A creative figure being renamed and rearranged, sorted by title or shuffled; the changes go to the cloud together when saved:
+The chapters of a creative figure being rearranged, sorted by title or shuffled; the changes go to the cloud together when saved:
 
-<img src="docs/screenshots/creative.png" alt="A creative figure in edit mode with its name, buttons to sort by title and shuffle, and buttons to move and remove chapters" width="700">
+<img src="docs/screenshots/creative.png" alt="A creative figure in edit mode with buttons to sort by title and shuffle, and buttons to move and remove chapters" width="700">
 
 The listening times of the last 30 days, counted by Home Assistant:
 
-<img src="docs/screenshots/listening.png" alt="Listening tab: note where the numbers come from, total, most played figures, chart per day and sums per box" width="700">
+<img src="docs/screenshots/listening.png" alt="The page Summary of the area Listening: the period, the total, most played figures, chart per day and sums per box" width="700">
 
 The boxes at phone width in dark mode:
 
-<img src="docs/screenshots/boxes-phone-dark.png" alt="Boxes tab at phone width in dark mode, with the tabs at the bottom" width="300">
+<img src="docs/screenshots/boxes-phone-dark.png" alt="The boxes at phone width in dark mode, with the areas at the bottom" width="300">
 
 ## Design
 
@@ -146,7 +146,7 @@ Each chapter is renamed in the edit mode too (the pencil on its row); a new name
 
 #### Shuffle on swap
 
-A creative figure with several chapters can be shuffled whenever another figure replaces it on a Toniebox 2: its switch on the figures tab. Only a replacement counts: taken off and put back, the figure keeps where it was. The box reports an empty spot between two figures; the integration keeps the last figure per box across it, also in its store, so a restart in between loses nothing. A figure that stands on another box by then, or that a Tune lies on, is left alone. Every shuffle makes the cloud convert the figure anew, as rearranging by hand does.
+A creative figure with several chapters can be shuffled whenever another figure replaces it on a Toniebox 2: its setting on the figure's page. Only a replacement counts: taken off and put back, the figure keeps where it was. The box reports an empty spot between two figures; the integration keeps the last figure per box across it, also in its store, so a restart in between loses nothing. A figure that stands on another box by then, or that a Tune lies on, is left alone. Every shuffle makes the cloud convert the figure anew, as rearranging by hand does.
 
 ### Tunes
 
@@ -160,11 +160,11 @@ The remembered levels live in the store, so a restart in between still restores 
 
 ### Notifications of the cloud
 
-The cloud keeps notifications for the account that only the app shows: a chapter of a creative figure that could not be converted, an invitation to a household, news. Storybox Plus reads them with every poll and fires each unread one once on an event entity of the account (`event.<account>_cloud_notification`); an automation decides where it goes. The cloud's broadcasts to all users count the same. Which ones were passed on is kept in the store, so a restart repeats none. On the settings tab, **Mark notifications as read in the cloud once passed on** (off by default) also tidies the app: a passed-on notification is marked as read there, a broadcast is dismissed. Switched off, nothing changes in the cloud.
+The cloud keeps notifications for the account that only the app shows: a chapter of a creative figure that could not be converted, an invitation to a household, news. Storybox Plus reads them with every poll and fires each unread one once on an event entity of the account (`event.<account>_cloud_notification`); an automation decides where it goes. The cloud's broadcasts to all users count the same. Which ones were passed on is kept in the store, so a restart repeats none. Under Setup → Preferences, **Mark notifications as read in the cloud once passed on** (off by default) also tidies the app: a passed-on notification is marked as read there, a broadcast is dismissed. Switched off, nothing changes in the cloud.
 
 ### Version of the cloud
 
-The cloud's API is not documented for third parties and may change. Storybox Plus reads the version of the cloud's backend once an hour (it is public, no sign-in) and names it on the settings tab. The cloud names its version as release and commit (`v2026.11.10/602b7aff2`); only the release counts. This version was tested with release **v2026.11.10**; when the cloud runs another release, the settings tab says so, and the diagnostics carry it. Another release is no error: the cloud is updated often, mostly without changes to what the integration uses.
+The cloud's API is not documented for third parties and may change. Storybox Plus reads the version of the cloud's backend once an hour (it is public, no sign-in) and names it under Setup → Preferences. The cloud names its version as release and commit (`v2026.11.10/602b7aff2`); only the release counts. This version was tested with release **v2026.11.10**; when the cloud runs another release, the page says so, and the diagnostics carry it. Another release is no error: the cloud is updated often, mostly without changes to what the integration uses.
 
 ### Favourite chapters
 
@@ -186,7 +186,7 @@ The box itself knows no selection; the integration sends it on through the cloud
 
 ### Locking figures to the household
 
-A bought figure or disc that is locked cannot be claimed into another household, for example when it is lent to a friend. Every one has a switch on its page entry. On the settings tab, **Lock new figures and discs to the household** (on by default) locks a figure once, the first time it shows up in the account; unlocked on the page or in the app, it stays unlocked, because a figure is looked at only once. The figures already in the account at the first start stay as they are. Switched off, new figures are only noted, so switching it on later touches only those that come after. A lock the cloud refused is tried again with the next poll.
+A bought figure or disc that is locked cannot be claimed into another household, for example when it is lent to a friend. Every one has the setting on its page. Under Setup → Preferences, **Lock new figures and discs to the household** (on by default) locks a figure once, the first time it shows up in the account; unlocked on the page or in the app, it stays unlocked, because a figure is looked at only once. The figures already in the account at the first start stay as they are. Switched off, new figures are only noted, so switching it on later touches only those that come after. A lock the cloud refused is tried again with the next poll.
 
 ### Settings of a box
 
@@ -235,7 +235,7 @@ flowchart LR
 
 ### Listening times and battery
 
-Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, per hour of the day per box, and how often each figure was placed; never single plays. The page ranks the most played figures and chapters and the figures placed most often, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so above the numbers. Counting is switched on the settings tab, on by default; switching it off deletes the sums and sets the account up anew.
+Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, per hour of the day per box, and how often each figure was placed; never single plays. The page ranks the most played figures and chapters and the figures placed most often, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so behind the (i) of the total. Counting is switched under Setup → Preferences, on by default; switching it off deletes the sums and sets the account up anew.
 
 How long a charge lasts from now shows on the card, by the past charges: the level times the average full charge.
 
@@ -258,16 +258,16 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 
 ### Page
 
-**Storybox Plus** in the sidebar, for administrators, built from Home Assistant's own elements, in four tabs:
+**Storybox Plus** in the sidebar, for administrators, built from Home Assistant's own elements in the frame of its settings pages, in four areas; each area's pages are tabs below the header, and a box or a figure opens as a page of its own with a back arrow:
 
-- **Boxes**: every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer (left out while a bedtime's alarm is due), and the battery's level, which opens the charge history in an overlay. The sleep timer takes 30 or 60 minutes. The cog of a box opens its settings, the night mode of the light ring, its bedtimes and its firmware in an overlay. Its card shows online or offline as a coloured dot. A Toniebox 1 gets a small card: its settings in one line, when it was last seen and its cog; the cloud reports no connection state for it.
-- **Figures**: the library with search over names and chapters, a filter by kind, which figure stands on a box, the chapters with their lengths, favourites for bought figures and the tools for creative ones. The cog of a figure opens its volume, lock, Tune and shuffling on swap in an overlay; adding a chapter from a link, a text or a code asks in an overlay too.
-- **Settings**: per account, the household's name and its members (shown only: name, email and role as the cloud shows them to the account, read once an hour; managed in the app), redeeming a Tunes voucher, counting the listening time, locking new figures, marking notifications as read, and the cloud's version. A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
-- **Listening**: the most played figures and chapters, when is listened to (weekday and hour), the total, a chart per day (per week over long spans) and the sums per box, for 7, 30 or 365 days or since the setup.
+- **Boxes** (`/storybox-plus/boxes/overview`): every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer of 30 or 60 minutes (left out while a bedtime's alarm is due), its battery's level and online or offline as a dot. A Toniebox 1 gets a small card: its settings in one line and when it was last seen. The cog of a box, or its battery's level, opens the box (`?key=<box>`) with its views **Settings** (with the firmware), **Night mode**, **Bedtimes** and **Battery** (with the charge history) (`&view=settings|night|bedtimes|battery`).
+- **Figures**: **Figures** (`/figures/list`), the library with search over names and chapters and a filter by kind; a figure opens (`?key=<figure>`) with its views **Chapters** (favourite stars for bought figures, the edit mode for creative ones), **Settings** (name, live mode, volume, lock, steering by favourites, shuffling on swap), **Tune** and, for a creative figure, **Add** (files, YouTube, text). **Tunes** (`/figures/tunes`): the bought Tunes, redeeming a voucher and content from a code.
+- **Listening**: **Summary** (the total with the comparison, the most played figures and chapters, the figures placed most often, the sums per box) and **Times** (a chart per day, per week over long spans, and when is listened to by weekday and hour), for 7, 30 or 365 days or since the setup.
+- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app) and **Preferences** (counting the listening time, locking new figures, marking notifications as read, the cloud's version). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 
-The header is one row: the integration's icon, its name and right after it the tabs. At its end it carries, as on every page of the shared standard, when the open tab's data came ("As of 14:53:23", left out on a phone), a refresh button that asks the integration again without reloading the page and spins while it waits, and a settings button to the integration's page under **Settings → Devices & services**. The boxes tab asks again every 10 seconds by itself, and the stamp follows.
+Settings are rows with their explanation behind an (i); one save button appears while something differs from what is saved. Errors read one line by their kind, Home Assistant's message behind the (i). Numbers follow the number format of the user's profile, and number fields take a point or a comma. Addresses of before (`#figures`, `#preferences`, …) lead to the page that took their place; opened without an address while no account is loaded, the page starts at the setup.
 
-At the bottom it shows the version of the integration. On a phone the tabs move to the bottom.
+At the end of the header: when the open page's data came ("As of 14:53:23", left out on a phone), a refresh button that asks the integration again without reloading the page and spins while it waits, and the button to the integration's page in Home Assistant. The boxes ask again every 10 seconds by themselves, and the stamp follows. On a phone the areas move to a bar at the bottom.
 
 ### Dashboard card
 
@@ -443,7 +443,7 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 
 ### Stores
 
-`.storage/storybox_plus.<entry>.analytics` (daily sums per figure and box, per chapter, per hour), `.battery` (charges), `.chapters` (chapters learned from the boxes), `.favourites`, `.night` (night modes with the phase set last), `.volumes` (levels per figure and the levels to restore per box), `.notices` (the cloud's notifications passed on), `.settings` (the settings tab and the figures looked at for locking) and `.shuffle` (the figures shuffled on swap and the last figure per box), version 1 each. Deleting the entry deletes them.
+`.storage/storybox_plus.<entry>.analytics` (daily sums per figure and box, per chapter, per hour), `.battery` (charges), `.chapters` (chapters learned from the boxes), `.favourites`, `.night` (night modes with the phase set last), `.volumes` (levels per figure and the levels to restore per box), `.notices` (the cloud's notifications passed on), `.settings` (the preferences and the figures looked at for locking) and `.shuffle` (the figures shuffled on swap and the last figure per box), version 1 each. Deleting the entry deletes them.
 
 ## Installation
 
@@ -454,7 +454,7 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 
 Requires Home Assistant 2026.11 or later. Without the Marketplace, copy `custom_components/storybox_plus` into the `custom_components` folder of your configuration directory and restart.
 
-The integration has no options of its own; what can be chosen sits on the page's settings tab.
+The integration has no options of its own; what can be chosen sits on the page, under Setup.
 
 ### Removal
 
@@ -471,7 +471,7 @@ scripts/check.sh
 
 The cloud access lives in `custom_components/storybox_plus/cloud/` and imports nothing from Home Assistant, so it can be tested on its own; its README collects what is known about the API. Endpoints and payloads were learned from the official app and from the community project [HA-Toniebox](https://github.com/git4sim/HA-Toniebox) (MIT); the code here is written from scratch.
 
-The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays and confirms its alarm, a Toniebox 1, invented figures, bedtimes, listening times and charges). They drive the page in a headless browser (boxes, their settings and renaming one, the night mode set up through its form with the light ring following, a volume per figure, a creative figure renamed and sorted, the settings tab with the household's members, a figure unlocked and locked, the box's picture, a Tune laid on and taken off, the player's buttons and the headphones on the card, a voucher and content from a code, the most played chapters and the weekday and hour grid, live mode and shuffling on swap switched on, removing all chapters with its two questions, the household renamed, bedtimes with the alarm set on the box, their switches and the form to add and delete one, charge history, the header row with icon, name and tabs, the header's stamp, refresh on every tab and settings button, search and filter, favourites and their switch, rearranging and uploading chapters, the link button without the app, listening times, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
+The page checks start a throwaway Home Assistant, reachable from this machine only, whose integration talks to a made-up cloud (`scripts/panel/demo_cloud.py`: one household, a Toniebox 2 that plays and confirms its alarm, a Toniebox 1, invented figures, bedtimes, listening times and charges). They drive the page in a headless browser (Home Assistant's frame with the four areas and each page's tab on every page, the header's stamp, refresh and integration button, old addresses and a change of the query alone, boxes and figures as subpages with a back arrow, settings rows with their (i) and the one save button for box settings, night mode, figure settings, the household and the preferences, bedtimes added, switched and deleted, the charge history by keyboard, search and the kind filter, favourites, rearranging, uploading and removing all chapters, a Tune laid on and taken off, a voucher refused with one error line and redeemed, content from a code, the listening summary and times with their words for screen readers, the setup steps, numbers and a comma typed back in German, counting switched off and on, the start at the setup without a loaded account, the dashboard card, phone width in dark mode, no page for non-administrators) and stop Home Assistant again. They need their own environment:
 
 ```bash
 uv venv --python 3.14 .venv-panel && uv pip install --python .venv-panel/bin/python -r requirements_panel.txt

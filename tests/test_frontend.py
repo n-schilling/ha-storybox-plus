@@ -134,3 +134,53 @@ def test_page_keeps_no_version_of_its_own() -> None:
     """The page shows the version it is told; the script names none, so nothing drifts."""
     script = (Path(frontend.__file__).parent / "frontend" / PANEL_FILENAME).read_text()
     assert not re.search(r"\b\d+\.\d+\.\d+\b", script)
+
+
+def _language_keys(shared: str, language: str) -> list[str]:
+    """The keys of one language of the texts, in order, each as often as it is written."""
+    start = shared.index(f"\n  {language}: {{\n")
+    end = shared.index("\n  },", start)
+    body = shared[start:end]
+    return re.findall(r'(?:^|", |\{ )\s*([A-Za-z_][A-Za-z0-9_]*): "', body, re.MULTILINE)
+
+
+def test_texts_have_each_key_once_in_both_languages() -> None:
+    """A key written twice silently takes the later text; both languages have the same keys."""
+    shared = (Path(frontend.__file__).parent / "frontend" / "storybox-plus-common.js").read_text(
+        encoding="utf-8"
+    )
+    english = _language_keys(shared, "en")
+    german = _language_keys(shared, "de")
+    assert len(english) > 300
+    for keys in (english, german):
+        twice = sorted({k for k in keys if keys.count(k) > 1})
+        assert not twice, twice
+    assert set(english) == set(german)
+
+
+def test_page_is_built_from_home_assistants_elements() -> None:
+    """The page uses Home Assistant's frame and elements, none of the look-alikes of before."""
+    folder = Path(frontend.__file__).parent / "frontend"
+    panel = (folder / PANEL_FILENAME).read_text(encoding="utf-8")
+    shared = (folder / "storybox-plus-common.js").read_text(encoding="utf-8")
+    for element in (
+        "hass-tabs-subpage",
+        "ha-tab-group",
+        "ha-settings-row",
+        "ha-tooltip",
+        "ha-filter-chip",
+        "ha-control-select",
+        'slot="fab"',
+    ):
+        assert element in panel, element
+    for gone in (
+        "ha-top-app-bar-fixed",
+        "ha-menu-button",
+        "bottom-tabs",
+        'class="ov',
+        "<button",
+        "<select",
+    ):
+        assert gone not in panel + shared, gone
+    assert "height: 100dvh" in shared
+    assert 'class="about"' in panel

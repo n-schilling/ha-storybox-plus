@@ -1,101 +1,248 @@
 // Storybox Plus panel: the page in the sidebar where administrators see their
-// boxes with the live state, the figures of the household with their chapters
-// and the listening statistics. Everything comes from the integration over the
-// WebSocket API; the page is built from Home Assistant's own elements (top app
-// bar, cards, buttons, alerts, switches, forms) and shows the version the
-// integration reports at its bottom.
-// The boxes are asked again this often while their tab is open (ms)
+// boxes with the live state, the figures of the household with their chapters,
+// the listening statistics and the setup. Four areas (Boxes, Figures,
+// Listening, Setup), each with its pages as tabs below the header, in Home
+// Assistant's own frame for pages with tabs (hass-tabs-subpage): the areas in
+// the header, at the bottom on a phone. A box or a figure opens as a subpage
+// with a back arrow and its views as tabs. Explanations sit behind an (i) with
+// Home Assistant's tooltip; errors read one line by their kind; numbers follow
+// the number format of the user's profile. Everything comes from the
+// integration over the WebSocket API; the version shows at the bottom of the
+// setup overview.
+// The boxes are asked again this often while their area is open (ms)
 const REFRESH = 10000;
 // A chart with more days than this groups them by week
 const WEEKS_FROM = 120;
 
 // What the page shares with the dashboard card; the version of this script keeps both in step
 const {
-  MDI, TEXTS, esc, icon, iconButton, fill, time, safeUrl, pad, hm, mmss, hours, cap, dayKey, parseDay, WEEKDAYS, clock, STYLE, BoxView,
+  MDI, esc, icon, iconButton, fill, time, safeUrl, pad, hm, mmss, hours, cap, dayKey, parseDay, WEEKDAYS, clock, STYLE, BoxView,
+  fieldNumber, numOrNull,
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 if (!customElements.get("storybox-plus-panel")) {
+  const PANEL_PATH = "/storybox-plus";
+  // Home Assistant's own page of the integration, behind the cog in the header
+  const INTEGRATION_PATH = "/config/integrations/integration/storybox_plus";
   // How often a creative figure is read again while the cloud converts its chapters (ms)
   const CONVERT_REFRESH = 15000;
   // Audio the cloud converts; the list only helps the file picker, the cloud decides
   const AUDIO_TYPES = "audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.oga,.opus,.wav,.flac,.wma";
 
-  // Tab id (also the URL hash), icon, text
-  const TABS = [
-    ["boxes", "boxes", "tabBoxes"],
-    ["figures", "figures", "tabFigures"],
-    ["listening", "listening", "tabListening"],
-    ["preferences", "tune", "tabPreferences"],
+  // The four areas and their pages: area, icon, text, pages (page, text)
+  const AREAS = [
+    ["boxes", "boxes", "tabBoxes", [["overview", "pgBoxes"]]],
+    ["figures", "figuresArea", "tabFigures", [["list", "pgFigures"], ["tunes", "pgTunes"]]],
+    ["listening", "listening", "tabListening", [["summary", "pgSummary"], ["times", "pgTimes"]]],
+    ["setup", "setup", "tabSetup", [["overview", "pgSetup"], ["household", "pgHousehold"], ["preferences", "pgPreferences"]]],
   ];
+  // The addresses of before the areas (#tab), as bookmarks still have them
+  const OLD_HASH = { boxes: "boxes/overview", figures: "figures/list", listening: "listening/summary", preferences: "setup/preferences" };
+  // The views of a box and of a figure: view, text
+  const BOX_VIEWS = [["settings", "vSettings"], ["night", "vNight"], ["bedtimes", "vBedtimes"], ["battery", "vBattery"]];
+  const FIG_VIEWS = [["chapters", "vChapters"], ["settings", "vSettings"], ["tune", "vTune"], ["add", "vAdd"]];
   const KINDS = ["all", "content", "creative", "disc"];
-  // Range chip, days asked from the backend (null: since the setup)
+  // Period, days asked from the backend (null: since the setup)
   const RANGES = [["7", 7], ["30", 30], ["365", 365], ["all", null]];
+  // The settings of a box by topic: group, settings
+  const BOX_GROUPS = [
+    ["grpGeneral", ["name", "max_volume", "max_headphone_volume", "language", "age_mode"]],
+    ["grpLight", ["lightring_brightness", "led_level"]],
+    ["grpBedtime", ["bedtime_lightring_brightness", "bedtime_max_volume", "bedtime_max_headphone_volume"]],
+    ["grpControls", ["skipping_enabled", "skipping_direction", "scrubbing_enabled", "accelerometer_enabled", "tap_direction"]],
+  ];
+  // The settings of an account on the page Preferences
+  const PREF_KEYS = ["analytics", "auto_lock", "mark_read"];
 
-  const tabFromHash = () => {
-    const id = (window.location.hash || "").slice(1);
-    return TABS.some(([t]) => t === id) ? id : "boxes";
+  // In-app navigation like Home Assistant's own links, no page reload
+  const navigate = (path, replace = false) => {
+    if (replace) window.history.replaceState(null, "", path);
+    else window.history.pushState(null, "", path);
+    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace } }));
   };
+
+  const PAGE_STYLE = `
+    hass-tabs-subpage { height: 100%; }
+    .actions { display: flex; align-items: center; }
+    .stamp { color: var(--secondary-text-color); font-size: var(--ha-font-size-m, 14px); white-space: nowrap;
+      margin-inline-end: 4px; font-variant-numeric: tabular-nums; }
+    @media (max-width: 600px) { .stamp { display: none; } }
+    #refresh.spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .subname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .page { display: flex; flex-direction: column; min-height: 100%; }
+    .subtabs { flex: none; padding: 0 16px; }
+    .sheet { width: 100%; max-width: 1040px; margin: 0 auto; padding: 16px 16px 88px; display: flex; flex-direction: column; gap: 16px; }
+    .narrow .sheet { padding: 8px 8px 88px; gap: 8px; }
+    .sheet > ha-card, .sheet > ha-alert, .grid > ha-card { margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+    .narrow .grid { grid-template-columns: 1fr; gap: 8px; }
+    /* The title of a card as Home Assistant draws it, with room for the (i) at its end */
+    .card-header { display: flex; align-items: center; gap: 4px; margin: 0; padding: 12px 8px 12px 16px; min-height: 48px;
+      color: var(--ha-card-header-color, var(--primary-text-color)); font-size: var(--ha-card-header-font-size, var(--ha-font-size-2xl, 24px));
+      font-weight: var(--ha-font-weight-normal, 400); line-height: var(--ha-line-height-condensed, 1.2); }
+    .card-header ha-icon-button.help { margin-inline-start: auto; }
+    .card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 8px 16px 12px; border-top: 1px solid var(--divider-color); }
+    ha-icon-button.help { --mdc-icon-button-size: 32px; --mdc-icon-size: 18px; --ha-icon-button-size: 32px; color: var(--secondary-text-color); flex: none; }
+    ha-tooltip { --max-width: min(360px, 90vw); }
+    .alertact { display: flex; align-items: center; gap: 4px; }
+    .about { text-align: center; color: var(--secondary-text-color); font-size: var(--ha-font-size-s, 12px); padding: 8px 0 24px; }
+    .loading { display: flex; justify-content: center; padding: 24px; }
+    /* Settings rows as on Home Assistant's own settings pages */
+    ha-settings-row { --settings-row-content-width: 100%; padding: 0 16px; }
+    ha-settings-row + ha-settings-row:not([narrow]) { border-top: 1px solid var(--divider-color); }
+    ha-settings-row .heading { display: inline-flex; align-items: center; gap: 2px; }
+    ha-settings-row .haform { width: 240px; max-width: 100%; }
+    ha-settings-row.num .haform { width: 160px; }
+    ha-settings-row.bool .haform { width: auto; }
+    ha-settings-row[narrow] .haform { width: 100%; }
+    ha-settings-row .value { color: var(--secondary-text-color); }
+    ha-card.rows .card-content { padding: 0 0 8px; }
+    /* Rows of a list; a row that opens something reacts to the mouse and the keyboard */
+    ha-card.list .card-content { padding: 0 0 8px; }
+    .item { display: flex; align-items: center; gap: 12px; padding: 8px 16px; min-height: 56px; }
+    .item + .item { border-top: 1px solid var(--divider-color); }
+    .item[role=button] { cursor: pointer; outline: none; }
+    .item[role=button]:hover, .item[role=button]:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); }
+    .item > ha-svg-icon.go { color: var(--secondary-text-color); }
+    .item .text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+    .item .main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; cursor: pointer; outline: none; border-radius: 8px; }
+    .item .main:focus-visible { background: color-mix(in srgb, var(--primary-text-color) 5%, transparent); }
+    .badges { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; flex: none; }
+    .narrow .badges { max-width: 40%; }
+    .lock { display: inline-flex; color: var(--secondary-text-color); }
+    .lock ha-svg-icon { --mdc-icon-size: 18px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+    .filters .haform { flex: 1 1 260px; min-width: 0; }
+    .count { margin: 0 0 0 4px; }
+    .bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+    .form-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+    .form-row .haform { flex: 1 1 260px; min-width: 0; }
+    .card-content .haform + .bar-row, .card-content ha-alert { margin-top: 8px; }
+    .card-content ha-alert { display: block; }
+    .chapters { list-style: none; margin: 0; padding: 0; }
+    .chapters li { display: flex; align-items: center; gap: 10px; padding: 2px 0; min-height: 40px; line-height: 20px; }
+    .chapters li + li { border-top: 1px solid var(--divider-color); }
+    .chapters .no { flex: none; min-width: 24px; text-align: right; }
+    .ch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ch-tools { display: inline-flex; flex: none; margin-right: -8px; }
+    ha-icon-button.star.on { color: var(--state-active-color, var(--amber-color, #ffc107)); }
+    ha-icon-button.danger:hover { color: var(--error-color); }
+    .head-fig { display: flex; align-items: center; gap: 16px; }
+    .head-fig .pic { width: 72px; height: 72px; }
+    .member-avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+      font-weight: var(--ha-font-weight-medium, 500); background: color-mix(in srgb, var(--primary-color) 16%, transparent); color: var(--primary-color); }
+    .step { flex: none; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+      background: color-mix(in srgb, var(--primary-text-color) 8%, transparent); color: var(--secondary-text-color); }
+    .step.done { background: color-mix(in srgb, var(--success-color) 18%, transparent); color: var(--success-color); }
+    .alarm-mark { display: inline-flex; vertical-align: middle; color: var(--secondary-text-color); }
+    .alarm-mark ha-svg-icon { --mdc-icon-size: 16px; }
+    .sched-form { padding: 8px 16px 12px; }
+    .sched-form .haform { display: block; margin-bottom: 8px; }
+    .batt-big { display: flex; align-items: center; gap: 8px; font-size: var(--ha-font-size-2xl, 24px); margin: 0 0 6px; }
+    table { border-collapse: collapse; width: 100%; }
+    table.cycles th, table.cycles td { padding: 4px 10px 4px 0; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    table.cycles th { font-weight: var(--ha-font-weight-normal, 400); font-size: var(--ha-font-size-xs, 12px); color: var(--secondary-text-color); }
+    table.cycles th:last-child, table.cycles td:last-child { width: 100%; padding-right: 0; }
+    table.cycles tbody tr + tr td { border-top: 1px solid var(--divider-color); }
+    .scroll { overflow-x: auto; }
+    .pf { display: flex; align-items: center; gap: 8px; }
+    .pf .bar { flex: 1 1 32px; height: 5px; }
+    .pf span { min-width: 44px; text-align: right; color: var(--secondary-text-color); }
+    ha-control-select.range { max-width: 520px; --control-select-thickness: 40px; }
+    .total { display: flex; align-items: baseline; gap: 6px; }
+    .total .big { font-size: 44px; line-height: 52px; font-weight: 300; font-variant-numeric: tabular-nums; }
+    .total .unit { font-size: var(--ha-font-size-l, 18px); color: var(--secondary-text-color); }
+    .compare { margin-top: 8px; }
+    .top { list-style: none; margin: 0; padding: 0; }
+    .top li { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+    .top li + li { border-top: 1px solid var(--divider-color); }
+    .rank { flex: none; width: 20px; text-align: right; }
+    .top .bar { margin-top: 6px; height: 5px; }
+    .top .len { min-width: 44px; text-align: right; }
+    table.kv th { text-align: left; font-weight: var(--ha-font-weight-normal, 400); padding: 8px 16px 8px 0; }
+    table.kv td { padding: 8px 0; text-align: right; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    table.kv tr + tr th, table.kv tr + tr td { border-top: 1px solid var(--divider-color); }
+    .chart { width: 100%; height: auto; display: block; }
+    .chart .grid { stroke: var(--divider-color); stroke-width: 1; vector-effect: non-scaling-stroke; }
+    .chart text { fill: var(--secondary-text-color); font-size: 12px; }
+    .chart .fill { fill: var(--primary-color); pointer-events: none; }
+    .chart .hit { fill: transparent; }
+    .chart .hit:hover { fill: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
+    .heat-boxes { margin-bottom: 12px; }
+    .heatmap { display: grid; grid-template-columns: auto repeat(24, minmax(0, 1fr)); gap: 2px; align-items: center; }
+    .hm-day { font-size: var(--ha-font-size-xs, 12px); color: var(--secondary-text-color); padding-right: 6px; }
+    .hm-cell { aspect-ratio: 1; border-radius: 2px; min-height: 8px;
+      background: color-mix(in srgb, var(--primary-color) calc(var(--a) * 100%), color-mix(in srgb, var(--primary-text-color) 6%, transparent)); }
+    .hm-hour { font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color); }
+    .len, .no, .rank { color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
+  `;
 
   class StoryboxPlusPanel extends BoxView(HTMLElement) {
     constructor() {
       super();
       this.attachShadow({ mode: "open" });
-      this._tab = tabFromHash();
+      this._area = "boxes";
+      this._page = "overview";
+      // The box or figure open as a subpage, and its view
+      this._key = null;
+      this._view = null;
       this._overview = null;
       this._library = null;
       this._stats = {};
+      // Errors of the data the page shows, by the key of _fetch: { text, detail }
       this._errors = {};
       // When each kind of data last came from the integration, for the stamp in the header
       this._stamps = {};
-      this._busy = new Set();
+      this._loading = new Set();
       this._query = "";
       this._kind = "all";
-      this._open = new Set();
       this._range = "30";
+      this._heatBox = "";
       this._frameKey = null;
-      // The chapters of one creative figure being rearranged: { id, chapters, saving, error }
+      this._sheetHtml = null;
+      // Settings typed but not saved: scope ("box:<id>", "night:<id>", "fig:<id>",
+      // "home:<id>", "pref:<entry>") -> { setting: value }; one save button for them
+      this._drafts = {};
+      this._saving = false;
+      // An error of the last action, shown above the page: { text, detail }
+      this._note = null;
+      // A line that says what an action did: { kind, text }
+      this._done = null;
+      // The chapters of one creative figure being rearranged: { id, chapters, saving, renaming, clearStep }
       this._edit = null;
-      // Uploads per creative figure: { total, done, name, error }
+      // Uploads per creative figure: { total, done, name, error, link, stage, pct }
       this._uploads = {};
-      // The open link field of a creative figure: { id, url }
-      this._link = null;
-      // A refused change of favourites, or of a figure's volume: { id, message }
-      this._favError = null;
-      this._volError = null;
-      // The bedtime being edited: { box, id (null: new), data, saving, error, confirm }
+      // The forms to add from a link and from a text, per figure
+      this._link = {};
+      this._speak = {};
+      // Content from a code: { tonie, token, busy }
+      this._code = { tonie: null, token: "", busy: false };
+      // Vouchers per account: { code, busy, done }
+      this._voucher = {};
+      this._tunePick = {};
+      // The bedtime being edited: { box, id (null: new), data, saving, confirm }
       this._sched = null;
-      // The settings of a box being edited: { box, data, orig, saving, error }
-      this._boxEdit = null;
-      // The night mode of a box being edited: { box, data, saving, error }
-      this._nightEdit = null;
       this._uploadTarget = null;
+      // The forms on the sheet: id -> { schema, data, onChange, aria }, drawn as ha-form
+      this._forms = {};
+      // The (i) of the page drawn: a fresh id each
+      this._hid = 0;
       this._bindOnce();
       this._upgrade(["hass", "narrow", "route", "panel"]);
     }
 
     set hass(hass) {
       const first = !this._hass;
+      const lang = this._hass?.language;
       this._hass = hass;
       if (first) {
-        this._ensure();
+        this._ensure(true);
         this._syncTimers();
-        this._render();
-        this._loadBrand();
       }
-      for (const el of this.shadowRoot.querySelectorAll("ha-menu-button, ha-form")) el.hass = hass;
-    }
-
-    // The integration's icon from its brand folder, as Home Assistant serves it to
-    // the frontend: an image link needs the brands access token
-    async _loadBrand() {
-      try {
-        const { token } = await this._hass.callWS({ type: "brands/access_token" });
-        this._brandSrc = `/api/brands/integration/storybox_plus/icon.png?token=${encodeURIComponent(token)}`;
-        const img = this.shadowRoot.getElementById("brand");
-        if (img) img.src = this._brandSrc;
-      } catch {
-        // Without the icon the name still says which page this is
-      }
+      if (first || hass.language !== lang) this._render();
+      // The frame and the forms need the new hass
+      for (const el of this.shadowRoot.querySelectorAll("hass-tabs-subpage, ha-form")) el.hass = hass;
     }
 
     set narrow(narrow) {
@@ -104,8 +251,33 @@ if (!customElements.get("storybox-plus-panel")) {
       this._render();
     }
 
+    // The address: /<area>/<page>, a box or figure ?key=…, its view &view=…; an old
+    // address (#tab) goes to its new place, an area alone to its first page, nothing
+    // to the boxes (to the setup while no account is loaded)
     set route(route) {
-      this._route = route;
+      const parts = (route?.path || "").split("/").filter(Boolean);
+      const { pathname, search, hash } = window.location;
+      const old = OLD_HASH[(hash || "").slice(1)];
+      if (!parts.length && old) {
+        navigate(`${PANEL_PATH}/${old}`, true);
+        return;
+      }
+      const area = AREAS.find((a) => a[0] === parts[0]);
+      if (!area) {
+        this._defaulted = true;
+        navigate(`${PANEL_PATH}/boxes/overview`, true);
+        return;
+      }
+      if (!area[3].some(([p]) => p === parts[1])) {
+        navigate(`${PANEL_PATH}/${area[0]}/${area[3][0][0]}${search}`, true);
+        return;
+      }
+      // The same address again (Home Assistant after the query was read): nothing to do
+      if (pathname + search === this._href && this._area === area[0] && this._page === parts[1]) return;
+      this._href = pathname + search;
+      this._route = { prefix: PANEL_PATH, path: `/${area[0]}/${parts[1]}` };
+      const query = new URLSearchParams(search);
+      this._setPage(area[0], parts[1], query.get("key"), query.get("view"));
     }
 
     set panel(panel) {
@@ -113,62 +285,93 @@ if (!customElements.get("storybox-plus-panel")) {
     }
 
     connectedCallback() {
-      this._onHash = () => {
-        const tab = tabFromHash();
-        if (tab !== this._tab) this._go(tab);
+      // Home Assistant passes a new route only when the path changes: an address that
+      // changes only its query (another box, &view=night) is read here
+      this._onLocation = () => {
+        const { pathname, search } = window.location;
+        if (!pathname.startsWith(`${PANEL_PATH}/`) || pathname + search === this._href) return;
+        this.route = { prefix: PANEL_PATH, path: pathname.slice(PANEL_PATH.length) };
       };
       this._onVisible = () => {
         this._syncTimers();
-        if (document.visibilityState === "visible") this._ensure();
+        if (document.visibilityState === "visible") this._ensure(true);
       };
-      // Escape closes an open overlay wherever the focus is, also outside the page;
-      // a field or menu that uses the key itself stops it before it gets here
-      this._onKey = (e) => {
-        if (e.key !== "Escape" || !this._overlayHtml || e.defaultPrevented) return;
-        e.preventDefault();
-        this._closeOverlay();
-      };
-      window.addEventListener("hashchange", this._onHash);
-      window.addEventListener("keydown", this._onKey);
+      window.addEventListener("location-changed", this._onLocation);
+      window.addEventListener("popstate", this._onLocation);
       document.addEventListener("visibilitychange", this._onVisible);
       this._syncTimers();
       if (this._hass) this._ensure();
     }
 
     disconnectedCallback() {
-      window.removeEventListener("hashchange", this._onHash);
-      window.removeEventListener("keydown", this._onKey);
+      window.removeEventListener("location-changed", this._onLocation);
+      window.removeEventListener("popstate", this._onLocation);
       document.removeEventListener("visibilitychange", this._onVisible);
       this._syncTimers();
     }
 
-    // Loads what the open tab shows; every tab needs the overview once, for the
-    // version at the bottom and, on the figures, the boxes' names
-    _ensure() {
-      if (!this._hass || document.visibilityState === "hidden") return;
-      if (this._tab === "boxes" || this._tab === "preferences") this._loadOverview();
-      else {
-        if (this._tab === "figures") this._loadLibrary();
-        else this._loadStats(this._range);
-        if (!this._overview) this._loadOverview();
+    // Changing the page: from a tab, a row, the address
+    _setPage(area, page, key, view) {
+      const fresh = area !== this._area;
+      const changed = fresh || page !== this._page || (key || null) !== this._key;
+      this._area = area;
+      this._page = page;
+      this._key = key || null;
+      this._view = view || null;
+      if (changed) {
+        this._note = null;
+        this._done = null;
+        this._drafts = {};
+        this._sched = null;
+        this._edit = null;
       }
+      this._ensure(fresh);
+      this._syncTimers();
+      this._render();
     }
 
-    // The boxes are polled and their progress ticks only while their tab shows; the
+    _go(path) {
+      navigate(path.startsWith("/") ? path : `${PANEL_PATH}/${path}`);
+    }
+
+    // A box or a figure opened from a list: a subpage
+    get _sub() {
+      if (!this._key) return null;
+      if (this._area === "boxes") return "box";
+      if (this._area === "figures" && this._page === "list") return "fig";
+      return null;
+    }
+
+    // ---- Data ----
+
+    // Loads what the open page shows; every page needs the overview once, for the
+    // accounts, the version and, on the figures, the boxes' names
+    _ensure(fresh = false) {
+      if (!this._hass || document.visibilityState === "hidden") return;
+      const area = this._area;
+      if (fresh || !this._overview || area === "boxes" || area === "setup") this._loadOverview();
+      const lib = area === "figures" || (area === "setup" && this._page === "overview");
+      if (lib && (fresh || !this._library)) this._loadLibrary();
+      if (area === "listening" && (fresh || !this._stats[this._range])) this._loadStats(this._range);
+    }
+
+    // The boxes are polled and their progress ticks only while their area shows; the
     // figures are watched for a conversion only while theirs does
     _syncTimers() {
       const visible = this.isConnected && document.visibilityState === "visible";
-      const live = visible && this._tab === "boxes";
+      const live = visible && this._area === "boxes";
       if (live && !this._poll) {
-        // While a bedtime is edited the form stays as it is
-        this._poll = window.setInterval(() => { if (!this._sched && !this._boxEdit && !this._nightEdit) this._loadOverview(); }, REFRESH);
+        // While a bedtime or a setting is being changed, the page stays as it is
+        this._poll = window.setInterval(() => {
+          if (!this._sched && !this._dirty && !this._typing()) this._loadOverview();
+        }, REFRESH);
         this._ticker = window.setInterval(() => this._tick(), 1000);
       } else if (!live && this._poll) {
         window.clearInterval(this._poll);
         window.clearInterval(this._ticker);
         this._poll = this._ticker = null;
       }
-      const figures = visible && this._tab === "figures";
+      const figures = visible && this._area === "figures";
       if (figures && !this._convPoll) {
         this._convPoll = window.setInterval(() => this._refreshConverting(), CONVERT_REFRESH);
       } else if (!figures && this._convPoll) {
@@ -178,34 +381,34 @@ if (!customElements.get("storybox-plus-panel")) {
     }
 
     async _fetch(key, msg, keep) {
-      if (!this._hass || this._busy.has(key)) return;
-      this._busy.add(key);
-      this._header();
+      if (!this._hass || this._loading.has(key)) return;
+      this._loading.add(key);
+      this._update();
       try {
         keep(await this._hass.callWS(msg));
         this._stamps[key] = new Date();
         delete this._errors[key];
       } catch (err) {
-        this._errors[key] = this._errText(err);
+        this._errors[key] = this._error(err);
       }
-      this._busy.delete(key);
+      this._loading.delete(key);
       this._render();
     }
 
     _loadOverview() {
-      return this._fetch("overview", { type: "storybox_plus/overview" }, (d) => { this._overview = d; this._keepVolume(); });
+      return this._fetch("overview", { type: "storybox_plus/overview" }, (d) => {
+        this._overview = d;
+        this._keepVolume();
+        // Opened without an address while no account is loaded: the setup is where to start
+        if (this._defaulted) {
+          this._defaulted = false;
+          if (!d.entries.some((e) => e.loaded) && this._area === "boxes" && !this._key) navigate(`${PANEL_PATH}/setup/overview`, true);
+        }
+      });
     }
 
     _loadLibrary() {
       return this._fetch("library", { type: "storybox_plus/library" }, (d) => { this._library = d; });
-    }
-
-    // The data the open tab shows, by the key of _fetch: the stamp and the spinning
-    // refresh button in the header are about these
-    get _dataKey() {
-      if (this._tab === "figures") return "library";
-      if (this._tab === "listening") return `stats:${this._range}`;
-      return "overview";
     }
 
     _loadStats(range) {
@@ -213,140 +416,272 @@ if (!customElements.get("storybox-plus-panel")) {
       return this._fetch(`stats:${range}`, { type: "storybox_plus/analytics", days, limit: 10 }, (d) => { this._stats[range] = d; });
     }
 
-    // The tab lives in the URL hash, so a reload keeps it
-    _go(tab) {
-      if (!TABS.some(([t]) => t === tab)) tab = "boxes";
-      if (window.location.hash !== `#${tab}`) window.history.replaceState(window.history.state, "", `#${tab}`);
-      this._tab = tab;
-      this._figDialog = null;
-      this._boxDialog = null;
-      this._battDialog = null;
-      this._render();
-      this._ensure();
-      this._syncTimers();
+    // The data the open page shows, by the key of _fetch: the stamp and the spinning
+    // refresh button in the header are about these
+    get _dataKey() {
+      if (this._area === "figures") return "library";
+      if (this._area === "listening") return `stats:${this._range}`;
+      return "overview";
     }
+
+    _boxById(id) {
+      return this._overview?.boxes.find((b) => b.id === id) || null;
+    }
+
+    _figure(id) {
+      return this._library?.tonies.find((x) => x.id === id) || null;
+    }
+
+    _loadedEntries() {
+      return (this._overview?.entries || []).filter((e) => e.loaded && e.preferences);
+    }
+
+    // The households of the accounts; one shared by two accounts shows once
+    _households() {
+      const seen = new Map();
+      for (const e of this._loadedEntries()) for (const h of e.households || []) if (!seen.has(h.id)) seen.set(h.id, { ...h, entry: e });
+      return [...seen.values()];
+    }
+
+    // A box as the integration answered it replaces the one in the overview
+    _replaceBox(box) {
+      const boxes = this._overview?.boxes || [];
+      const i = boxes.findIndex((x) => x.id === box?.id);
+      if (i >= 0) boxes[i] = box;
+    }
+
+    // A figure as the cloud answered it replaces the one in the library
+    _replaceTonie(tonie) {
+      if (!tonie?.id || !this._library) return;
+      const i = this._library.tonies.findIndex((x) => x.id === tonie.id);
+      if (i >= 0) this._library.tonies[i] = tonie;
+      else this._library.tonies.push(tonie);
+    }
+
+    // ---- Settings typed but not saved ----
+
+    // The values saved for a scope; null when its thing is gone
+    _saved(scope) {
+      const [kind, id] = scope.split(/:(.*)/s);
+      if (kind === "box") {
+        const b = this._boxById(id);
+        if (!b?.settings) return null;
+        const values = { name: b.name || "", ...b.settings.values };
+        // A Toniebox 1 knows four steps, chosen from a list of words
+        if (b.generation !== "toniebox_2") for (const k of ["max_volume", "max_headphone_volume"]) if (k in values) values[k] = String(values[k]);
+        return values;
+      }
+      if (kind === "night") {
+        const b = this._boxById(id);
+        if (!b?.night) return null;
+        const m = b.night.mode;
+        const ring = b.settings?.values?.lightring_brightness;
+        return m
+          ? { enabled: !!m.enabled, start: m.start, end: m.end, night: m.night, day: m.day }
+          : { enabled: false, start: "19:00", end: "07:00", night: 10, day: Number.isFinite(ring) ? ring : 60 };
+      }
+      if (kind === "fig") {
+        const f = this._figure(id);
+        if (!f) return null;
+        const values = { volume: f.volume ? String(f.volume) : "box" };
+        if (f.kind === "creative") {
+          values.name = f.name;
+          values.live = !!f.live;
+          if (f.chapters.length > 1) values.shuffle_on_swap = !!f.shuffle_on_swap;
+        } else {
+          values.locked = !!f.locked;
+          if (f.favourites) values.favourites = !!f.favourites.active;
+        }
+        return values;
+      }
+      if (kind === "home") {
+        const h = this._households().find((x) => x.id === id);
+        return h ? { name: h.name || "" } : null;
+      }
+      if (kind === "pref") {
+        const p = this._loadedEntries().find((e) => e.entry_id === id)?.preferences;
+        return p ? Object.fromEntries(PREF_KEYS.map((k) => [k, !!p[k]])) : null;
+      }
+      return null;
+    }
+
+    _value(scope, name) {
+      const d = this._drafts[scope];
+      return d && name in d ? d[name] : this._saved(scope)?.[name];
+    }
+
+    _same(a, b) {
+      if (typeof a === "number" || typeof b === "number") return a != null && b != null && Number(a) === Number(b);
+      if (typeof a === "string" && typeof b === "string") return a.trim() === b.trim();
+      return (a ?? null) === (b ?? null);
+    }
+
+    // What differs from the saved values
+    _changed(scope) {
+      const d = this._drafts[scope];
+      const s = this._saved(scope);
+      if (!d || !s) return {};
+      return Object.fromEntries(Object.entries(d).filter(([k, v]) => k in s && !this._same(v, s[k])));
+    }
+
+    // The settings shown on the page open
+    get _pageScopes() {
+      const sub = this._sub;
+      if (sub === "box") return this._boxView === "night" ? [`night:${this._key}`] : this._boxView === "settings" ? [`box:${this._key}`] : [];
+      if (sub === "fig") return this._figView === "settings" ? [`fig:${this._key}`] : [];
+      if (this._area === "setup" && this._page === "household") return this._households().map((h) => `home:${h.id}`);
+      if (this._area === "setup" && this._page === "preferences") return this._loadedEntries().map((e) => `pref:${e.entry_id}`);
+      return [];
+    }
+
+    get _dirty() {
+      return this._pageScopes.some((s) => Object.keys(this._changed(s)).length > 0);
+    }
+
+    _setDraft(scope, name, value) {
+      (this._drafts[scope] ||= {})[name] = value;
+      this._update();
+    }
+
+    // The save button: every changed setting of the page, each scope in one call or a few
+    async _save() {
+      if (this._saving || !this._hass) return;
+      const scopes = this._pageScopes.filter((s) => Object.keys(this._changed(s)).length);
+      if (!scopes.length) return;
+      this._saving = true;
+      this._note = null;
+      this._update();
+      try {
+        for (const scope of scopes) {
+          await this._saveScope(scope, this._changed(scope));
+          delete this._drafts[scope];
+        }
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      this._saving = false;
+      this._render();
+    }
+
+    async _saveScope(scope, ch) {
+      const [kind, id] = scope.split(/:(.*)/s);
+      const invalid = () => {
+        throw { code: "invalid_format", message: "" };
+      };
+      const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Math.round(Number(v)) : invalid());
+      const ws = (msg) => this._hass.callWS(msg);
+      if (kind === "box") {
+        const saved = this._saved(scope);
+        const msg = { type: "storybox_plus/box/settings", box_id: id };
+        for (const [k, v] of Object.entries(ch)) {
+          if (k === "name") msg.name = String(v || "").trim() || invalid();
+          else if (typeof saved[k] === "number" || k === "max_volume" || k === "max_headphone_volume") msg[k] = num(v);
+          else msg[k] = v;
+        }
+        this._replaceBox(await ws(msg));
+      } else if (kind === "night") {
+        const d = { ...this._saved(scope), ...this._drafts[scope] };
+        const start = clock(d.start) || invalid();
+        const end = clock(d.end) || invalid();
+        this._replaceBox(await ws({ type: "storybox_plus/night/set", box_id: id, enabled: !!d.enabled, start, end, night: num(d.night), day: num(d.day) }));
+      } else if (kind === "fig") {
+        const f = this._figure(id);
+        if ("name" in ch || "live" in ch) {
+          const msg = { type: "storybox_plus/figure/update", tonie_id: id };
+          if ("name" in ch) msg.name = String(ch.name || "").trim() || invalid();
+          if ("live" in ch) msg.live = !!ch.live;
+          this._replaceTonie(await ws(msg));
+        }
+        const fig = () => this._figure(id) || f;
+        if ("volume" in ch) {
+          fig().volume = (await ws({ type: "storybox_plus/figure/volume", tonie_id: id, level: ch.volume === "box" ? null : Number(ch.volume) })).volume;
+        }
+        if ("locked" in ch) fig().locked = (await ws({ type: "storybox_plus/figure/lock", tonie_id: id, locked: !!ch.locked })).locked;
+        if ("shuffle_on_swap" in ch) {
+          fig().shuffle_on_swap = (await ws({ type: "storybox_plus/figure/shuffle_on_swap", tonie_id: id, enabled: !!ch.shuffle_on_swap })).shuffle_on_swap;
+        }
+        if ("favourites" in ch && fig().favourites) {
+          fig().favourites = (await ws({ type: "storybox_plus/favourites/set", tonie_id: id, chapters: fig().favourites.chapters, active: !!ch.favourites })).favourites;
+        }
+      } else if (kind === "home") {
+        const name = String(ch.name || "").trim() || invalid();
+        const answer = await ws({ type: "storybox_plus/household/rename", household_id: id, name });
+        for (const e of this._loadedEntries()) {
+          for (const h of e.households || []) {
+            if (h.id !== id) continue;
+            h.name = name;
+            e.title = answer.entry_title;
+          }
+        }
+      } else if (kind === "pref") {
+        const entry = this._loadedEntries().find((e) => e.entry_id === id);
+        entry.preferences = await ws({ type: "storybox_plus/preferences/set", entry_id: id, ...ch });
+        if ("analytics" in ch) {
+          // The integration sets the account up anew; the counted sums change with it
+          this._stats = {};
+          window.setTimeout(() => this._loadOverview(), 4000);
+        }
+      }
+    }
+
+    // ---- Events ----
 
     // One listener each on the shadow root: the content under it is redrawn
     _bindOnce() {
       const root = this.shadowRoot;
       root.addEventListener("click", (e) => {
-        const el = e.target;
-        const tab = el.closest?.("a[data-tab]");
-        if (tab) {
-          e.preventDefault();
-          this._go(tab.dataset.tab);
-          return;
-        }
-        const heat = el.closest?.("[data-heatbox]");
-        if (heat) {
-          this._heatBox = heat.dataset.heatbox || null;
-          this._render();
-          return;
-        }
-        const range = el.closest?.("[data-range]");
-        if (range) {
-          this._range = range.dataset.range;
-          this._render();
-          this._loadStats(this._range);
-          return;
-        }
-        const kind = el.closest?.("[data-kind]");
-        if (kind) {
-          this._kind = kind.dataset.kind;
-          for (const c of root.querySelectorAll("[data-kind]")) {
-            c.classList.toggle("on", c.dataset.kind === this._kind);
-            c.setAttribute("aria-pressed", String(c.dataset.kind === this._kind));
-          }
-          this._refreshList();
-          return;
-        }
-        // A fold (a figure's chapters, a box's charge history) opens and closes on its head
-        const head = el.closest?.("[data-fold]");
-        if (head && !el.closest?.("[data-act]")) {
-          const id = head.dataset.fold;
-          const open = !this._open.has(id);
-          if (open) this._open.add(id); else this._open.delete(id);
-          head.parentElement.classList.toggle("open", open);
-          head.setAttribute("aria-expanded", String(open));
-          this._sheetHtml = this._content();
-          return;
-        }
-        const target = el.closest?.("[data-act]");
+        const target = e.target.closest?.("[data-act]");
         // A switch tells its new state with "change"
         if (!target || target.tagName === "HA-SWITCH" || target.hasAttribute("disabled")) return;
-        const act = target.dataset.act;
-        if (act === "refresh" || act === "retry") this._ensure();
-        else if (act === "settings") this._settings();
-        else this._act(act);
+        this._act(target.dataset.act, target);
       });
-      // The fold heads are rows, as in Home Assistant's lists: Enter and Space open them
+      // Rows that open something are buttons: Enter and Space open them;
+      // Enter in the link field adds the link, as the button does
       root.addEventListener("keydown", (e) => {
-        // Enter in the link field adds the link, as the button does
-        if (e.key === "Enter" && e.target.closest?.('ha-form[data-form="link"]')) {
+        if (e.key === "Enter" && e.target.closest?.(".haform[data-enter]")) {
           e.preventDefault();
-          this._fetchLink();
+          const slot = e.target.closest(".haform[data-enter]");
+          this._act(slot.dataset.enter, slot);
           return;
         }
-        const head = e.target.closest?.("[data-fold]");
-        if (!head || e.target !== head || (e.key !== "Enter" && e.key !== " ")) return;
+        const row = e.target.closest?.("[role=button][data-act]");
+        if (!row || e.target !== row || (e.key !== "Enter" && e.key !== " ")) return;
         e.preventDefault();
-        head.click();
+        row.click();
       });
       root.addEventListener("change", (e) => {
         const sw = e.target.closest?.("ha-switch[data-act]");
-        if (sw) this._act(sw.dataset.act);
+        if (sw) this._act(sw.dataset.act, sw);
+        // The hidden file field of the frame serves every creative figure in turn
+        if (e.target.id === "upload") {
+          const files = [...e.target.files];
+          e.target.value = "";
+          if (this._uploadTarget && files.length) this._uploadFiles(this._uploadTarget, files);
+        }
       });
-      // The search and the link are forms of Home Assistant; they tell their value
+      // The period and the box of the heatmap: Home Assistant's segmented control
       root.addEventListener("value-changed", (e) => {
-        const form = e.target.closest?.("ha-form[data-form]");
-        if (!form) return;
-        const value = e.detail?.value || {};
-        if (form.dataset.form === "link" && this._link) this._link.url = value.url || "";
-        if (form.dataset.form === "code" && this._code) this._code.token = value.token || "";
-        if (form.dataset.form === "speak" && this._speak) {
-          this._speak.title = value.title || "";
-          this._speak.text = value.text || "";
+        const el = e.target;
+        if (el.tagName !== "HA-CONTROL-SELECT") return;
+        const value = e.detail?.value ?? "";
+        if (el.id === "range" && value && value !== this._range) {
+          this._range = value;
+          this._loadStats(value);
+          this._render();
         }
-        if (form.dataset.form === "chname" && this._edit) this._edit.renameTitle = value.title || "";
-        if (form.dataset.form === "figname" && this._figDialog) {
-          const before = this._figName?.id === this._figDialog ? this._figName : { id: this._figDialog };
-          this._figName = { ...before, name: value.name || "" };
-          // Only the button follows the typing; the field keeps its focus
-          const f = this._library?.tonies.find((x) => x.id === this._figDialog);
-          const btn = this.shadowRoot.querySelector(`#overlay ha-button[data-act="figrename:${CSS.escape(this._figDialog)}"]`);
-          const name = this._figName.name.trim();
-          if (btn) btn.disabled = !name || name === f?.name || !!this._figName.busy;
+        if (el.id === "heatbox") {
+          this._heatBox = value === "*" ? "" : value;
+          this._render();
         }
-        if (form.dataset.form.startsWith("voucher:")) {
-          const id = form.dataset.form.slice(8);
-          ((this._voucher ||= {})[id] ||= {}).code = value.code || "";
-          return;
-        }
-        if (form.dataset.form.startsWith("home:")) {
-          (this._homeNames ||= {})[form.dataset.form.slice(5)] = value.name || "";
-          return;
-        }
-        if (form.dataset.form.startsWith("tune:")) {
-          (this._tunePick ||= {})[form.dataset.form.slice(5)] = value.tune;
-          return;
-        }
-        if (form.dataset.form.startsWith("vol:")) {
-          this._setFigureVolume(form.dataset.form.slice(4), value.level === "box" ? null : Number(value.level));
-          return;
-        }
-        if (form.dataset.form === "schedule" && this._sched) this._sched.data = { ...value };
-        if (form.dataset.form === "settings" && this._boxEdit) this._boxEdit.data = { ...value };
-        if (form.dataset.form === "night" && this._nightEdit) this._nightEdit.data = { ...value };
-        if (form.dataset.form !== "search") return;
-        this._query = value.query || "";
-        this._refreshList();
       });
-      // The hidden file field of the frame serves every creative figure in turn
-      root.addEventListener("change", (e) => {
-        if (e.target.id !== "upload") return;
-        const files = [...e.target.files];
-        e.target.value = "";
-        if (this._uploadTarget && files.length) this._uploadFiles(this._uploadTarget, files);
+      // Home Assistant's tabs: the pages of an area, the views of a box or a figure
+      root.addEventListener("wa-tab-show", (e) => {
+        const name = e.detail?.name;
+        if (!name) return;
+        if (e.target?.id === "subtabs" && name !== this._page) this._go(`${this._area}/${name}`);
+        if (e.target?.id === "views" && name !== this._shownView) {
+          this._go(`${this._area}/${this._page}?key=${encodeURIComponent(this._key)}&view=${name}`);
+        }
       });
       // A picture that does not load leaves the placeholder behind it visible
       root.addEventListener("error", (e) => {
@@ -354,510 +689,363 @@ if (!customElements.get("storybox-plus-panel")) {
       }, true);
     }
 
-    // Home Assistant's page of the integration, opened inside the app as its own links do
-    _settings() {
-      window.history.pushState(null, "", "/config/integrations/integration/storybox_plus");
-      window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+    // Buttons, rows and switches: "verb" or "verb:argument"
+    _act(act, el) {
+      const [verb, arg = ""] = act.split(/:(.*)/s);
+      const key = el?.dataset?.key;
+      switch (verb) {
+        case "refresh":
+          this._ensure(true);
+          return;
+        case "integration":
+          this._go(INTEGRATION_PATH);
+          return;
+        case "save":
+          this._save();
+          return;
+        case "go":
+          this._go(key);
+          return;
+        case "boxset":
+          this._go(`boxes/overview?key=${encodeURIComponent(arg)}&view=settings`);
+          return;
+        case "battset":
+          this._go(`boxes/overview?key=${encodeURIComponent(arg)}&view=battery`);
+          return;
+        case "openfig":
+          this._go(`figures/list?key=${encodeURIComponent(key)}`);
+          return;
+        case "kind":
+          this._kind = key;
+          this._refreshList();
+          return;
+        case "ctl": {
+          const [boxId, command, value] = arg.split(":");
+          this._command(boxId, command, value);
+          return;
+        }
+        case "voucher":
+          this._redeemVoucher(arg);
+          return;
+        case "codeadd":
+          this._redeemCode();
+          return;
+        case "tuneon": {
+          const pick = this._tunePick[arg] || this._tunesFor(arg)[0]?.id;
+          if (pick) this._setTune(arg, pick);
+          return;
+        }
+        case "tuneoff":
+          this._setTune(arg, null);
+          return;
+        case "dismiss":
+          if (arg === "done") this._done = null;
+          else delete this._uploads[arg];
+          this._render();
+          return;
+        default:
+          break;
+      }
+      if (/^s(add|edit|save|cancel|del|delok|delno|on)$/.test(verb)) this._scheduleAction(verb, arg);
+      else this._chapterAction(verb, arg);
     }
 
-    // The stamp says when the open tab's data came; the refresh button spins while they load
-    _header() {
+    // ---- Building blocks, as Home Assistant draws them ----
+
+    // The (i): Home Assistant's icon button with its tooltip; a tap or Enter shows it, as hovering does
+    _help(text) {
+      if (!text) return "";
+      const id = `help${++this._hid}`;
+      return `<ha-icon-button class="help" id="${id}" path="${MDI.info}" label="${esc(this._t.info)}"></ha-icon-button>` +
+        `<ha-tooltip for="${id}" placement="top" trigger="hover click">${esc(text)}</ha-tooltip>`;
+    }
+
+    // A card of Home Assistant; its title with an (i) when the card has something to explain
+    _section(title, body, { help = "", cls = "", actions = "" } = {}) {
+      const head = title ? `<h1 class="card-header">${esc(title)}${this._help(help)}</h1>` : "";
+      return `<ha-card class="${cls}">${head}<div class="card-content${title ? "" : " bare"}">${body}</div>` +
+        `${actions ? `<div class="card-actions">${actions}</div>` : ""}</ha-card>`;
+    }
+
+    // One line of state, the why behind its (i), maybe an action
+    _alertHelp(kind, text, help = "", action = "") {
+      const end = action || help ? `<span slot="action" class="alertact">${action}${this._help(help)}</span>` : "";
+      return `<ha-alert alert-type="${kind}">${esc(text)}${end}</ha-alert>`;
+    }
+
+    // An error: one line by its kind, what Home Assistant said behind the (i)
+    _errHtml(e) {
+      return this._alertHelp("error", e.text, e.detail ? `${this._t.errDetail}: ${e.detail}` : "");
+    }
+
+    // kind: "plain" (the default), "filled" (the main action of a group), "danger"
+    _btn(act, label, ic, { look = "plain", disabled = false, data = "" } = {}) {
+      const kind = look === "filled" ? "" : look === "danger" ? ' appearance="plain" variant="danger"' : ' appearance="plain"';
+      return `<ha-button${kind} data-act="${esc(act)}"${data}${disabled ? " disabled" : ""}>` +
+        `${ic ? `<ha-svg-icon slot="start" path="${MDI[ic]}"></ha-svg-icon>` : ""}${esc(label)}</ha-button>`;
+    }
+
+    _loadingHtml() {
+      return `<div class="loading"><ha-spinner aria-label="${esc(this._t.loading)}"></ha-spinner></div>`;
+    }
+
+    // A row of a list that opens something: a button for the mouse and the keyboard
+    _item(act, key, lead, title, sub = "", end = "") {
+      return `<div class="item" role="button" tabindex="0" data-act="${esc(act)}" data-key="${esc(key)}">${lead}` +
+        `<div class="text"><span class="headline">${esc(title)}</span>${sub ? `<span class="supporting">${sub}</span>` : ""}</div>` +
+        `${end}${icon("chevronRight").replace("<ha-svg-icon", '<ha-svg-icon class="go"')}</div>`;
+    }
+
+    // An ha-form with Home Assistant's selectors; drawn after the sheet's HTML.
+    // The data is part of the placeholder, so a change from outside redraws it.
+    // aria: the name of a field whose label stands beside it (a settings row);
+    // enter: the action Enter in the field starts
+    _formSlot(id, schema, data, onChange, { aria = "", enter = "" } = {}) {
+      const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== null && v !== undefined));
+      this._forms[id] = { schema, data: clean, onChange, aria };
+      return `<div class="haform" data-form="${esc(id)}"${enter ? ` data-enter="${esc(enter)}"` : ""} data-v="${esc(JSON.stringify(clean))}"></div>`;
+    }
+
+    // A setting: its name with its (i), the field at the end
+    _row(scope, name, label, help, selector, num = false) {
+      // A choice always holds one of its options: no × that empties it
+      const field = { name, label: "", selector, num, required: !!selector.select };
+      const time = !!selector.time;
+      const slot = this._formSlot(`${scope}:${name}`, [field], { [name]: this._value(scope, name) },
+        (v) => this._setDraft(scope, name, time ? clock(v[name]) : v[name] ?? null), { aria: label });
+      const kind = selector.boolean ? "bool" : num ? "num" : "other";
+      return `<ha-settings-row class="${kind}"${this._narrow ? " narrow" : ""} wrap-heading>` +
+        `<span slot="heading" class="heading">${esc(label)}${this._help(help)}</span>${slot}</ha-settings-row>`;
+    }
+
+    // A row of facts in the shape of a setting, for what is shown only
+    _infoRow(label, help, value) {
+      return `<ha-settings-row${this._narrow ? " narrow" : ""} wrap-heading>` +
+        `<span slot="heading" class="heading">${esc(label)}${this._help(help)}</span><span class="value">${esc(value)}</span></ha-settings-row>`;
+    }
+
+    // The input deep in Home Assistant's field gets the name the row shows beside it
+    async _ariaName(form, name, tries = 10) {
+      await form.updateComplete;
+      const find = (root) => {
+        for (const el of root.querySelectorAll("*")) {
+          if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.getAttribute("role") === "switch" || el.getAttribute("role") === "combobox") return el;
+          const deep = el.shadowRoot && find(el.shadowRoot);
+          if (deep) return deep;
+        }
+        return null;
+      };
+      const input = form.shadowRoot && find(form.shadowRoot);
+      if (input) input.setAttribute("aria-label", name);
+      else if (tries > 0) setTimeout(() => this._ariaName(form, name, tries - 1), 100);
+    }
+
+    _hydrate(root) {
+      for (const slot of root.querySelectorAll("[data-form]")) {
+        const spec = this._forms[slot.dataset.form];
+        if (!spec) continue;
+        const form = document.createElement("ha-form");
+        form.hass = this._hass;
+        form.narrow = !!this._narrow;
+        form.schema = spec.schema;
+        // Numbers go into the fields as text in the number format, and come back as numbers
+        const nums = new Set();
+        const walk = (schema) => {
+          for (const f of schema) {
+            if (f.num) nums.add(f.name);
+            if (f.schema) walk(f.schema);
+          }
+        };
+        walk(spec.schema);
+        const shown = (d) => Object.fromEntries(Object.entries(d).map(([k, v]) => [k, nums.has(k) && typeof v === "number" ? fieldNumber(this._hass, v) : v]));
+        const read = (d) => Object.fromEntries(Object.entries(d).map(([k, v]) => [k, nums.has(k) ? (v === "" || v == null ? null : numOrNull(v)) : v]));
+        form.data = shown(spec.data);
+        form.computeLabel = (s) => s.label ?? s.name;
+        if (spec.aria) this._ariaName(form, spec.aria);
+        form.addEventListener("value-changed", (e) => {
+          e.stopPropagation();
+          form.data = e.detail.value;
+          spec.onChange(read(e.detail.value));
+        });
+        slot.append(form);
+      }
+      // Home Assistant's segmented control takes its options as a property
+      for (const el of root.querySelectorAll("ha-control-select[data-options]")) {
+        el.options = JSON.parse(el.dataset.options);
+        el.value = el.dataset.value;
+      }
+    }
+
+    // A redraw while a field has the focus would lose the input
+    _typing() {
+      const el = this.shadowRoot.activeElement;
+      return !!el && el.tagName === "HA-FORM";
+    }
+
+    // ---- Drawing ----
+
+    // The view of the box or figure open: the one in the address, if it has it
+    get _boxView() {
+      const b = this._boxById(this._key);
+      const views = b ? this._boxViews(b) : [];
+      return views.find(([v]) => v === this._view)?.[0] || views[0]?.[0] || null;
+    }
+
+    get _figView() {
+      const f = this._figure(this._key);
+      const views = f ? this._figViews(f) : [];
+      return views.find(([v]) => v === this._view)?.[0] || views[0]?.[0] || null;
+    }
+
+    get _shownView() {
+      return this._sub === "box" ? this._boxView : this._sub === "fig" ? this._figView : null;
+    }
+
+    _boxViews(b) {
+      return BOX_VIEWS.filter(([v]) => (v === "settings" && b.settings) || (v === "night" && b.night) ||
+        (v === "bedtimes" && b.bedtime) || (v === "battery" && b.battery_stats));
+    }
+
+    _figViews(f) {
+      return FIG_VIEWS.filter(([v]) => v === "chapters" || v === "settings" ||
+        (v === "tune" && (this._tuneOn(f.id) || this._tunesFor(f.id).length)) || (v === "add" && f.kind === "creative"));
+    }
+
+    _render() {
+      if (!this._hass) return;
+      const sub = this._sub;
+      const item = sub === "box" ? this._boxById(this._key) : sub === "fig" ? this._figure(this._key) : null;
+      const name = sub ? item?.name || item?.id || "" : "";
+      const views = item ? (sub === "box" ? this._boxViews(item) : this._figViews(item)) : [];
+      const key = [this._area, this._page, !!this._narrow, this._lang, sub, this._key, name, views.map(([v]) => v).join(), this._shownView].join("|");
+      if (key !== this._frameKey) {
+        this._frameKey = key;
+        this._frame(sub, name, views);
+      }
+      this._update();
+    }
+
+    // Tabs of Home Assistant's own: the pages of an area, the views of a box or figure
+    _tabGroup(id, items, active) {
+      return `<ha-tab-group id="${id}" class="subtabs">${items.map(([k, label]) =>
+        `<ha-tab-group-tab slot="nav" panel="${k}"${k === active ? " active" : ""}>${esc(this._t[label])}</ha-tab-group-tab>`).join("")}</ha-tab-group>`;
+    }
+
+    // The parts that stay while the page is open: Home Assistant's frame with the
+    // areas as tabs (a back arrow and the name on a subpage), the pages of the area
+    // or the views of the item, the sheet, the save button
+    _frame(sub, name, views) {
+      const t = this._t;
+      const area = AREAS.find((a) => a[0] === this._area);
+      const tabs = sub
+        ? (views.length > 1 ? this._tabGroup("views", views, this._shownView) : "")
+        : area[3].length > 1 ? this._tabGroup("subtabs", area[3], this._page) : "";
+      this.shadowRoot.innerHTML = `
+        <style>${STYLE}${PAGE_STYLE}</style>
+        <hass-tabs-subpage id="frame">
+          ${sub ? `<div slot="header" class="subname">${esc(name)}</div>` : ""}
+          <div slot="toolbar-icon" class="actions"><span class="stamp" id="stamp"></span>
+            ${iconButton("refresh", t.refresh, 'id="refresh" data-act="refresh"')}
+            ${iconButton("cog", t.integration, 'id="integration" data-act="integration"')}</div>
+          <div class="page${this._narrow ? " narrow" : ""}">${tabs}<div class="sheet" id="sheet"></div></div>
+          <ha-button slot="fab" id="save" size="l" data-act="save" hidden>${icon("save").replace("<ha-svg-icon", '<ha-svg-icon slot="start"')}${esc(t.save)}</ha-button>
+        </hass-tabs-subpage>
+        <input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden>`;
+      const frame = this.shadowRoot.getElementById("frame");
+      frame.hass = this._hass;
+      frame.narrow = !!this._narrow;
+      frame.tabs = sub ? [] : AREAS.map(([id, ic, label]) => ({ path: `${PANEL_PATH}/${id}`, name: t[label], iconPath: MDI[ic] }));
+      frame.mainPage = !sub;
+      frame.backCallback = sub ? () => this._go(`${this._area}/${this._page}`) : undefined;
+      frame.route = this._route || { prefix: PANEL_PATH, path: `/${this._area}/${this._page}` };
+      this._sheetHtml = null;
+    }
+
+    _update() {
       const root = this.shadowRoot;
+      const sheet = root.getElementById("sheet");
+      if (!sheet) return;
+      if (!this._typing()) {
+        this._forms = {};
+        this._hid = 0;
+        const html = this._sheet();
+        if (html !== this._sheetHtml) {
+          this._sheetHtml = html;
+          sheet.innerHTML = html;
+          this._hydrate(sheet);
+          this._tick();
+        }
+      }
+      // The save button of the settings: only while something is changed
+      const fab = root.getElementById("save");
+      if (fab) {
+        const show = this._dirty;
+        fab.hidden = !show;
+        fab.disabled = this._saving;
+        root.getElementById("frame").hasFab = show;
+      }
       const stamp = root.getElementById("stamp");
-      if (!stamp) return;
-      const at = this._stamps[this._dataKey];
-      stamp.textContent = at
-        ? fill(this._t.asOf, { t: at.toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) })
-        : "";
-      root.getElementById("refresh")?.classList.toggle("spin", this._busy.has(this._dataKey));
+      if (stamp) {
+        const at = this._stamps[this._dataKey];
+        stamp.textContent = at
+          ? fill(this._t.asOf, { t: at.toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }) })
+          : "";
+      }
+      root.getElementById("refresh")?.classList.toggle("spin", this._loading.has(this._dataKey));
     }
 
     // Only the list under the filters is redrawn, so the search field keeps its focus
     _refreshList() {
       const list = this.shadowRoot.getElementById("figlist");
-      if (!list) return this._render();
+      if (!list || this._area !== "figures" || this._sub) return this._render();
       list.innerHTML = this._figureList();
-      this._hydrate(list);
-      this._sheetHtml = this._content();
-      this._renderOverlay();
+      for (const chip of this.shadowRoot.querySelectorAll("ha-filter-chip[data-act=kind]")) chip.selected = chip.dataset.key === this._kind;
+      this._forms = {};
+      this._hid = 0;
+      this._sheetHtml = this._sheet();
     }
 
-    _render() {
-      if (!this._hass) return;
-      const key = [this._tab, !!this._narrow, this._lang].join("|");
-      if (key !== this._frameKey) {
-        this._frameKey = key;
-        this._frame();
-      }
-      const sheet = this.shadowRoot.getElementById("sheet");
-      const html = this._content();
-      if (sheet && html !== this._sheetHtml) {
-        this._sheetHtml = html;
-        sheet.innerHTML = html;
-        this._hydrate(sheet);
-        this._tick();
-      }
-      this._renderOverlay();
-      this._header();
-    }
-
-    // The overlay above the page: the settings of a figure or a box, or a form to add
-    // chapters. It is drawn apart from the sheet, so the page under it stays as it is
-    _renderOverlay() {
-      const host = this.shadowRoot.getElementById("overlay");
-      if (!host) return;
-      const html = this._overlay();
-      if (html === this._overlayHtml) return;
-      const opened = !this._overlayHtml && !!html;
-      this._overlayHtml = html;
-      host.innerHTML = html;
-      this._hydrate(host);
-      if (opened) host.querySelector(".ov-card")?.focus();
-    }
-
-    _overlay() {
+    _sheet() {
       const t = this._t;
-      let title = "";
-      let sub = "";
-      let body = "";
-      if (this._tab === "figures" && this._library) {
-        const find = (id) => this._library.tonies.find((x) => x.id === id);
-        const f = find(this._figDialog) || find(this._tuneDialog) || find(this._link?.id) || find(this._speak?.id) || find(this._code?.id);
-        if (f && this._figDialog === f.id) [title, body] = [t.figSettings, this._figureSettings(f)];
-        else if (f && this._tuneDialog === f.id) [title, body] = [t.tuneOf, this._tuneRow(f)];
-        else if (f && this._link?.id === f.id) [title, body] = [t.fromLink, this._linkBody()];
-        else if (f && this._speak?.id === f.id) [title, body] = [t.fromText, this._speakBody()];
-        else if (f && this._code?.id === f.id) [title, body] = [t.fromCode, this._codeBody()];
-        sub = f?.name || "";
-      } else if (this._tab === "boxes" && this._overview && this._battDialog) {
-        const b = this._overview.boxes.find((x) => x.id === this._battDialog);
-        if (b?.battery_stats) [title, sub, body] = [t.battery, b.name || b.id, this._battery(b)];
-      } else if (this._tab === "boxes" && this._overview && this._boxDialog) {
-        const b = this._overview.boxes.find((x) => x.id === this._boxDialog);
-        if (b) {
-          title = t.boxSettingsOf;
-          sub = b.name || b.id;
-          // The firmware matters seldom; it is noted at the end of the settings
-          body = (b.settings ? this._settingsTile(b) : "") + (b.bedtime ? this._bedtime(b) : "") +
-            (b.firmware ? `<div class="muted small ov-foot">${esc(`${t.firmware} ${b.firmware}`)}</div>` : "");
-        }
+      let html = this._note ? this._errHtml(this._note) : "";
+      if (this._done) {
+        html += this._alertHelp(this._done.kind, this._done.text, "",
+          `<ha-button slot="action" appearance="plain" data-act="dismiss:done">${esc(t.dismiss)}</ha-button>`);
       }
-      if (!body) return "";
-      return `<div class="ov"><div class="ov-back" data-act="dlgclose"></div>` +
-        `<div class="ov-card" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">` +
-        `<div class="ov-head"><div class="ov-titles"><span class="ov-title">${esc(title)}</span>` +
-        (sub ? `<span class="supporting">${esc(sub)}</span>` : "") + `</div>` +
-        iconButton("close", t.dlgClose, 'data-act="dlgclose"') + `</div><div class="ov-body">${body}</div></div></div>`;
-    }
-
-    // Closing drops what was open in it; a text being spoken or a code being redeemed waits
-    _closeOverlay() {
-      if (this._speak?.busy || this._code?.busy || this._boxEdit?.saving || this._nightEdit?.saving || this._sched?.saving || this._figName?.busy) return;
-      this._figDialog = null;
-      this._tuneDialog = null;
-      this._figName = null;
-      this._boxDialog = null;
-      this._battDialog = null;
-      this._link = null;
-      this._speak = null;
-      this._code = null;
-      this._boxEdit = null;
-      this._nightEdit = null;
-      this._sched = null;
-      this._render();
-    }
-
-    _linkBody() {
-      const t = this._t;
-      return `<ha-form data-form="link"></ha-form><div class="muted small">${esc(t.linkHint)}</div>` +
-        `<div class="ov-actions">${this._btn("linkcancel", t.cancel, "close")}${this._btn("linkadd", t.add, "check", { look: "filled" })}</div>`;
-    }
-
-    _speakBody() {
-      const t = this._t;
-      const sp = this._speak;
-      let html = sp.busy
-        ? `<div class="muted small busy">${esc(t.textBusy)}</div>`
-        : `<ha-form data-form="speak"></ha-form><div class="muted small">${esc(t.textHint)}</div>` +
-          `<div class="ov-actions">${this._btn("speakcancel", t.cancel, "close")}${this._btn("speakadd", t.add, "check", { look: "filled" })}</div>`;
-      if (sp.error) html += this._alert(fill(t.textFailed, { e: sp.error }), "error");
-      return html;
-    }
-
-    _codeBody() {
-      const t = this._t;
-      const c = this._code;
-      return `<ha-form data-form="code"></ha-form><div class="muted small">${esc(t.codeHint)}</div>` +
-        (c.error ? this._alert(fill(t.codeFailed, { e: c.error }), "error") : "") +
-        `<div class="ov-actions">${this._btn("codecancel", t.cancel, "close", { disabled: !!c.busy })}` +
-        `${this._btn("codeadd", t.add, "check", { look: "filled", disabled: !!c.busy })}</div>`;
-    }
-
-    // What a figure has to set: a creative one its name and live mode, every one its
-    // volume; a bought one its lock, a creative one shuffling on swap. The Tune has its own.
-    _figureSettings(f) {
-      const t = this._t;
-      let html = "";
-      if (f.kind === "creative") {
-        const fn = this._figName?.id === f.id ? this._figName : null;
-        const name = String(fn?.name ?? f.name).trim();
-        html += `<div class="name-row"><ha-form data-form="figname"></ha-form>` +
-          this._btn(`figrename:${f.id}`, t.save, "check", { look: "filled", disabled: !name || name === f.name || !!fn?.busy }) + `</div>`;
-        if (fn?.error) html += this._alert(fill(t.renameFailed, { e: fn.error }), "error");
-        html += `<div class="switch-row"><ha-switch data-act="figlive:${esc(f.id)}"${f.live ? " checked" : ""}${fn?.busy ? " disabled" : ""} aria-label="${esc(t.c_live)}"></ha-switch>` +
-          `<div class="text"><span>${esc(t.c_live)}</span></div></div>`;
-      }
-      html += this._volumeRow(f);
-      if (f.kind === "content" || f.kind === "disc") html += this._lockRow(f);
-      if (f.kind === "creative" && f.chapters.length > 1) {
-        html += `<div class="switch-row"><ha-switch data-act="swapshuffle:${esc(f.id)}"${f.shuffle_on_swap ? " checked" : ""} aria-label="${esc(t.shuffleSwap)}"></ha-switch>` +
-          `<div class="text"><span>${esc(t.shuffleSwap)}</span><span class="supporting wrap">${esc(t.shuffleSwapHint)}</span></div></div>`;
-        if (this._shuffleError?.id === f.id) html += this._alert(fill(t.shuffleFailed, { e: this._shuffleError.message }), "error");
-      }
-      return html;
-    }
-
-    // Home Assistant's forms take their schema, data and labels as properties
-    _hydrate(host) {
-      const t = this._t;
-      const forms = {
-        search: [[{ name: "query", selector: { text: { type: "search" } } }], { query: this._query }, () => t.search],
-        link: [[{ name: "url", required: true, selector: { text: { type: "url" } } }], { url: this._link?.url || "" }, () => t.linkPlaceholder],
-        chname: [[{ name: "title", required: true, selector: { text: {} } }], { title: this._edit?.renameTitle ?? "" }, () => t.chapterName],
-        speak: [
-          [{ name: "title", selector: { text: {} } }, { name: "text", required: true, selector: { text: { multiline: true } } }],
-          { title: this._speak?.title || "", text: this._speak?.text || "" },
-          (f) => (f.name === "title" ? t.textTitle : t.textBody),
-        ],
-        code: [[{ name: "token", required: true, selector: { text: {} } }], { token: this._code?.token || "" }, () => t.codePlaceholder],
-        figname: [
-          [{ name: "name", required: true, selector: { text: {} } }],
-          { name: this._figName?.name ?? this._library?.tonies.find((x) => x.id === this._figDialog)?.name ?? "" },
-          () => t.c_name,
-        ],
-        schedule: [this._scheduleSchema(), this._sched?.data || {}, (f) => t[`f_${f.name}`] || f.name],
-        settings: [this._settingsSchema(), this._boxEdit?.data || {}, (f) => t[`s_${f.name}`] || f.name],
-        night: [this._nightSchema(), this._nightEdit?.data || {}, (f) => t[`n_${f.name}`] || f.name],
-      };
-      for (const form of host.querySelectorAll("ha-form[data-form^='vol:']")) {
-        const f = this._library?.tonies.find((x) => x.id === form.dataset.form.slice(4));
-        const options = [{ value: "box", label: t.figVolumeBox }, ...Array.from({ length: 13 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} / 13` }))];
-        form.hass = this._hass;
-        form.schema = [{ name: "level", required: true, selector: { select: { mode: "dropdown", options } } }];
-        form.data = { level: f?.volume ? String(f.volume) : "box" };
-        form.computeLabel = () => t.figVolume;
-      }
-      for (const form of host.querySelectorAll("ha-form[data-form^='voucher:']")) {
-        const id = form.dataset.form.slice(8);
-        form.hass = this._hass;
-        form.schema = [{ name: "code", required: true, selector: { text: {} } }];
-        form.data = { code: this._voucher?.[id]?.code || "" };
-        form.computeLabel = () => t.voucherCode;
-      }
-      for (const form of host.querySelectorAll("ha-form[data-form^='home:']")) {
-        const id = form.dataset.form.slice(5);
-        const home = (this._overview?.entries || []).flatMap((e) => e.households || []).find((h) => h.id === id);
-        form.hass = this._hass;
-        form.schema = [{ name: "name", required: true, selector: { text: {} } }];
-        form.data = { name: this._homeNames?.[id] ?? home?.name ?? "" };
-        form.computeLabel = () => t.householdName;
-      }
-      for (const form of host.querySelectorAll("ha-form[data-form^='tune:']")) {
-        const id = form.dataset.form.slice(5);
-        const fits = (this._library?.tunes || []).filter((x) => x.suitable.includes(id) && !x.assigned.includes(id));
-        const options = fits.map((x) => ({ value: x.id, label: x.remaining != null ? `${x.title} (${fill(t.tuneLeft, { n: x.remaining })})` : x.title }));
-        form.hass = this._hass;
-        form.schema = [{ name: "tune", required: true, selector: { select: { mode: "dropdown", options } } }];
-        form.data = { tune: this._tunePick?.[id] || fits[0]?.id };
-        form.computeLabel = () => t.tunePick;
-      }
-      for (const form of host.querySelectorAll("ha-form[data-form]:not([data-form^='vol:']):not([data-form^='tune:']):not([data-form^='home:']):not([data-form^='voucher:'])")) {
-        const [schema, data, label] = forms[form.dataset.form];
-        form.hass = this._hass;
-        form.schema = schema;
-        form.data = data;
-        form.computeLabel = label;
+      const sub = this._sub;
+      if (sub === "box") return html + this._boxPage();
+      if (sub === "fig") return html + this._figurePage();
+      switch (`${this._area}/${this._page}`) {
+        case "figures/list": return html + this._figuresPage();
+        case "figures/tunes": return html + this._tunesPage();
+        case "listening/summary": return html + this._listening(false);
+        case "listening/times": return html + this._listening(true);
+        case "setup/overview": return html + this._setupPage();
+        case "setup/household": return html + this._householdPage();
+        case "setup/preferences": return html + this._preferencesPage();
+        default: return html + this._boxesPage();
       }
     }
 
-    // The parts that stay while the page is open: one header row with the
-    // integration's icon, its name and the tabs right after it (the tabs at the
-    // bottom on a phone), as on Home Assistant's own pages
-    _frame() {
-      const t = this._t;
-      const tabs = TABS.map(([id, ic, label]) =>
-        `<a class="tab${this._tab === id ? " active" : ""}" data-tab="${id}" href="#${id}">` +
-        `${this._narrow ? icon(ic) : ""}<span>${esc(t[label])}</span></a>`).join("");
-      this.shadowRoot.innerHTML = `
-        <style>${STYLE}</style>
-        <ha-top-app-bar-fixed>
-          <ha-menu-button slot="navigationIcon"></ha-menu-button>
-          <div slot="title" class="head"><img class="brand" id="brand" alt="" width="24" height="24"${this._brandSrc ? ` src="${esc(this._brandSrc)}"` : ""}><span class="name">Storybox Plus</span>${this._narrow ? "" : `<nav class="tabs">${tabs}</nav>`}</div>
-          <span class="stamp" id="stamp" slot="actionItems"></span>
-          ${iconButton("refresh", t.refresh, 'slot="actionItems" id="refresh" data-act="refresh"')}
-          ${iconButton("cog", t.settings, 'slot="actionItems" data-act="settings"')}
-          <div class="app${this._narrow ? " narrow" : ""}">
-            <div class="content"><div class="sheet" id="sheet"></div></div>
-            ${this._narrow ? `<nav class="bottom-tabs">${tabs}</nav>` : ""}
-          </div>
-        </ha-top-app-bar-fixed>
-        <div id="overlay"></div>
-        <input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden>`;
-      const menu = this.shadowRoot.querySelector("ha-menu-button");
-      menu.hass = this._hass;
-      menu.narrow = this._narrow;
-      this._sheetHtml = null;
-      this._overlayHtml = null;
-    }
-
-    // The settings tab: per account the preferences and the cloud's version
-    _preferences() {
+    // The overview's state that stands instead of a page: loading, failed, no account
+    _overviewState() {
       const t = this._t;
       const o = this._overview;
       const err = this._errors.overview;
-      if (!o) return err ? this._fail(err) : this._loading();
-      let html = err ? this._fail(err) : "";
-      const loaded = o.entries.filter((e) => e.loaded && e.preferences);
-      if (!o.entries.length) return html + this._alert(t.noEntry);
-      if (!loaded.length) return html + this._alert(t.notLoaded);
-      if (this._prefError) html += this._alert(fill(t.prefFailed, { e: this._prefError }), "error");
-      const row = (act, on, label, hint) =>
-        `<div class="switch-row"><ha-switch data-act="${esc(act)}"${on ? " checked" : ""} aria-label="${esc(label)}"></ha-switch>` +
-        `<div class="text"><span>${esc(label)}</span><span class="supporting wrap">${esc(hint)}</span></div></div>`;
-      for (const e of loaded) {
-        const p = e.preferences;
-        const c = e.cloud || {};
-        // Only the release counts, not the commit behind it
-        let cloud = `<div class="muted small">${esc(t.cloudUnknown)}</div>`;
-        if (c.version) {
-          cloud = `<div class="pref-cloud"><span>${esc(fill(t.cloudVersion, { v: c.version }))}</span>` +
-            this._chip(c.matches ? t.cloudTested : fill(t.cloudUntested, { t: c.tested }), c.matches ? "ok" : "warn") + `</div>`;
-          if (!c.matches) cloud += this._alert(fill(t.cloudDiffers, { v: c.release, t: c.tested }), "warning");
-        }
-        const homes = (e.households || []).map((h) =>
-          `<div class="household-row"><ha-form data-form="home:${esc(h.id)}"></ha-form>` +
-          this._btn(`homesave:${h.id}`, t.save, "check", { disabled: this._homeBusy === h.id }) + `</div>` +
-          (this._homeError?.id === h.id ? this._alert(fill(t.householdFailed, { e: this._homeError.message }), "error") : "") +
-          this._members(h)).join("");
-        const v = this._voucher?.[e.entry_id] || {};
-        const voucher = `<div class="household-row"><ha-form data-form="voucher:${esc(e.entry_id)}"></ha-form>` +
-          this._btn(`voucher:${e.entry_id}`, t.voucherRedeem, "check", { disabled: !!v.busy }) + `</div>` +
-          `<div class="muted small">${esc(t.voucherHint)}</div>` +
-          (v.error ? this._alert(fill(t.voucherFailed, { e: v.error }), "error") : "") +
-          (v.done != null ? this._alert(v.done ? fill(t.voucherDone, { n: v.done }) : t.voucherNone, "success") : "");
-        const body =
-          `<div class="pref-head">${esc(t.prefHousehold)}</div>${homes}` +
-          `<div class="pref-head">${esc(t.prefVoucher)}</div>${voucher}` +
-          `<div class="pref-head">${esc(t.prefListening)}</div>` + row(`panalytics:${e.entry_id}`, p.analytics, t.prefAnalytics, t.prefAnalyticsHint) +
-          `<div class="pref-head">${esc(t.prefFigures)}</div>` + row(`pautolock:${e.entry_id}`, p.auto_lock, t.prefAutoLock, t.prefAutoLockHint) +
-          `<div class="pref-head">${esc(t.prefNotices)}</div>` + row(`pmarkread:${e.entry_id}`, p.mark_read, t.prefMarkRead, t.prefMarkReadHint) +
-          `<div class="pref-head">${esc(t.prefCloud)}</div>` + cloud;
-        html += this._card(loaded.length > 1 ? esc(e.title) : "", body);
-      }
-      return html;
+      if (!o) return err ? this._errHtml(err) : this._loadingHtml();
+      if (!o.entries.length) return this._alertHelp("info", t.noEntry, t.noEntryHelp);
+      if (!o.entries.some((e) => e.loaded)) return this._alertHelp("warning", t.notLoaded, t.notLoadedHelp);
+      return "";
     }
 
-    // Who belongs to a household: shown only, managed in the app
-    _members(h) {
-      const t = this._t;
-      if (!Array.isArray(h.members)) return `<div class="muted small">${esc(t.membersUnknown)}</div>`;
-      const order = { owner: 0, full: 1, limited: 2 };
-      const list = [...h.members].sort((a, b) => (order[a.role] ?? 3) - (order[b.role] ?? 3) || String(a.name).localeCompare(String(b.name)));
-      const rows = list.map((m) => {
-        const full = [m.first_name, m.last_name].filter(Boolean).join(" ");
-        const title = full || m.name;
-        const sub = [full && m.name !== full && m.name !== m.first_name ? m.name : "", m.email && m.email !== title ? m.email : ""].filter(Boolean).join(" · ");
-        const initial = String(title || "?").trim().charAt(0).toUpperCase();
-        return `<div class="member"><span class="member-avatar${m.role === "owner" ? " owner" : ""}" aria-hidden="true">${esc(initial)}</span>` +
-          `<div class="text"><span>${esc(title)}${m.self ? " " + this._chip(t.memberYou, "on") : ""}</span>` +
-          (sub ? `<span class="supporting">${esc(sub)}</span>` : "") + `</div>` +
-          this._chip(t[`role_${m.role}`] || t.role_unknown, m.role === "owner" ? "ok" : "") + `</div>`;
-      }).join("");
-      return `<div class="members"><div class="members-head">${esc(t.members)} (${list.length})</div>${rows}` +
-        `<div class="muted small">${esc(t.membersHint)}</div></div>`;
+    _num(n, d = 1) {
+      return this._fmt(n, d);
     }
 
-    async _redeemVoucher(entryId) {
-      const v = ((this._voucher ||= {})[entryId] ||= {});
-      const code = String(v.code || "").trim();
-      if (!code || v.busy || !this._hass) return;
-      v.busy = true;
-      v.error = null;
-      v.done = null;
-      this._render();
-      try {
-        const answer = await this._hass.callWS({ type: "storybox_plus/voucher/redeem", entry_id: entryId, code });
-        v.done = answer.count;
-        v.code = "";
-        if (this._library) this._library.tunes = answer.tunes;
-      } catch (err) {
-        v.error = this._errText(err);
-      }
-      v.busy = false;
-      this._render();
-    }
-
-    // Piper speaks in Home Assistant; the integration uploads the recording as a chapter
-    async _addFromText() {
-      const sp = this._speak;
-      const text = String(sp?.text || "").trim();
-      if (!sp || !text || sp.busy || !this._hass) return;
-      sp.busy = true;
-      sp.error = null;
-      this._refreshList();
-      const msg = { type: "storybox_plus/chapters/add_text", tonie_id: sp.id, text };
-      if (String(sp.title || "").trim()) msg.title = sp.title.trim();
-      try {
-        this._replaceTonie(await this._hass.callWS(msg));
-        if (this._speak === sp) this._speak = null;
-      } catch (err) {
-        sp.busy = false;
-        sp.error = this._errText(err);
-      }
-      this._refreshList();
-    }
-
-    async _redeemCode() {
-      const code = this._code;
-      const token = String(code?.token || "").trim();
-      if (!code || !token || code.busy || !this._hass) return;
-      code.busy = true;
-      code.error = null;
-      this._refreshList();
-      try {
-        this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/figure/redeem_token", tonie_id: code.id, token }));
-        if (this._code === code) this._code = null;
-      } catch (err) {
-        code.busy = false;
-        code.error = this._errText(err);
-      }
-      this._refreshList();
-    }
-
-    async _renameHousehold(id) {
-      const name = String(this._homeNames?.[id] ?? "").trim();
-      const entry = (this._overview?.entries || []).find((e) => (e.households || []).some((h) => h.id === id));
-      const home = entry?.households.find((h) => h.id === id);
-      if (!name || !home || name === home.name || !this._hass || this._homeBusy) return;
-      this._homeBusy = id;
-      this._homeError = null;
-      this._render();
-      try {
-        const answer = await this._hass.callWS({ type: "storybox_plus/household/rename", household_id: id, name });
-        home.name = name;
-        entry.title = answer.entry_title;
-        delete this._homeNames[id];
-      } catch (err) {
-        this._homeError = { id, message: this._errText(err) };
-      }
-      this._homeBusy = null;
-      this._render();
-    }
-
-    async _setPreference(entryId, key) {
-      const entry = this._overview?.entries.find((e) => e.entry_id === entryId);
-      if (!entry?.preferences || !this._hass) return;
-      this._prefError = null;
-      try {
-        entry.preferences = await this._hass.callWS({ type: "storybox_plus/preferences/set", entry_id: entryId, [key]: !entry.preferences[key] });
-        if (key === "analytics") {
-          // The integration sets the account up anew; the counted sums change with it
-          this._stats = {};
-          window.setTimeout(() => this._loadOverview(), 4000);
-        }
-      } catch (err) {
-        this._prefError = this._errText(err);
-      }
-      this._render();
-    }
-
-    async _setLock(id) {
-      const f = this._library?.tonies.find((x) => x.id === id);
-      if (!f || !this._hass) return;
-      this._lockError = null;
-      try {
-        f.locked = (await this._hass.callWS({ type: "storybox_plus/figure/lock", tonie_id: id, locked: !f.locked })).locked;
-      } catch (err) {
-        this._lockError = { id, message: this._errText(err) };
-      }
-      this._refreshList();
-    }
-
-    _tuneOn(id) {
-      return (this._library?.tunes || []).find((x) => x.assigned.includes(id)) || null;
-    }
-
-    // A bought Tune on the figure, or the Tunes that fit it to lay one on
-    _tuneRow(f) {
-      const t = this._t;
-      const on = this._tuneOn(f.id);
-      const fits = (this._library?.tunes || []).filter((x) => x.suitable.includes(f.id) && !x.assigned.includes(f.id));
-      if (!on && !fits.length) return "";
-      const busy = this._tuneBusy === f.id;
-      let html = `<div class="tune-row">`;
-      if (on) {
-        html += `<span>${esc(fill(t.tuneOn, { t: on.title }))}</span>` + this._btn(`tuneoff:${f.id}`, t.tuneRemove, "close", { disabled: busy });
-      } else {
-        html += `<ha-form data-form="tune:${esc(f.id)}"></ha-form>` + this._btn(`tuneon:${f.id}`, t.tuneAssign, "check", { disabled: busy });
-      }
-      html += `<span class="muted small hint">${esc(f.kind === "creative" ? t.tuneHintCreative : t.tuneHint)}</span></div>`;
-      if (this._tuneError?.id === f.id) html += this._alert(fill(t.tuneFailed, { e: this._tuneError.message }), "error");
-      return html;
-    }
-
-    async _setTune(id, tuneId) {
-      if (!this._hass || this._tuneBusy) return;
-      this._tuneBusy = id;
-      this._tuneError = null;
-      this._refreshList();
-      try {
-        const answer = await this._hass.callWS({ type: "storybox_plus/figure/tune", tonie_id: id, tune_id: tuneId });
-        this._library.tunes = answer.tunes;
-        // A creative figure plays other chapters now; a bought one keeps its own as they were
-        if (answer.figure?.kind === "creative") this._replaceTonie(answer.figure);
-      } catch (err) {
-        this._tuneError = { id, message: this._errText(err) };
-      }
-      this._tuneBusy = null;
-      this._refreshList();
-    }
-
-    // The lock of a bought figure or disc
-    _lockRow(f) {
-      const t = this._t;
-      let html = `<div class="switch-row"><ha-switch data-act="lock:${esc(f.id)}"${f.locked ? " checked" : ""} aria-label="${esc(t.lockSwitch)}"></ha-switch>` +
-        `<div class="text"><span>${esc(t.lockSwitch)}</span><span class="supporting wrap">${esc(t.lockHint)}</span></div></div>`;
-      if (this._lockError?.id === f.id) html += this._alert(fill(t.lockFailed, { e: this._lockError.message }), "error");
-      return html;
-    }
-
-    // The version of the integration, at the bottom of every tab
-    _about() {
-      const a = this._overview?.about;
-      if (!a?.version) return "";
-      return `<div class="about">${esc(fill(a.commit ? this._t.aboutCommit : this._t.about, a))}</div>`;
-    }
-
-    _content() {
-      switch (this._tab) {
-        case "figures": return this._figures() + this._about();
-        case "listening": return this._listening() + this._about();
-        case "preferences": return this._preferences() + this._about();
-        default: return this._boxes() + this._about();
-      }
-    }
-
-    // Formatting in the language of Home Assistant
     _date(key, long = false) {
       const d = parseDay(key);
       if (Number.isNaN(d.getTime())) return "–";
-      return d.toLocaleDateString(this._lang, long
-        ? { weekday: "short", day: "numeric", month: "short", year: "numeric" }
-        : { day: "numeric", month: "short" });
-    }
-
-    _num(n) {
-      return Number.isFinite(n) ? n.toLocaleString(this._lang, { maximumFractionDigits: 1 }) : "–";
+      return d.toLocaleDateString(this._lang, long ? { weekday: "short", day: "numeric", month: "short", year: "numeric" } : { day: "numeric", month: "short" });
     }
 
     _language(code) {
@@ -870,48 +1058,17 @@ if (!customElements.get("storybox-plus-panel")) {
       }
     }
 
-    // A failure as a sentence for the user: known codes get their own text, a lost
-    // connection says so; whatever else came keeps its message, never an object
-    _errText(err) {
-      const t = this._t;
-      const e = err && typeof err === "object" && err.error && typeof err.error === "object" ? err.error : err;
-      if (e == null) return t.errUnknown;
-      if (typeof e === "number" || [1, 2, 3].includes(e.code)) return t.errConnection;
-      const code = typeof e === "object" ? e.code : null;
-      if (code && t[`err_${code}`]) return t[`err_${code}`];
-      const raw = typeof e === "string" ? e : typeof e.message === "string" ? e.message : "";
-      if (/connection (lost|closed)|failed to fetch|socket/i.test(raw)) return t.errConnection;
-      return raw.trim() || t.errUnknown;
-    }
-
-    _fail(message) {
-      return this._alert(`${this._t.failed}: ${message}`, "error", "",
-        `<ha-button slot="action" appearance="plain" data-act="retry">${esc(this._t.retry)}</ha-button>`);
-    }
-
-    // look: "plain" (the default), "filled" (the main action of a group)
-    _btn(act, label, ic, { look = "plain", disabled = false, attrs = "" } = {}) {
-      return `<ha-button${look === "filled" ? "" : ' appearance="plain"'} data-act="${esc(act)}"${disabled ? " disabled" : ""}${attrs ? ` ${attrs}` : ""}>` +
-        `${ic ? `<ha-svg-icon slot="start" path="${MDI[ic]}"></ha-svg-icon>` : ""}${esc(label)}</ha-button>`;
-    }
-
-    _loading() {
-      return `<div class="muted">${esc(this._t.loading)}</div>`;
-    }
-
     // ---------------------------------------------------------------- boxes
 
-    _boxes() {
+    _boxesPage() {
       const t = this._t;
       const o = this._overview;
-      const err = this._errors.overview;
-      if (!o) return err ? this._fail(err) : this._loading();
-      let html = err ? this._fail(err) : "";
-      if (!o.entries.length) return html + this._alert(t.noEntry);
-      if (!o.entries.some((e) => e.loaded)) return html + this._alert(t.notLoaded);
+      const state = this._overviewState();
+      if (state) return state;
+      let html = this._errors.overview ? this._errHtml(this._errors.overview) : "";
       // Only a Toniebox 2 uses the live channel
-      if (!o.push_connected && o.boxes.some((b) => b.generation === "toniebox_2")) html += this._alert(t.pushDown, "warning");
-      if (!o.boxes.length) return html + this._card("", `<div class="muted">${esc(t.noBoxes)}</div>`);
+      if (!o.push_connected && o.boxes.some((b) => b.generation === "toniebox_2")) html += this._alertHelp("warning", t.pushDown, t.pushDownHelp);
+      if (!o.boxes.length) return html + this._section("", `<div class="muted">${esc(t.noBoxes)}</div>`);
       const households = new Set(o.boxes.map((b) => b.household).filter(Boolean));
       const many = households.size > 1;
       // A Toniebox 1 reports nothing live: it gets a small card of its own, after the Toniebox 2
@@ -924,18 +1081,106 @@ if (!customElements.get("storybox-plus-panel")) {
     // seen; the cloud knows no connection state of it, so it shows none
     _miniBox(b, showHousehold) {
       const t = this._t;
-      const pic = safeUrl(b.image_url);
       const seen = b.last_seen ? fill(t.lastSeen, { t: this._relative(b.last_seen) }) : "";
       const st = b.settings;
       const chips = (showHousehold && b.household ? this._chip(b.household) : "") +
         (st?.applied === false ? this._chip(t.settingsPending, "warn") : "");
       const summary = st ? this._settingsSummary(st, true) : "";
-      const cog = st ? iconButton("cog", t.boxSettingsOf, `data-act="boxset:${esc(b.id)}"`) : "";
+      const cog = st ? iconButton("cog", t.boxSettingsOf, `class="box-cog" data-act="boxset:${esc(b.id)}"`) : "";
       const lines = [summary, seen].filter(Boolean).map((x) => `<span class="supporting">${esc(x)}</span>`).join("");
-      return `<ha-card class="mini-box"><div class="mini-head">` +
-        (pic ? `<img class="box-pic small" src="${esc(pic)}" alt="">` : "") +
+      const src = safeUrl(b.image_url);
+      const pic = src ? `<img class="box-pic small" src="${esc(src)}" alt="">` : "";
+      return `<ha-card class="mini-box"><div class="mini-head">${pic}` +
         `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>${lines}</div>` +
         cog + `</div></ha-card>`;
+    }
+
+    // The settings in one sentence; a Toniebox 1 names all of its few
+    _settingsSummary(st, all = false) {
+      const t = this._t;
+      const v = st.values || {};
+      const parts = [];
+      if (v.max_volume != null) parts.push(fill(t.sumVolume, { v: this._fmt(v.max_volume) }));
+      if (all && v.max_headphone_volume != null) parts.push(fill(t.sumPhones, { v: this._fmt(v.max_headphone_volume) }));
+      if (v.lightring_brightness != null) parts.push(fill(t.sumRing, { v: this._fmt(v.lightring_brightness) }));
+      if (v.skipping_enabled) parts.push(t.sumSkip);
+      if (v.led_level) parts.push(fill(t.sumLed, { v: t[`v_${v.led_level}`] || v.led_level }));
+      if (all && v.accelerometer_enabled) parts.push(t.sumTilt);
+      return parts.length ? cap(parts.join(" · ")) : t.noSettings;
+    }
+
+    // A box opened: its settings, night mode, bedtimes or battery
+    _boxPage() {
+      const t = this._t;
+      if (!this._overview) return this._overviewState();
+      const b = this._boxById(this._key);
+      if (!b) return this._errHtml({ text: t.e_not_found, detail: "" });
+      switch (this._boxView) {
+        case "settings": return this._boxSettings(b);
+        case "night": return this._nightView(b);
+        case "bedtimes": return this._bedtimes(b);
+        case "battery": return this._battery(b);
+        default: return this._section("", `<div class="muted">${esc(t.noSettings)}</div>`);
+      }
+    }
+
+    // The settings of a box by topic, a row each; one save button for all
+    _boxSettings(b) {
+      const t = this._t;
+      const st = b.settings;
+      const scope = `box:${b.id}`;
+      const values = this._saved(scope);
+      const live = b.generation === "toniebox_2";
+      const pick = (options) => ({ select: { mode: "dropdown", options } });
+      const sides = [["left", t.v_left], ["right", t.v_right]].map(([value, label]) => ({ value, label }));
+      const percent = { text: { suffix: "%" } };
+      const volumes = [25, 50, 75, 100].map((n) => ({ value: String(n), label: `${this._fmt(n)} %` }));
+      const withCurrent = (list, current) => (current && !list.includes(current) ? [...list, current] : list);
+      // A Toniebox 2 takes any percent, a classic box the four steps
+      const fields = {
+        name: [{ text: {} }],
+        max_volume: live ? [percent, true] : [pick(volumes)],
+        max_headphone_volume: live ? [percent, true] : [pick(volumes)],
+        lightring_brightness: [percent, true],
+        bedtime_lightring_brightness: [percent, true],
+        bedtime_max_volume: [percent, true],
+        bedtime_max_headphone_volume: [percent, true],
+        skipping_enabled: [{ boolean: {} }],
+        skipping_direction: [pick(sides)],
+        scrubbing_enabled: [{ boolean: {} }],
+        accelerometer_enabled: [{ boolean: {} }],
+        tap_direction: [pick(sides)],
+        led_level: [pick(["on", "dimmed", "off"].map((value) => ({ value, label: t[`v_${value}`] })))],
+        age_mode: [pick(withCurrent(["1+", "3+"], values.age_mode).map((value) => ({ value, label: value })))],
+        language: [pick(withCurrent(["de", "en", "en-us", "fr"], values.language).map((value) => ({ value, label: this._language(value) })))],
+      };
+      let html = "";
+      if (st.applied === false) html += this._alertHelp("info", t.settingsPending, t.settingsHint);
+      if (st.offline_mode) html += this._alertHelp("warning", t.offlineMode, t.offlineHelp);
+      BOX_GROUPS.forEach(([group, names], i) => {
+        const rows = names.filter((k) => k in values).map((k) => this._row(scope, k, t[`s_${k}`], t[`h_${k}`], ...fields[k]));
+        // The firmware matters seldom; it is noted at the end of the first group
+        if (i === 0 && b.firmware) rows.push(this._infoRow(t.firmware, t.h_firmware, b.firmware));
+        if (rows.length) html += this._section(t[group], rows.join(""), { cls: "rows" });
+      });
+      return html;
+    }
+
+    // The night mode of the light ring: a row per setting, saved with the others
+    _nightView(b) {
+      const t = this._t;
+      const scope = `night:${b.id}`;
+      const percent = { text: { suffix: "%" } };
+      let html = "";
+      if (b.night.mode?.enabled && b.night.phase) html += this._alertHelp("info", b.night.phase === "night" ? t.nightNow : t.dayNow, t.nightPhaseHelp);
+      const rows = [
+        this._row(scope, "enabled", t.n_enabled, t.h_n_enabled, { boolean: {} }),
+        this._row(scope, "start", t.n_start, t.h_n_start, { time: { no_second: true } }),
+        this._row(scope, "end", t.n_end, t.h_n_end, { time: { no_second: true } }),
+        this._row(scope, "night", t.n_night, t.h_n_night, percent, true),
+        this._row(scope, "day", t.n_day, t.h_n_day, percent, true),
+      ];
+      return html + this._section(t.nightMode, rows.join(""), { cls: "rows", help: t.nightHint });
     }
 
     // The weekday names in the language of Home Assistant; 1 January 2024 was a Monday
@@ -956,367 +1201,83 @@ if (!customElements.get("storybox-plus-panel")) {
     }
 
     // The bedtimes of a Toniebox 2 that rings alarms: the next alarm, the schedules
-    // with a switch each, and the form to change or add one
-    _bedtime(b) {
+    // with a switch each, a row opens the form to change one, a button adds one
+    _bedtimes(b) {
       const t = this._t;
       const bt = b.bedtime;
       const editing = this._sched?.box === b.id ? this._sched : null;
-      let html = `<div class="tile-head"><span class="tile-title">${esc(t.bedtimes)}</span>` +
-        (editing || !bt.schedules ? "" : this._btn(`sadd:${b.id}`, t.addSchedule, "plus")) + `</div>`;
+      let html = "";
       const next = bt.next_alarm;
       if (next) {
-        const at = new Date(time(next.at));
-        const when = at.toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
-        const [state, kind] = next.armed ? [t.alarmArmed, "ok"] : next.due ? [t.alarmPending, "warn"] : [t.alarmLater, ""];
-        html += `<div class="alarm-next"><span class="fact">${icon("alarm")}${esc(fill(t.nextAlarm, { t: when }))}</span>` +
-          `${this._chip(state, kind)}</div>`;
+        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        const state = next.armed ? t.alarmArmed : next.due ? t.alarmPending : t.alarmLater;
+        html += `<ha-alert alert-type="${next.armed ? "success" : "info"}" class="alarm-next">${esc(`${fill(t.nextAlarm, { t: when })} · ${state}`)}</ha-alert>`;
       }
-      if (!bt.schedules) return `<div class="tile">${html}<div class="muted small">${esc(t.schedulesUnknown)}</div></div>`;
-      if (!bt.schedules.length && !editing) html += `<div class="muted small">${esc(t.noSchedules)}</div>`;
-      if (bt.schedules.length) {
-        html += `<ul class="schedules">${bt.schedules.map((s) => {
-          if (editing?.id === s.id) return `<li class="editing">${this._scheduleForm(editing)}</li>`;
-          const times = `${s.sleep_time || "–"} – ${s.wakeup_time || "–"}`;
-          const facts = [this._days(s.days), times];
-          return `<li><ha-switch data-act="son:${esc(b.id)}:${esc(s.id)}"${s.enabled ? " checked" : ""} aria-label="${esc(t.scheduleOn)}"${this._sched ? " disabled" : ""}></ha-switch>` +
-            `<div class="text"><span>${esc(s.name || t.scheduleUnnamed)}${s.alarm_enabled ? ` <span class="alarm-mark" title="${esc(t.alarmOn)}">${icon("alarm")}</span>` : ""}</span>` +
-            `<span class="supporting">${esc(facts.join(" · "))}</span></div>` +
-            iconButton("pencil", t.edit, `data-act="sedit:${esc(b.id)}:${esc(s.id)}"${this._sched ? " disabled" : ""}`) + `</li>`;
-        }).join("")}</ul>`;
-      }
-      if (editing && editing.id === null) html += this._scheduleForm(editing);
-      if (bt.schedules.some((s) => s.alarm_enabled)) html += `<div class="muted small">${esc(t.alarmHint)}</div>`;
-      return `<div class="tile">${html}</div>`;
+      if (!bt.schedules) return html + this._section(t.bedtimes, this._alertHelp("warning", t.schedulesUnknown, t.schedulesUnknownHelp), { help: t.alarmHint });
+      let rows = bt.schedules.map((s) => {
+        if (editing?.id === s.id) return this._scheduleForm(editing);
+        const times = `${s.sleep_time || "–"} – ${s.wakeup_time || "–"}`;
+        const alarm = s.alarm_enabled ? ` <span class="alarm-mark" role="img" aria-label="${esc(t.alarmOn)}" title="${esc(t.alarmOn)}">${icon("alarm")}</span>` : "";
+        return `<div class="item"><ha-switch data-act="son:${esc(b.id)}:${esc(s.id)}"${s.enabled ? " checked" : ""}` +
+          ` aria-label="${esc(`${t.scheduleOn}: ${s.name || t.scheduleUnnamed}`)}"${this._sched ? " disabled" : ""}></ha-switch>` +
+          `<div class="main" role="button" tabindex="0" data-act="sedit:${esc(b.id)}:${esc(s.id)}" aria-label="${esc(`${t.edit}: ${s.name || t.scheduleUnnamed}`)}">` +
+          `<div class="text"><span class="headline">${esc(s.name || t.scheduleUnnamed)}${alarm}</span>` +
+          `<span class="supporting">${esc(`${this._days(s.days)} · ${times}`)}</span></div>${icon("pencil")}</div></div>`;
+      }).join("");
+      if (editing && editing.id === null) rows += this._scheduleForm(editing);
+      if (!bt.schedules.length && !editing) rows = `<div class="item muted">${esc(t.noSchedules)}</div>`;
+      const actions = editing ? "" : this._btn(`sadd:${b.id}`, t.addSchedule, "plus");
+      return html + this._section(t.bedtimes, rows, { help: t.alarmHint, cls: "list", actions });
     }
 
     _scheduleForm(edit) {
       const t = this._t;
       const busy = edit.saving;
-      let html = `<div class="sched-form">${edit.id === null ? `<div class="tile-title">${esc(t.scheduleNew)}</div>` : ""}<ha-form data-form="schedule"></ha-form>` +
-        `<div class="ch-bar">${this._btn("ssave", t.save, "check", { look: "filled", disabled: busy })}${this._btn("scancel", t.cancel, "close", { disabled: busy })}`;
-      if (edit.id !== null) {
-        html += this._btn("sdel", edit.confirm ? t.deleteConfirm : t.deleteSchedule, "remove", { disabled: busy, attrs: `class="danger-btn${edit.confirm ? " confirm" : ""}"` });
+      const form = this._formSlot("schedule", this._scheduleSchema(), edit.data, (v) => { edit.data = { ...v }; });
+      let html = `<div class="sched-form">${edit.id === null ? `<div class="tile-title">${esc(t.scheduleNew)}</div>` : ""}${form}`;
+      if (edit.confirm) {
+        html += `<ha-alert alert-type="warning">${esc(fill(t.confirmDelete, { name: edit.data.name || t.scheduleUnnamed }))}` +
+          `<ha-button slot="action" appearance="plain" data-act="sdelno">${esc(t.cancel)}</ha-button>` +
+          `<ha-button slot="action" variant="danger" data-act="sdelok">${esc(t.deleteSchedule)}</ha-button></ha-alert>`;
+      } else {
+        html += `<div class="bar-row">${this._btn("ssave", t.save, "check", { look: "filled", disabled: busy })}${this._btn("scancel", t.cancel, "close", { disabled: busy })}` +
+          (edit.id !== null ? this._btn("sdel", t.deleteSchedule, "remove", { look: "danger", disabled: busy }) : "") + `</div>`;
       }
-      html += `</div>`;
-      if (edit.error) html += this._alert(fill(t.scheduleFailed, { e: edit.error }), "error");
       return html + `</div>`;
     }
 
     _scheduleSchema() {
+      const t = this._t;
       const days = WEEKDAYS.map((d) => ({ value: d, label: this._dayName(d, "long") }));
       return [
-        { name: "name", required: true, selector: { text: {} } },
-        { name: "days", required: true, selector: { select: { multiple: true, mode: "list", options: days } } },
+        { name: "name", label: t.f_name, required: true, selector: { text: {} } },
+        { name: "days", label: t.f_days, required: true, selector: { select: { multiple: true, mode: "list", options: days } } },
         { name: "", type: "grid", schema: [
-          { name: "sleep_time", required: true, selector: { time: { no_second: true } } },
-          { name: "wakeup_time", required: true, selector: { time: { no_second: true } } },
+          { name: "sleep_time", label: t.f_sleep_time, required: true, selector: { time: { no_second: true } } },
+          { name: "wakeup_time", label: t.f_wakeup_time, required: true, selector: { time: { no_second: true } } },
         ] },
-        { name: "enabled", selector: { boolean: {} } },
-        { name: "alarm_enabled", selector: { boolean: {} } },
-        { name: "alarm_volume", selector: { number: { min: 0, max: 100, step: 5, mode: "slider", unit_of_measurement: "%" } } },
-        { name: "alarm_morning_light", selector: { boolean: {} } },
+        { name: "enabled", label: t.f_enabled, selector: { boolean: {} } },
+        { name: "alarm_enabled", label: t.f_alarm_enabled, selector: { boolean: {} } },
+        { name: "alarm_volume", label: t.f_alarm_volume, num: true, selector: { text: { suffix: "%" } } },
+        { name: "alarm_morning_light", label: t.f_alarm_morning_light, selector: { boolean: {} } },
       ];
     }
 
-    // Buttons and switches: "verb:argument"; the bedtimes' verbs begin with "s",
-    // the box settings' with "b"
-    _act(act) {
-      if (/^s(add|edit|save|cancel|del|on)(:|$)/.test(act)) this._scheduleAction(act);
-      else if (/^b(edit|save|cancel)(:|$)/.test(act)) this._settingsAction(act);
-      else if (/^n(edit|save|cancel|on)(:|$)/.test(act)) this._nightAction(act);
-      else if (act.startsWith("pautolock:")) this._setPreference(act.slice(10), "auto_lock");
-      else if (act.startsWith("pmarkread:")) this._setPreference(act.slice(10), "mark_read");
-      else if (act.startsWith("panalytics:")) this._setPreference(act.slice(11), "analytics");
-      else if (act === "dlgclose") this._closeOverlay();
-      else if (/^(fig|box|batt|tune)set:/.test(act)) {
-        this._closeOverlay();
-        if (this._overlayHtml) return;
-        const [kind, id] = act.split(/:(.*)/s);
-        if (kind === "figset") this._figDialog = id;
-        else if (kind === "tuneset") this._tuneDialog = id;
-        else if (kind === "boxset") this._boxDialog = id;
-        else this._battDialog = id;
-        this._render();
-      }
-      else if (act.startsWith("lock:")) this._setLock(act.slice(5));
-      else if (act.startsWith("swapshuffle:")) this._setShuffleOnSwap(act.slice(12));
-      else if (act.startsWith("figrename:")) this._updateFigure(act.slice(10), "name");
-      else if (act.startsWith("figlive:")) this._updateFigure(act.slice(8), "live");
-      else if (act.startsWith("homesave:")) this._renameHousehold(act.slice(9));
-      else if (act.startsWith("voucher:")) this._redeemVoucher(act.slice(8));
-      else if (act.startsWith("ctl:")) {
-        const [, boxId, command, value] = act.split(":");
-        this._command(boxId, command, value);
-      }
-      else if (act.startsWith("tuneoff:")) this._setTune(act.slice(8), null);
-      else if (act.startsWith("tuneon:")) {
-        const id = act.slice(7);
-        const pick = this._tunePick?.[id] || (this._library?.tunes || []).find((x) => x.suitable.includes(id))?.id;
-        if (pick) this._setTune(id, pick);
-      }
-      else this._chapterAction(act);
-    }
-
-    // The settings of a box: a summary with the state of the transfer, and the form
-    _settingsTile(b) {
-      const t = this._t;
-      const st = b.settings;
-      const editing = this._boxEdit?.box === b.id ? this._boxEdit : null;
-      const chips = (st.applied === false ? this._chip(t.settingsPending, "warn") : "") +
-        (st.offline_mode ? this._chip(t.offlineMode, "warn") : "");
-      let html = `<div class="tile-head"><span class="tile-title">${esc(t.boxSettings)}</span>${chips}<span class="grow"></span>` +
-        (editing ? "" : iconButton("pencil", t.edit, `data-act="bedit:${esc(b.id)}"${this._sched || this._boxEdit ? " disabled" : ""}`)) + `</div>`;
-      if (editing) return `<div class="tile">${html}${this._settingsForm(editing)}</div></div>`;
-      html += `<div class="muted small">${esc(this._settingsSummary(st))}</div>`;
-      if (b.night) html += this._night(b);
-      return `<div class="tile">${html}</div>`;
-    }
-
-    // The settings form, opened; the caller closes the form's outer div
-    _settingsForm(editing) {
-      const t = this._t;
-      let html = `<div class="sched-form"><ha-form data-form="settings"></ha-form><div class="ch-bar">` +
-        this._btn("bsave", t.save, "check", { look: "filled", disabled: editing.saving }) +
-        this._btn("bcancel", t.cancel, "close", { disabled: editing.saving }) +
-        `<span class="muted small hint">${esc(t.settingsHint)}</span></div>`;
-      if (editing.error) html += this._alert(fill(t.settingsFailed, { e: editing.error }), "error");
-      return html;
-    }
-
-    // The settings in one sentence; a Toniebox 1 names all of its few
-    _settingsSummary(st, all = false) {
-      const t = this._t;
-      const v = st.values || {};
-      const parts = [];
-      if (v.max_volume != null) parts.push(fill(t.sumVolume, { v: v.max_volume }));
-      if (all && v.max_headphone_volume != null) parts.push(fill(t.sumPhones, { v: v.max_headphone_volume }));
-      if (v.lightring_brightness != null) parts.push(fill(t.sumRing, { v: v.lightring_brightness }));
-      if (v.skipping_enabled) parts.push(t.sumSkip);
-      if (v.led_level) parts.push(fill(t.sumLed, { v: t[`v_${v.led_level}`] || v.led_level }));
-      if (all && v.accelerometer_enabled) parts.push(t.sumTilt);
-      return parts.length ? cap(parts.join(" · ")) : t.noSettings;
-    }
-
-    // The night mode of the light ring: a switch with the span, or the form
-    _night(b) {
-      const t = this._t;
-      const mode = b.night.mode;
-      const editing = this._nightEdit?.box === b.id ? this._nightEdit : null;
-      const busy = this._sched || this._boxEdit || this._nightEdit;
-      if (editing) {
-        let html = `<div class="sched-form"><div class="tile-title">${esc(t.nightMode)}</div><ha-form data-form="night"></ha-form><div class="ch-bar">` +
-          this._btn("nsave", t.save, "check", { look: "filled", disabled: editing.saving }) +
-          this._btn("ncancel", t.cancel, "close", { disabled: editing.saving }) +
-          `<span class="muted small hint">${esc(t.nightHint)}</span></div>`;
-        if (editing.error) html += this._alert(fill(t.nightFailed, { e: editing.error }), "error");
-        return html + `</div>`;
-      }
-      if (!mode) {
-        return `<div class="ch-bar night-row">${this._btn(`nedit:${b.id}`, t.nightSetup, "sleep", { disabled: !!busy })}</div>`;
-      }
-      const phase = b.night.phase === "night" ? this._chip(t.nightNow, "on") : b.night.phase === "day" ? this._chip(t.dayNow) : "";
-      return `<ul class="schedules night-row"><li><ha-switch data-act="non:${esc(b.id)}"${mode.enabled ? " checked" : ""} aria-label="${esc(t.nightMode)}"${busy ? " disabled" : ""}></ha-switch>` +
-        `<div class="text"><span>${esc(t.nightMode)} ${phase}</span><span class="supporting">${esc(fill(t.nightSummary, mode))}</span></div>` +
-        iconButton("pencil", t.edit, `data-act="nedit:${esc(b.id)}"${busy ? " disabled" : ""}`) + `</li></ul>`;
-    }
-
-    _nightSchema() {
-      const percent = { number: { min: 0, max: 100, step: 1, mode: "slider", unit_of_measurement: "%" } };
-      return [
-        { name: "enabled", selector: { boolean: {} } },
-        { name: "", type: "grid", schema: [
-          { name: "start", required: true, selector: { time: { no_second: true } } },
-          { name: "end", required: true, selector: { time: { no_second: true } } },
-        ] },
-        { name: "night", required: true, selector: percent },
-        { name: "day", required: true, selector: percent },
-      ];
-    }
-
-    _nightAction(act) {
-      const [verb, boxId] = act.split(/:(.*)/s);
-      const box = this._overview?.boxes.find((x) => x.id === boxId);
-      switch (verb) {
-        case "nedit": {
-          if (!box?.night || this._nightEdit || this._boxEdit || this._sched) return;
-          const mode = box.night.mode;
-          const ring = box.settings?.values?.lightring_brightness;
-          this._nightEdit = { box: boxId, saving: false, error: null, data: mode
-            ? { enabled: mode.enabled, start: mode.start, end: mode.end, night: mode.night, day: mode.day }
-            : { enabled: true, start: "19:00", end: "07:00", night: 10, day: Number.isFinite(ring) ? ring : 60 } };
-          break;
-        }
-        case "ncancel":
-          if (this._nightEdit?.saving) return;
-          this._nightEdit = null;
-          break;
-        case "nsave":
-          this._saveNight();
-          return;
-        case "non": {
-          const mode = box?.night?.mode;
-          if (!mode) return;
-          this._sendNight(boxId, { ...mode, enabled: !mode.enabled });
-          return;
-        }
-        default:
-          return;
-      }
-      this._render();
-    }
-
-    async _saveNight() {
-      const edit = this._nightEdit;
-      if (!edit || edit.saving) return;
-      const d = edit.data;
-      const mode = { enabled: !!d.enabled, start: clock(d.start), end: clock(d.end), night: Math.round(Number(d.night)), day: Math.round(Number(d.day)) };
-      if (!mode.start || !mode.end || !Number.isFinite(mode.night) || !Number.isFinite(mode.day)) return;
-      edit.saving = true;
-      edit.error = null;
-      this._render();
-      await this._sendNight(edit.box, mode, edit);
-      this._render();
-    }
-
-    // The integration answers with the box as it is afterwards
-    async _sendNight(boxId, mode, edit = null) {
-      if (!this._hass) return;
-      try {
-        const box = await this._hass.callWS({ type: "storybox_plus/night/set", box_id: boxId,
-          enabled: mode.enabled, start: mode.start, end: mode.end, night: mode.night, day: mode.day });
-        const boxes = this._overview?.boxes || [];
-        const i = boxes.findIndex((x) => x.id === boxId);
-        if (i >= 0) boxes[i] = box;
-        if (edit && this._nightEdit === edit) this._nightEdit = null;
-      } catch (err) {
-        if (edit) {
-          edit.saving = false;
-          edit.error = this._errText(err);
-        } else {
-          this._errors.overview = this._errText(err);
-        }
-      }
-      if (!edit) this._render();
-    }
-
-    _settingsSchema() {
-      const t = this._t;
-      const edit = this._boxEdit;
-      if (!edit) return [];
-      const box = this._overview?.boxes.find((x) => x.id === edit.box);
-      const values = box?.settings?.values || {};
-      const live = box?.generation === "toniebox_2";
-      const pick = (options) => ({ select: { mode: "dropdown", options } });
-      const sides = [["left", t.v_left], ["right", t.v_right]].map(([value, label]) => ({ value, label }));
-      const percent = (min) => ({ number: { min, max: 100, step: 1, mode: "slider", unit_of_measurement: "%" } });
-      const volumes = [25, 50, 75, 100].map((n) => ({ value: String(n), label: `${n} %` }));
-      const language = (code) => {
-        try {
-          return new Intl.DisplayNames([this._lang], { type: "language" }).of(code) || code;
-        } catch {
-          return code;
-        }
-      };
-      const withCurrent = (list, current) => (current && !list.includes(current) ? [...list, current] : list);
-      const fields = {
-        // A Toniebox 2 takes any percent, a classic box the four steps
-        max_volume: live ? percent(1) : pick(volumes),
-        max_headphone_volume: live ? percent(1) : pick(volumes),
-        lightring_brightness: percent(0),
-        bedtime_lightring_brightness: percent(0),
-        bedtime_max_volume: percent(1),
-        bedtime_max_headphone_volume: percent(1),
-        skipping_enabled: { boolean: {} },
-        skipping_direction: pick(sides),
-        scrubbing_enabled: { boolean: {} },
-        accelerometer_enabled: { boolean: {} },
-        tap_direction: pick(sides),
-        led_level: pick(["on", "dimmed", "off"].map((value) => ({ value, label: t[`v_${value}`] }))),
-        age_mode: pick(withCurrent(["1+", "3+"], values.age_mode).map((value) => ({ value, label: value }))),
-        language: pick(withCurrent(["de", "en", "en-us", "fr"], values.language).map((value) => ({ value, label: language(value) }))),
-      };
-      return [
-        { name: "name", required: true, selector: { text: {} } },
-        ...Object.keys(fields).filter((k) => k in values).map((k) => ({ name: k, required: true, selector: fields[k] })),
-      ];
-    }
-
-    _settingsAction(act) {
-      const [verb, boxId] = act.split(/:(.*)/s);
-      switch (verb) {
-        case "bedit": {
-          const box = this._overview?.boxes.find((x) => x.id === boxId);
-          if (!box?.settings || this._boxEdit || this._sched || this._nightEdit) return;
-          // The volume choices are a list of words for the form; the integration wants numbers
-          const data = { name: box.name, ...box.settings.values };
-          if (box.generation !== "toniebox_2") for (const k of ["max_volume", "max_headphone_volume"]) if (k in data) data[k] = String(data[k]);
-          this._boxEdit = { box: boxId, data, orig: { ...data }, saving: false, error: null };
-          break;
-        }
-        case "bcancel":
-          if (this._boxEdit?.saving) return;
-          this._boxEdit = null;
-          break;
-        case "bsave":
-          this._saveSettings();
-          return;
-        default:
-          return;
-      }
-      this._render();
-    }
-
-    // Only what changed goes to the integration
-    async _saveSettings() {
-      const edit = this._boxEdit;
-      if (!edit || edit.saving || !this._hass) return;
-      const msg = { type: "storybox_plus/box/settings", box_id: edit.box };
-      for (const [k, v] of Object.entries(edit.data)) {
-        if (v === edit.orig[k] || v === undefined || v === null) continue;
-        if (k === "name") {
-          if (!String(v).trim()) return;
-          msg.name = String(v).trim();
-        } else if (k === "max_volume" || k === "max_headphone_volume") msg[k] = Math.round(Number(v));
-        else if (typeof edit.orig[k] === "number") msg[k] = Math.round(Number(v));
-        else msg[k] = v;
-      }
-      if (Object.keys(msg).length === 2) {
-        this._boxEdit = null;
-        this._render();
-        return;
-      }
-      edit.saving = true;
-      edit.error = null;
-      this._render();
-      try {
-        const box = await this._hass.callWS(msg);
-        const boxes = this._overview?.boxes || [];
-        const i = boxes.findIndex((x) => x.id === edit.box);
-        if (i >= 0) boxes[i] = box;
-        if (this._boxEdit === edit) this._boxEdit = null;
-      } catch (err) {
-        edit.saving = false;
-        edit.error = this._errText(err);
-      }
-      this._render();
-    }
-
-    _scheduleAction(act) {
-      const [verb, rest = ""] = act.split(/:(.*)/s);
-      const [boxId, id] = rest.split(/:(.*)/s);
-      const box = this._overview?.boxes.find((x) => x.id === boxId);
+    _scheduleAction(verb, arg) {
+      const [boxId, id] = arg.split(/:(.*)/s);
+      const box = this._boxById(boxId);
       const edit = this._sched;
       switch (verb) {
         case "sadd":
           if (!box || edit) return;
-          this._sched = { box: boxId, id: null, saving: false, error: null, confirm: false,
+          this._sched = { box: boxId, id: null, saving: false, confirm: false,
             data: { name: "", days: WEEKDAYS.slice(0, 5), sleep_time: "19:00", wakeup_time: "06:30", enabled: true, alarm_enabled: true, alarm_volume: 50, alarm_morning_light: true } };
           break;
         case "sedit": {
           const s = box?.bedtime?.schedules?.find((x) => x.id === id);
           if (!s || edit) return;
           const { id: _id, ...data } = s;
-          this._sched = { box: boxId, id: s.id, saving: false, error: null, confirm: false, data: { ...data, days: [...s.days] } };
+          this._sched = { box: boxId, id: s.id, saving: false, confirm: false, data: { ...data, days: [...s.days] } };
           break;
         }
         case "scancel":
@@ -1328,16 +1289,18 @@ if (!customElements.get("storybox-plus-panel")) {
           return;
         case "sdel":
           if (!edit || edit.saving || edit.id === null) return;
-          if (!edit.confirm) {
-            edit.confirm = true;
-            break;
-          }
+          edit.confirm = true;
+          break;
+        case "sdelno":
+          if (edit) edit.confirm = false;
+          break;
+        case "sdelok":
           this._saveSchedule(true);
           return;
         case "son": {
           const s = box?.bedtime?.schedules?.find((x) => x.id === id);
           if (!s || edit) return;
-          this._sendSchedule(boxId, { type: "storybox_plus/bedtime/save", box_id: boxId, schedule_id: s.id, enabled: !s.enabled });
+          this._sendSchedule({ type: "storybox_plus/bedtime/save", box_id: boxId, schedule_id: s.id, enabled: !s.enabled });
           return;
         }
         default:
@@ -1354,42 +1317,42 @@ if (!customElements.get("storybox-plus-panel")) {
       if (remove) {
         msg = { type: "storybox_plus/bedtime/delete", box_id: edit.box, schedule_id: edit.id };
       } else {
+        const volume = Number(d.alarm_volume ?? 100);
         msg = {
           type: "storybox_plus/bedtime/save", box_id: edit.box,
           name: String(d.name || "").trim(), days: Array.isArray(d.days) ? d.days : [],
           sleep_time: clock(d.sleep_time), wakeup_time: clock(d.wakeup_time),
           enabled: !!d.enabled, alarm_enabled: !!d.alarm_enabled,
-          alarm_volume: Math.round(Number(d.alarm_volume ?? 100)), alarm_morning_light: !!d.alarm_morning_light,
+          alarm_volume: Math.round(volume), alarm_morning_light: !!d.alarm_morning_light,
         };
         if (edit.id !== null) msg.schedule_id = edit.id;
-        if (!msg.days.length || !msg.sleep_time || !msg.wakeup_time) return;
+        if (!msg.days.length || !msg.sleep_time || !msg.wakeup_time || !Number.isFinite(volume) || volume < 0 || volume > 100) {
+          this._note = this._error({ code: "invalid_format", message: "" });
+          this._render();
+          return;
+        }
       }
       edit.saving = true;
-      edit.error = null;
+      this._note = null;
       this._render();
-      const ok = await this._sendSchedule(edit.box, msg, edit);
+      const ok = await this._sendSchedule(msg);
       if (ok && this._sched === edit) this._sched = null;
+      else {
+        edit.saving = false;
+        edit.confirm = false;
+      }
       this._render();
     }
 
     // The integration answers with the box as it is afterwards
-    async _sendSchedule(boxId, msg, edit = null) {
+    async _sendSchedule(msg) {
       try {
-        const box = await this._hass.callWS(msg);
-        const boxes = this._overview?.boxes || [];
-        const i = boxes.findIndex((x) => x.id === boxId);
-        if (i >= 0) boxes[i] = box;
-        if (!edit) this._render();
+        this._replaceBox(await this._hass.callWS(msg));
+        this._render();
         return true;
       } catch (err) {
-        if (edit) {
-          edit.saving = false;
-          edit.confirm = false;
-          edit.error = this._errText(err);
-        } else {
-          this._errors.overview = this._errText(err);
-          this._render();
-        }
+        this._note = this._error(err);
+        this._render();
         return false;
       }
     }
@@ -1410,7 +1373,7 @@ if (!customElements.get("storybox-plus-panel")) {
           this._keepVolume();
         }
       } catch (err) {
-        this._ctlError = { id: boxId, message: this._errText(err) };
+        this._ctlError = { id: boxId, err };
       }
       this._ctlBusy = null;
       // The box reports the change through the push channel; the overview shows it soon after
@@ -1423,7 +1386,7 @@ if (!customElements.get("storybox-plus-panel")) {
     _keepVolume() {
       const sent = this._volSent;
       if (!sent) return;
-      const b = this._overview?.boxes?.find((x) => x.id === sent.box);
+      const b = this._boxById(sent.box);
       if (!b) { this._volSent = null; return; }
       // A fresh overview with the level: the box has it
       if (this._overview !== sent.overview && b.volume === sent.level) { this._volSent = null; return; }
@@ -1438,267 +1401,323 @@ if (!customElements.get("storybox-plus-panel")) {
       window.setTimeout(() => { if (this._volSent === sent) this._loadOverview(); }, 1500);
     }
 
-    // The battery in the overlay: level, what a charge lasts, and the charge history
+    // The battery: level, what a charge lasts, and the charge history
     _battery(b) {
       const t = this._t;
       const s = b.battery_stats;
-      const level = this._batteryLevel(b);
       const cur = s.current;
       const parts = [];
       if (Number.isFinite(b.battery_remaining_hours)) parts.push(fill(t.remaining, { h: hours(b.battery_remaining_hours) }));
       if (Number.isFinite(s.average_full_hours)) parts.push(fill(t.perFull, { h: this._num(s.average_full_hours) }));
       else if (Number.isFinite(cur?.per_full)) parts.push(fill(t.perFullProjected, { h: this._num(cur.per_full) }));
-      if (s.count > 0) parts.push(fill(s.count === 1 ? t.charge1 : t.chargesN, { n: s.count }));
-      if (Number.isFinite(cur?.hours) && Number.isFinite(cur?.from)) parts.push(fill(t.nowSince, { t: hours(cur.hours), p: cur.from }));
-      // The overlay is titled "Battery" already: the level leads, large
-      let html = `<div class="batt-level fact">${level}</div>` +
-        `<div class="muted small">${esc(cap(parts.length ? parts.join(" · ") : t.noCycles))}</div>`;
+      if (s.count > 0) parts.push(fill(s.count === 1 ? t.charge1 : t.chargesN, { n: this._fmt(s.count) }));
+      if (Number.isFinite(cur?.hours) && Number.isFinite(cur?.from)) parts.push(fill(t.nowSince, { t: hours(cur.hours), p: this._fmt(cur.from) }));
+      let html = this._section(t.battery, `<div class="batt-big fact">${this._batteryLevel(b)}</div>` +
+        `<div class="muted">${esc(cap(parts.length ? parts.join(" · ") : t.noCycles))}</div>`, { help: t.batteryHelp });
       const cycles = Array.isArray(s.cycles) ? s.cycles : [];
       if (cycles.length) {
         const max = Math.max(...cycles.map((c) => c.per_full).filter(Number.isFinite), 0);
-        const key = `batt:${b.id}`;
-        const open = this._open.has(key);
         const rows = cycles.map((c) => {
           const width = max > 0 && Number.isFinite(c.per_full) ? ((100 * c.per_full) / max).toFixed(1) : 0;
-          const level = Number.isFinite(c.from) && Number.isFinite(c.to) ? `${c.from} % → ${c.to} %` : "–";
+          const level = Number.isFinite(c.from) && Number.isFinite(c.to) ? `${this._fmt(c.from)} % → ${this._fmt(c.to)} %` : "–";
           return `<tr><td>${esc(this._date(c.day))}</td><td>${esc(hours(c.hours))}</td><td>${esc(level)}</td>` +
             `<td><div class="pf"><div class="bar"><div style="width:${width}%"></div></div><span>${esc(hours(c.per_full))}</span></div></td></tr>`;
         }).join("");
-        html += `<div class="pref-head">${esc(t.history)}</div><table class="cycles"><thead><tr>` +
+        html += this._section(t.history, `<div class="scroll"><table class="cycles"><thead><tr>` +
           `<th>${esc(t.colDay)}</th><th>${esc(t.colOn)}</th><th>${esc(t.colLevel)}</th><th>${esc(t.colPerFull)}</th></tr></thead>` +
-          `<tbody>${rows}</tbody></table>`;
+          `<tbody>${rows}</tbody></table></div>`);
       }
-      return `<div class="batt-view">${html}</div>`;
+      return html;
     }
 
     // -------------------------------------------------------------- figures
 
-    _figures() {
-      const t = this._t;
+    _libraryState() {
       const lib = this._library;
       const err = this._errors.library;
-      if (!lib) return err ? this._fail(err) : this._loading();
-      const kinds = KINDS.map((k) =>
-        `<button class="chip pick${this._kind === k ? " on" : ""}" data-kind="${k}" aria-pressed="${this._kind === k}">${esc(t[`kind_${k}`])}</button>`).join("");
-      return (err ? this._fail(err) : "") +
-        `<div class="filters"><ha-form class="search" data-form="search"></ha-form>` +
-        `<div class="chips">${kinds}</div></div><div id="figlist">${this._figureList()}</div>`;
+      if (!lib) return this._overviewState() || (err ? this._errHtml(err) : this._loadingHtml());
+      return "";
+    }
+
+    _figuresPage() {
+      const t = this._t;
+      const state = this._libraryState();
+      if (state) return state;
+      const err = this._errors.library;
+      const search = this._formSlot("search", [{ name: "query", label: t.search, selector: { text: { type: "search" } } }], { query: this._query },
+        (v) => {
+          this._query = v.query || "";
+          this._refreshList();
+        });
+      const kinds = KINDS.map((k) => `<ha-filter-chip data-act="kind" data-key="${k}" label="${esc(t[`kind_${k}`])}"${this._kind === k ? " selected" : ""}></ha-filter-chip>`).join("");
+      return (err ? this._errHtml(err) : "") +
+        `<div class="filters">${search}<ha-chip-set class="kinds" role="group" aria-label="${esc(t.kindLabel)}">${kinds}</ha-chip-set></div>` +
+        `<div id="figlist">${this._figureList()}</div>`;
     }
 
     _figureList() {
       const t = this._t;
       const lib = this._library;
-      if (!lib.tonies.length) return this._card("", `<div class="muted">${esc(t.noFigures)}</div>`);
+      if (!lib.tonies.length) return this._section("", `<div class="muted">${esc(t.noFigures)}</div>`);
       const q = this._query.trim().toLowerCase();
       const hit = (f) => (this._kind === "all" || f.kind === this._kind) &&
         (!q || [f.name, f.series, ...f.chapters.map((c) => c.title)].some((s) => s && String(s).toLowerCase().includes(q)));
       const list = lib.tonies.filter(hit);
       const all = list.length === lib.tonies.length;
       const count = `<div class="muted small count">${esc(all
-        ? (list.length === 1 ? t.figure1 : fill(t.figuresAll, { n: list.length }))
-        : fill(t.figuresOf, { n: list.length, m: lib.tonies.length }))}</div>`;
-      if (!list.length) return count + this._card("", `<div class="muted">${esc(t.noMatch)}</div>`);
+        ? (list.length === 1 ? t.figure1 : fill(t.figuresAll, { n: this._fmt(list.length) }))
+        : fill(t.figuresOf, { n: this._fmt(list.length), m: this._fmt(lib.tonies.length) }))}</div>`;
+      if (!list.length) return count + this._section("", `<div class="muted">${esc(t.noMatch)}</div>`);
       const boxes = new Map((this._overview?.boxes || []).map((b) => [b.id, b.name]));
       const households = new Map(lib.households.length > 1 ? lib.households.map((h) => [h.id, h.name]) : []);
-      return count + this._card("", list.map((f) => this._figure(f, boxes, households)).join(""), " list");
+      return count + `<ha-card class="list"><div class="card-content">${list.map((f) => this._figureRow(f, boxes, households)).join("")}</div></ha-card>`;
     }
 
-    _figure(f, boxes, households) {
+    // What a figure is, in a line: series, language, kind, household
+    _figureSub(f, households) {
       const t = this._t;
-      const open = this._open.has(f.id);
-      const chapters = f.chapters;
-      const sub = [f.series, this._language(f.language), f.kind !== "content" ? t[`kind1_${f.kind}`] : "", households.get(f.household_id)]
+      return [f.series, this._language(f.language), f.kind !== "content" ? t[`kind1_${f.kind}`] : "", households.get(f.household_id)]
         .filter(Boolean).map(esc).join(" · ");
-      const meta = [hm(f.seconds), fill(chapters.length === 1 ? t.chapter1 : t.chaptersN, { n: chapters.length })].map(esc).join(" · ");
-      const badges =
-        (f.on_box ? this._chip(fill(t.onBox, { box: boxes.get(f.on_box) || f.on_box }), "on") : "") +
+    }
+
+    _figureBadges(f, boxes) {
+      const t = this._t;
+      return (f.on_box ? this._chip(fill(t.onBox, { box: boxes.get(f.on_box) || f.on_box }), "on") : "") +
         (f.transcoding ? this._chip(t.transcoding, "warn") : "") +
-        (f.favourites?.active ? this._chip(fill(t.favChip, { n: f.favourites.chapters.length }), "fav") : "") +
-        (f.volume ? this._chip(fill(t.figVolumeChip, { v: f.volume })) : "") +
+        (f.favourites?.active ? this._chip(fill(t.favChip, { n: this._fmt(f.favourites.chapters.length) }), "fav") : "") +
+        (f.volume ? this._chip(fill(t.figVolumeChip, { v: this._fmt(f.volume) })) : "") +
         (this._tuneOn(f.id) ? this._chip(t.tune, "on") : "") +
         (f.live ? this._chip(t.liveChip) : "") +
-        (f.locked ? `<span class="lock" title="${esc(t.locked)}">${icon("lock")}</span>` : "");
-      let detail = "";
-      if (f.kind === "creative") {
-        const free = [fill(t.free, { t: hm(f.seconds_remaining) })];
-        if (Number.isFinite(f.chapters_remaining)) free.push(fill(f.chapters_remaining === 1 ? t.chapter1 : t.chaptersN, { n: f.chapters_remaining }));
-        detail += `<div class="muted small">${esc(free.join(" · "))}</div>`;
+        (f.locked ? `<span class="lock" role="img" aria-label="${esc(t.locked)}" title="${esc(t.locked)}">${icon("lock")}</span>` : "");
+    }
+
+    _figureRow(f, boxes, households) {
+      const t = this._t;
+      const sub = this._figureSub(f, households);
+      const meta = [hm(f.seconds), fill(f.chapters.length === 1 ? t.chapter1 : t.chaptersN, { n: this._fmt(f.chapters.length) })].map(esc).join(" · ");
+      return this._item("openfig", f.id, this._pic(f.image_url), f.name, [sub, meta].filter(Boolean).join("<br>"),
+        `<span class="badges">${this._figureBadges(f, boxes)}</span>`);
+    }
+
+    // A figure opened: its chapters, settings, Tune or what can be added
+    _figurePage() {
+      const t = this._t;
+      const state = this._libraryState();
+      if (state) return state;
+      const f = this._figure(this._key);
+      if (!f) return this._errHtml({ text: t.e_not_found, detail: "" });
+      switch (this._figView) {
+        case "settings": return this._figureSettings(f);
+        case "tune": return this._tuneView(f);
+        case "add": return this._addView(f);
+        default: return this._chaptersView(f);
       }
-      // Only a creative figure takes chapters; a bought one takes favourites. Volume,
-      // lock, Tune and shuffling sit behind the figure's cog
-      detail += f.kind === "creative" ? this._creativeDetail(f) : this._boughtDetail(f, chapters);
-      return `<div class="figure${open ? " open" : ""}"><div class="fig-head" role="button" tabindex="0" data-fold="${esc(f.id)}" aria-expanded="${open}">` +
-        `${this._pic(f.image_url)}<div class="text"><span class="headline">${esc(f.name)}</span>` +
-        `${sub ? `<span class="supporting">${sub}</span>` : ""}<span class="supporting">${meta}</span></div>` +
-        `<span class="badges">${badges}</span>` +
-        (this._tuneOn(f.id) || (this._library?.tunes || []).some((x) => x.suitable.includes(f.id) && !x.assigned.includes(f.id))
-          ? iconButton("song", t.tuneOf, `class="fig-cog" data-act="tuneset:${esc(f.id)}"`) : "") +
-        `${iconButton("cog", t.figSettings, `class="fig-cog" data-act="figset:${esc(f.id)}"`)}` +
-        `${icon("chevron")}</div><div class="detail">${detail}</div></div>`;
+    }
+
+    // The figure in short above its chapters: picture, what it is, its state
+    _figureHead(f) {
+      const t = this._t;
+      const lib = this._library;
+      const boxes = new Map((this._overview?.boxes || []).map((b) => [b.id, b.name]));
+      const households = new Map(lib.households.length > 1 ? lib.households.map((h) => [h.id, h.name]) : []);
+      const sub = this._figureSub(f, households);
+      const meta = [hm(f.seconds), fill(f.chapters.length === 1 ? t.chapter1 : t.chaptersN, { n: this._fmt(f.chapters.length) })];
+      if (f.kind === "creative") {
+        meta.push(fill(t.free, { t: hm(f.seconds_remaining) }));
+        if (Number.isFinite(f.chapters_remaining)) meta.push(fill(t.chaptersFree, { n: this._fmt(f.chapters_remaining) }));
+      }
+      return `<ha-card><div class="card-content bare head-fig">${this._pic(f.image_url)}<div class="text">` +
+        `${sub ? `<span>${sub}</span>` : ""}<span class="supporting">${esc(meta.join(" · "))}</span></div>` +
+        `<span class="badges">${this._figureBadges(f, boxes)}</span></div></ha-card>`;
+    }
+
+    _chaptersView(f) {
+      const t = this._t;
+      let html = this._figureHead(f) + this._progressHtml(f);
+      if (f.kind !== "creative") {
+        // The chapters of a bought figure with their favourite stars
+        const fav = f.favourites;
+        return html + this._section(t.vChapters, this._chapterList(f.chapters, false, { id: f.id, set: new Set(fav?.chapters || []) }), { help: t.favHint });
+      }
+      if (f.transcoding_errors?.length) {
+        const reasons = [...new Set(f.transcoding_errors)].map((r) => t[`reason_${r}`] || r).join(", ");
+        html += this._alertHelp("error", fill(t.convErrors, { r: reasons }), t.convErrorsHelp);
+      }
+      // Rearranging happens on a copy and goes to the cloud in one go when saved
+      const edit = this._edit?.id === f.id ? this._edit : null;
+      if (!edit) {
+        const busy = !!this._uploads[f.id] && !this._uploads[f.id].error;
+        const actions = f.chapters.length ? this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) : "";
+        return html + this._section(t.vChapters, this._chapterList(f.chapters), { actions, help: t.chaptersHelp });
+      }
+      const busy = edit.saving;
+      let body = "";
+      if (edit.chapters.length > 1) {
+        body += `<div class="bar-row">${this._btn("sorttitle", t.sortTitle, "sort", { disabled: busy })}${this._btn("shuffle", t.shuffle, "shuffle", { disabled: busy })}</div>`;
+      }
+      // Removing all chapters asks twice: once whether, once whether the files are kept elsewhere
+      if (edit.clearStep === 1 || edit.clearStep === 2) {
+        const [text, yes] = edit.clearStep === 1 ? [fill(t.clearAsk1, { n: this._fmt(edit.chapters.length) }), t.clearYes1] : [t.clearAsk2, t.clearYes2];
+        body += `<div class="clear-ask"><ha-alert alert-type="${edit.clearStep === 1 ? "warning" : "error"}">${esc(text)}</ha-alert>` +
+          // Keeping them is the obvious choice, first and filled; removing comes second
+          `<div class="bar-row">${this._btn("clearno", t.clearNo, "check", { look: "filled" })}${this._btn("clearyes", yes, "remove", { look: "danger" })}</div></div>`;
+      }
+      // One chapter at a time gets a new name, in a form above the list
+      if (Number.isInteger(edit.renaming) && edit.chapters[edit.renaming]) {
+        body += `<div class="form-row">${this._formSlot("chname", [{ name: "title", label: t.chapterName, required: true, selector: { text: {} } }],
+          { title: edit.renameTitle ?? "" }, (v) => { edit.renameTitle = v.title || ""; }, { enter: "chrenameok" })}` +
+          `${this._btn("chrenameok", t.apply, "check", { look: "filled" })}${this._btn("chrenamecancel", t.cancel, "close")}</div>`;
+      }
+      body += this._chapterList(edit.chapters, true);
+      const actions = (edit.chapters.length ? this._btn("clearall", t.clearAll, "remove", { look: "danger", disabled: busy || !!edit.clearStep }) : "") +
+        this._btn("chcancel", t.cancel, "close", { disabled: busy }) +
+        this._btn("chsave", t.save, "check", { look: "filled", disabled: busy || !!edit.clearStep });
+      return html + this._section(t.vChapters, body, { actions, help: t.editHint });
     }
 
     // With `fav` ({ id, set }) every chapter gets a star that marks it as a favourite
     _chapterList(chapters, editing = false, fav = null) {
       const t = this._t;
-      if (!chapters.length) return `<div class="muted small">${esc(t.noChapters)}</div>`;
+      if (!chapters.length) return `<div class="muted">${esc(t.noChapters)}</div>`;
       const last = chapters.length - 1;
       return `<ol class="chapters${editing ? " editing" : ""}">${chapters.map((c, i) => {
         const on = !!fav && fav.set.has(i);
+        const title = c.title || `${t.chapter} ${i + 1}`;
         const tools = editing
           ? `<span class="ch-tools">` +
-            iconButton("pencil", t.renameChapter, `data-act="chrename:${i}"`) +
-            iconButton("up", t.moveUp, `data-act="up:${i}"${i === 0 ? " disabled" : ""}`) +
-            iconButton("down", t.moveDown, `data-act="down:${i}"${i === last ? " disabled" : ""}`) +
-            iconButton("remove", t.remove, `class="danger" data-act="remove:${i}"`) + `</span>`
+            iconButton("pencil", `${t.renameChapter}: ${title}`, `data-act="chrename:${i}"`) +
+            iconButton("up", `${t.moveUp}: ${title}`, `data-act="up:${i}"${i === 0 ? " disabled" : ""}`) +
+            iconButton("down", `${t.moveDown}: ${title}`, `data-act="down:${i}"${i === last ? " disabled" : ""}`) +
+            iconButton("remove", `${t.remove}: ${title}`, `class="danger" data-act="remove:${i}"`) + `</span>`
           : fav
-            ? iconButton(on ? "star" : "starOff", t.favToggle, `class="star${on ? " on" : ""}" data-act="fav:${esc(fav.id)}:${i}" aria-pressed="${on}"`)
+            ? iconButton(on ? "star" : "starOff", `${t.favToggle}: ${title}`, `class="star${on ? " on" : ""}" data-act="fav:${esc(fav.id)}:${i}" aria-pressed="${on}"`)
             : "";
-        return `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
+        return `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(title)}</span>` +
           `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span>${tools}</li>`;
       }).join("")}</ol>`;
     }
 
-    // The chapters of a bought figure with their favourite stars; with favourites set,
-    // a switch says whether the box is steered by them
-    _boughtDetail(f, chapters) {
+    // What a figure has to set: a creative one its name, live mode and shuffling on
+    // swap, every one its volume; a bought one its lock and its favourites
+    _figureSettings(f) {
       const t = this._t;
-      const fav = f.favourites;
-      let html = "";
-      if (fav) {
-        html += `<div class="switch-row"><ha-switch data-act="favon:${esc(f.id)}"${fav.active ? " checked" : ""} aria-label="${esc(t.favSwitch)}"></ha-switch>` +
-          `<div class="text"><span>${esc(t.favSwitch)}</span><span class="supporting wrap">${esc(t.favHint)}</span></div></div>`;
-      }
-      if (this._favError?.id === f.id) {
-        html += this._alert(fill(t.favFailed, { e: this._favError.message }), "error", "",
-          `<ha-button slot="action" appearance="plain" data-act="favdismiss:${esc(f.id)}">${esc(t.dismiss)}</ha-button>`);
-      }
-      return html + this._chapterList(chapters, false, { id: f.id, set: new Set(fav?.chapters || []) });
+      const scope = `fig:${f.id}`;
+      const values = this._saved(scope);
+      const levels = [{ value: "box", label: t.figVolumeBox }, ...Array.from({ length: 13 }, (_, i) => ({ value: String(i + 1), label: `${this._fmt(i + 1)} / ${this._fmt(13)}` }))];
+      const rows = [];
+      if ("name" in values) rows.push(this._row(scope, "name", t.c_name, t.h_c_name, { text: {} }));
+      if ("live" in values) rows.push(this._row(scope, "live", t.c_live, t.h_c_live, { boolean: {} }));
+      rows.push(this._row(scope, "volume", t.figVolume, t.figVolumeHint, { select: { mode: "dropdown", options: levels } }));
+      if ("locked" in values) rows.push(this._row(scope, "locked", t.lockSwitch, t.lockHint, { boolean: {} }));
+      if ("favourites" in values) rows.push(this._row(scope, "favourites", t.favSwitch, t.favSwitchHint, { boolean: {} }));
+      if ("shuffle_on_swap" in values) rows.push(this._row(scope, "shuffle_on_swap", t.shuffleSwap, t.shuffleSwapHint, { boolean: {} }));
+      return this._section(t.vSettings, rows.join(""), { cls: "rows" });
     }
 
-    // The chapters of a creative figure with the tools to upload, rearrange and remove them.
-    // Rearranging happens on a copy and goes to the cloud in one go when saved.
-    _creativeDetail(f) {
+    _tuneOn(id) {
+      return (this._library?.tunes || []).find((x) => x.assigned.includes(id)) || null;
+    }
+
+    _tunesFor(id) {
+      return (this._library?.tunes || []).filter((x) => x.suitable.includes(id) && !x.assigned.includes(id));
+    }
+
+    // A bought Tune on the figure, or the Tunes that fit it to lay one on
+    _tuneView(f) {
       const t = this._t;
-      const edit = this._edit?.id === f.id ? this._edit : null;
-      const up = this._uploads[f.id];
-      let html = "";
-      if (f.transcoding_errors?.length) {
-        const reasons = [...new Set(f.transcoding_errors)].map((r) => t[`reason_${r}`] || r).join(", ");
-        html += this._alert(fill(t.convErrors, { r: reasons }), "error");
+      const on = this._tuneOn(f.id);
+      const busy = this._tuneBusy === f.id;
+      const help = f.kind === "creative" ? t.tuneHintCreative : t.tuneHint;
+      if (on) {
+        return this._section(t.tune, `<div>${esc(fill(t.tuneOn, { t: on.title }))}</div>`,
+          { help, actions: this._btn(`tuneoff:${f.id}`, t.tuneRemove, "close", { disabled: busy }) });
       }
-      if (edit) {
-        const busy = edit.saving;
-        html += `<div class="ch-bar">` +
-          this._btn("save", t.save, "check", { look: "filled", disabled: busy || !!edit.clearStep }) +
-          this._btn("cancel", t.cancel, "close", { disabled: busy }) +
-          `<span class="muted small hint">${esc(t.editHint)}</span></div>`;
-        if (edit.chapters.length) {
-          html += `<div class="ch-bar">` +
-            (edit.chapters.length > 1 ? this._btn("sorttitle", t.sortTitle, "sort", { disabled: busy }) + this._btn("shuffle", t.shuffle, "shuffle", { disabled: busy }) : "") +
-            this._btn("clearall", t.clearAll, "remove", { disabled: busy || !!edit.clearStep, attrs: 'class="danger-btn"' }) + `</div>`;
-        }
-        // Removing all chapters asks twice: once whether, once whether the files are kept elsewhere
-        if (edit.clearStep === 1 || edit.clearStep === 2) {
-          const [text, yes] = edit.clearStep === 1
-            ? [fill(t.clearAsk1, { n: edit.chapters.length }), t.clearYes1]
-            : [t.clearAsk2, t.clearYes2];
-          html += `<div class="clear-ask">` + this._alert(text, edit.clearStep === 1 ? "warning" : "error") +
-            // Keeping them is the obvious choice, first and filled; removing comes second, plain
-            `<div class="ch-bar">${this._btn("clearno", t.clearNo, "check", { look: "filled" })}` +
-            `${this._btn("clearyes", yes, "remove", { attrs: 'variant="danger"' })}</div></div>`;
-        }
-        if (edit.error) html += this._alert(fill(t.saveFailed, { e: edit.error }), "error");
-        // One chapter at a time gets a new name, in a form above the list
-        if (Number.isInteger(edit.renaming) && edit.chapters[edit.renaming]) {
-          html += `<div class="link-form"><ha-form data-form="chname"></ha-form><div class="ch-bar">` +
-            this._btn("chrenameok", t.apply, "check", { look: "filled" }) + this._btn("chrenamecancel", t.cancel, "close") + `</div></div>`;
-        }
-        return html + this._chapterList(edit.chapters, true);
-      }
-      const busy = !!up && !up.error;
-      const link = !busy && this._link?.id === f.id ? this._link : null;
-      // Links need the Media Fetcher app; without it the button stays grey and says so on hover
-      const app = this._library?.fetcher !== false;
-      const linkBtn = this._btn(`link:${f.id}`, t.fromLink, "link", { disabled: busy || !!link || !app });
-      html += `<div class="ch-bar">` +
-        this._btn(`upload:${f.id}`, t.upload, "upload", { disabled: busy }) +
-        (app ? linkBtn : `<span class="tip" title="${esc(t.fetcherMissing)}">${linkBtn}</span>`) +
-        (this._library?.speech
-          ? this._btn(`text:${f.id}`, t.fromText, "text", { disabled: busy || this._speak?.id === f.id })
-          : `<span class="tip" title="${esc(t.speechMissing)}">${this._btn(`text:${f.id}`, t.fromText, "text", { disabled: true })}</span>`) +
-        this._btn(`code:${f.id}`, t.fromCode, "plus", { disabled: busy || this._code?.id === f.id }) +
-        // Without chapters there is nothing to edit: name and live mode sit behind the cog
-        (f.chapters.length ? this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) : "") + `</div>`;
-      // Link, text and code open their form in the overlay
-      if (up) {
-        html += up.error
-          ? this._alert(fill(up.link ? t.linkFailed : t.uploadFailed, { e: up.error }), "error", "",
-            `<ha-button slot="action" appearance="plain" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</ha-button>`)
-          : `<div class="muted small busy">${esc(this._progressText(up))}</div>`;
-      }
-      return html + this._chapterList(f.chapters);
+      const fits = this._tunesFor(f.id);
+      const options = fits.map((x) => ({ value: x.id, label: x.remaining != null ? `${x.title} (${fill(t.tuneLeft, { n: this._fmt(x.remaining) })})` : x.title }));
+      const form = this._formSlot(`tune:${f.id}`, [{ name: "tune", label: t.tunePick, required: true, selector: { select: { mode: "dropdown", options } } }],
+        { tune: this._tunePick[f.id] || fits[0]?.id }, (v) => { this._tunePick[f.id] = v.tune; });
+      return this._section(t.tune, form, { help, actions: this._btn(`tuneon:${f.id}`, t.tuneAssign, "check", { look: "filled", disabled: busy }) });
     }
 
-    // The name or the live mode of a creative figure, from its settings
-    async _updateFigure(id, what) {
-      const f = this._library?.tonies.find((x) => x.id === id);
-      if (!f || !this._hass || this._figName?.busy) return;
-      const fn = this._figName?.id === id ? this._figName : { id, name: f.name };
-      const msg = { type: "storybox_plus/figure/update", tonie_id: id };
-      if (what === "name") {
-        const name = String(fn.name || "").trim();
-        if (!name || name === f.name) return;
-        msg.name = name;
-      } else msg.live = !f.live;
-      this._figName = { ...fn, busy: true, error: null };
-      this._refreshList();
+    async _setTune(id, tuneId) {
+      if (!this._hass || this._tuneBusy) return;
+      this._tuneBusy = id;
+      this._note = null;
+      this._render();
       try {
-        this._replaceTonie(await this._hass.callWS(msg));
-        this._figName = { id, name: undefined, busy: false, error: null };
+        const answer = await this._hass.callWS({ type: "storybox_plus/figure/tune", tonie_id: id, tune_id: tuneId });
+        this._library.tunes = answer.tunes;
+        // A creative figure plays other chapters now; a bought one keeps its own as they were
+        if (answer.figure?.kind === "creative") this._replaceTonie(answer.figure);
       } catch (err) {
-        this._figName = { ...fn, busy: false, error: this._errText(err) };
+        this._note = this._error(err);
       }
-      this._refreshList();
-    }
-
-    async _setShuffleOnSwap(id) {
-      const f = this._library?.tonies.find((x) => x.id === id);
-      if (!f || !this._hass) return;
-      this._shuffleError = null;
-      try {
-        f.shuffle_on_swap = (await this._hass.callWS({ type: "storybox_plus/figure/shuffle_on_swap", tonie_id: id, enabled: !f.shuffle_on_swap })).shuffle_on_swap;
-      } catch (err) {
-        this._shuffleError = { id, message: this._errText(err) };
-      }
-      this._refreshList();
+      this._tuneBusy = null;
+      this._render();
     }
 
     // What a running upload, or a chapter fetched from a link, is doing right now
-    _progressText(up) {
+    _progressHtml(f) {
       const t = this._t;
-      if (!up.link) return fill(t.uploading, { name: up.name, n: up.done + 1, m: up.total });
-      if (up.stage === "upload") return fill(t.linkUpload, { name: up.name });
-      if (up.stage === "convert") return fill(t.linkConvert, { name: up.name });
-      if (up.stage === "download") return fill(up.pct == null ? t.linkFetch : t.linkFetchPct, { name: up.name, p: up.pct });
-      return t.linkProbe;
+      const up = this._uploads[f.id];
+      if (!up) return "";
+      if (up.error) {
+        return this._alertHelp("error", up.error.text, up.error.detail ? `${t.errDetail}: ${up.error.detail}` : "",
+          `<ha-button slot="action" appearance="plain" data-act="dismiss:${esc(f.id)}">${esc(t.dismiss)}</ha-button>`);
+      }
+      let text;
+      if (!up.link) text = fill(t.uploading, { name: up.name, n: this._fmt(up.done + 1), m: this._fmt(up.total) });
+      else if (up.stage === "upload") text = fill(t.linkUpload, { name: up.name });
+      else if (up.stage === "convert") text = fill(t.linkConvert, { name: up.name });
+      else if (up.stage === "download") text = fill(up.pct == null ? t.linkFetch : t.linkFetchPct, { name: up.name, p: this._fmt(up.pct) });
+      else text = t.linkProbe;
+      return `<ha-alert alert-type="info">${esc(text)}</ha-alert>`;
+    }
+
+    // Chapters added to a creative figure: files, a YouTube link, a text Piper speaks
+    _addView(f) {
+      const t = this._t;
+      const lib = this._library;
+      const busy = !!this._uploads[f.id] && !this._uploads[f.id].error;
+      let html = this._progressHtml(f);
+      html += this._section(t.upload, `<div class="muted">${esc(t.uploadLine)}</div>`,
+        { help: t.uploadHint, actions: this._btn(`upload:${f.id}`, t.uploadFiles, "upload", { look: "filled", disabled: busy }) });
+      // Links need the Media Fetcher app, a text a Piper voice
+      if (lib.fetcher === false) html += this._section(t.fromLink, this._alertHelp("info", t.fetcherMissing, t.fetcherHelp), { help: t.linkHint });
+      else {
+        const link = this._link[f.id] || "";
+        html += this._section(t.fromLink, this._formSlot(`link:${f.id}`, [{ name: "url", label: t.linkPlaceholder, required: true, selector: { text: { type: "url" } } }],
+          { url: link }, (v) => { this._link[f.id] = v.url || ""; }, { enter: `linkadd:${f.id}` }),
+        { help: t.linkHint, actions: this._btn(`linkadd:${f.id}`, t.add, "check", { look: "filled", disabled: busy }) });
+      }
+      if (!lib.speech) html += this._section(t.fromText, this._alertHelp("info", t.speechMissing, t.speechHelp), { help: t.textHint });
+      else {
+        const sp = this._speak[f.id] || {};
+        const body = sp.busy
+          ? `<ha-alert alert-type="info">${esc(t.textBusy)}</ha-alert>`
+          : this._formSlot(`speak:${f.id}`, [
+            { name: "title", label: t.textTitle, selector: { text: {} } },
+            { name: "text", label: t.textBody, required: true, selector: { text: { multiline: true } } },
+          ], { title: sp.title || "", text: sp.text || "" }, (v) => { this._speak[f.id] = { ...sp, title: v.title || "", text: v.text || "" }; });
+        html += this._section(t.fromText, body, { help: t.textHint, actions: this._btn(`speakadd:${f.id}`, t.add, "check", { look: "filled", disabled: !!sp.busy }) });
+      }
+      return html;
     }
 
     // Buttons of the figures: "verb:argument"
-    _chapterAction(act) {
-      const [verb, arg] = act.split(/:(.*)/s);
+    _chapterAction(verb, arg) {
       const edit = this._edit;
-      const tonie = (id) => this._library?.tonies.find((x) => x.id === id);
       switch (verb) {
         case "edit": {
-          const f = tonie(arg);
-          if (f) this._edit = { id: f.id, chapters: f.chapters.map((c) => ({ ...c })), saving: false, error: null };
+          const f = this._figure(arg);
+          if (f) this._edit = { id: f.id, chapters: f.chapters.map((c) => ({ ...c })), saving: false };
           break;
         }
-        case "cancel":
+        case "chcancel":
           if (edit?.saving) return;
           this._edit = null;
           break;
-        case "save":
+        case "chsave":
           this._saveChapters();
           return;
         case "up":
@@ -1769,46 +1788,15 @@ if (!customElements.get("storybox-plus-panel")) {
           this._uploadTarget = arg;
           this.shadowRoot.getElementById("upload")?.click();
           return;
-        case "link":
-          if (this._uploads[arg] && !this._uploads[arg].error) return;
-          delete this._uploads[arg];
-          this._link = { id: arg, url: "" };
-          this._figDialog = null;
-          this._refreshList();
-          this.shadowRoot.querySelector('ha-form[data-form="link"]')?.focus();
-          return;
         case "linkadd":
-          this._fetchLink();
+          this._fetchLink(arg);
           return;
-        case "code":
-          this._code = { id: arg, token: "", busy: false, error: null };
-          this._figDialog = null;
-          break;
-        case "text":
-          if (!this._library?.speech) return;
-          this._speak = { id: arg, title: "", text: "", busy: false, error: null };
-          this._figDialog = null;
-          break;
-        case "speakcancel":
-          if (this._speak?.busy) return;
-          this._speak = null;
-          break;
         case "speakadd":
-          this._addFromText();
+          this._addFromText(arg);
           return;
-        case "codecancel":
-          if (this._code?.busy) return;
-          this._code = null;
-          break;
-        case "codeadd":
-          this._redeemCode();
-          return;
-        case "linkcancel":
-          this._link = null;
-          break;
         case "fav": {
           const [id, index] = arg.split(/:(\d+)$/);
-          const f = tonie(id);
+          const f = this._figure(id);
           if (!f) return;
           const set = new Set(f.favourites?.chapters || []);
           const i = Number(index);
@@ -1817,40 +1805,20 @@ if (!customElements.get("storybox-plus-panel")) {
           this._setFavourites(id, [...set], f.favourites ? f.favourites.active : true);
           return;
         }
-        case "favon": {
-          const f = tonie(arg);
-          if (!f?.favourites) return;
-          this._setFavourites(arg, f.favourites.chapters, !f.favourites.active);
-          return;
-        }
-        case "favdismiss":
-          this._favError = null;
-          break;
-        case "dismiss":
-          delete this._uploads[arg];
-          break;
         default:
           return;
       }
-      this._refreshList();
-    }
-
-    // A figure as the cloud answered it replaces the one in the library
-    _replaceTonie(tonie) {
-      if (!tonie?.id || !this._library) return;
-      const i = this._library.tonies.findIndex((x) => x.id === tonie.id);
-      if (i >= 0) this._library.tonies[i] = tonie;
-      else this._library.tonies.push(tonie);
+      this._render();
     }
 
     async _saveChapters() {
       const edit = this._edit;
       if (!edit || edit.saving || !this._hass) return;
       edit.saving = true;
-      edit.error = null;
-      this._refreshList();
+      this._note = null;
+      this._render();
       // The chapters go only when they changed, because every change makes the cloud convert
-      const before = this._library?.tonies.find((x) => x.id === edit.id);
+      const before = this._figure(edit.id);
       try {
         const ids = edit.chapters.map((c) => c.id);
         // Only the names that changed go along
@@ -1864,9 +1832,9 @@ if (!customElements.get("storybox-plus-panel")) {
         if (this._edit === edit) this._edit = null;
       } catch (err) {
         edit.saving = false;
-        edit.error = this._errText(err);
+        this._note = this._error(err);
       }
-      this._refreshList();
+      this._render();
     }
 
     // The files go to Home Assistant first (its own upload endpoint keeps them until
@@ -1875,76 +1843,37 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!this._hass) return;
       const up = { total: files.length, done: 0, name: files[0].name, error: null };
       this._uploads[id] = up;
-      this._refreshList();
+      this._render();
       for (const file of files) {
         up.name = file.name;
-        this._refreshList();
+        this._render();
         try {
           const form = new FormData();
           form.append("file", file);
           const resp = await this._hass.fetchWithAuth("/api/file_upload", { method: "POST", body: form });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          if (!resp.ok) throw { code: resp.status === 413 ? "too_large" : "upload_failed", message: `HTTP ${resp.status}` };
           const { file_id } = await resp.json();
           const title = file.name.replace(/\.[^.]+$/, "");
-          const tonie = await this._hass.callWS({ type: "storybox_plus/chapters/add", tonie_id: id, file_id, title });
-          this._replaceTonie(tonie);
+          this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/chapters/add", tonie_id: id, file_id, title }));
           up.done += 1;
         } catch (err) {
-          up.error = this._errText(err);
+          up.error = this._error(err);
           break;
         }
       }
       if (!up.error && this._uploads[id] === up) delete this._uploads[id];
-      this._refreshList();
+      this._render();
     }
 
-    // The volume of a figure goes to the integration at once; the answer is kept
-    async _setFigureVolume(id, level) {
-      const f = this._library?.tonies.find((x) => x.id === id);
-      if (!f || !this._hass || (f.volume ?? null) === level) return;
-      this._volError = null;
-      try {
-        f.volume = (await this._hass.callWS({ type: "storybox_plus/figure/volume", tonie_id: id, level })).volume;
-      } catch (err) {
-        this._volError = { id, message: this._errText(err) };
-      }
-      this._refreshList();
-    }
-
-    // The level of a figure, for every kind of figure, below its chapters' tools
-    _volumeRow(f) {
-      const t = this._t;
-      let html = `<div class="vol-row"><ha-form data-form="vol:${esc(f.id)}"></ha-form><span class="muted small hint">${esc(t.figVolumeHint)}</span></div>`;
-      if (this._volError?.id === f.id) html += this._alert(fill(t.figVolumeFailed, { e: this._volError.message }), "error");
-      return html;
-    }
-
-    // The favourites of a bought figure go to the integration at once; the answer is kept
-    async _setFavourites(id, chapters, active) {
-      if (!this._hass) return;
-      const f = this._library?.tonies.find((x) => x.id === id);
-      if (!f) return;
-      this._favError = null;
-      try {
-        const answer = await this._hass.callWS({ type: "storybox_plus/favourites/set", tonie_id: id, chapters, active });
-        f.favourites = answer.favourites;
-      } catch (err) {
-        this._favError = { id, message: this._errText(err) };
-      }
-      this._refreshList();
-    }
-
-    // The link goes to the integration, which fetches the audio through yt-dlp and
-    // appends the chapter; it reports the stages as events until done or failed
-    async _fetchLink() {
-      const link = this._link;
-      const url = (link?.url || "").trim();
-      if (!link || !url || !this._hass) return;
-      const id = link.id;
+    // The link goes to the integration, which fetches the audio through the Media
+    // Fetcher app and appends the chapter; it reports the stages until done or failed
+    async _fetchLink(id) {
+      const url = (this._link[id] || "").trim();
+      if (!url || !this._hass || (this._uploads[id] && !this._uploads[id].error)) return;
       const up = { total: 1, done: 0, name: "", error: null, link: true, stage: "probe", pct: null, unsub: null };
       this._uploads[id] = up;
-      this._link = null;
-      this._refreshList();
+      this._link[id] = "";
+      this._render();
       const end = () => {
         if (up.unsub) up.unsub();
         up.unsub = null;
@@ -1956,80 +1885,200 @@ if (!customElements.get("storybox-plus-panel")) {
             end();
             if (this._uploads[id] === up) delete this._uploads[id];
           } else if (ev.stage === "error") {
-            up.error = this._errText({ code: ev.code, message: ev.message });
+            up.error = this._error({ code: ev.code, message: ev.message });
             end();
           } else {
             up.stage = ev.stage;
             if (ev.title) up.name = ev.title;
             up.pct = ev.total ? Math.floor((ev.done / ev.total) * 100) : null;
           }
-          this._refreshList();
+          this._render();
         }, { type: "storybox_plus/chapters/add_link", tonie_id: id, url }, { resubscribe: false });
       } catch (err) {
-        up.error = this._errText(err);
-        this._refreshList();
+        up.error = this._error(err);
+        this._render();
       }
+    }
+
+    // Piper speaks in Home Assistant; the integration uploads the recording as a chapter
+    async _addFromText(id) {
+      const sp = this._speak[id] || {};
+      const text = String(sp.text || "").trim();
+      if (!text || sp.busy || !this._hass) return;
+      this._speak[id] = { ...sp, busy: true };
+      this._note = null;
+      this._render();
+      const msg = { type: "storybox_plus/chapters/add_text", tonie_id: id, text };
+      if (String(sp.title || "").trim()) msg.title = sp.title.trim();
+      try {
+        this._replaceTonie(await this._hass.callWS(msg));
+        delete this._speak[id];
+        this._done = { kind: "success", text: this._t.textAdded };
+      } catch (err) {
+        this._speak[id] = { ...sp, busy: false };
+        this._note = this._error(err);
+      }
+      this._render();
+    }
+
+    // The favourites of a bought figure go to the integration at once; the answer is kept
+    async _setFavourites(id, chapters, active) {
+      const f = this._figure(id);
+      if (!f || !this._hass) return;
+      this._note = null;
+      try {
+        f.favourites = (await this._hass.callWS({ type: "storybox_plus/favourites/set", tonie_id: id, chapters, active })).favourites;
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      this._render();
     }
 
     // While the cloud converts a creative figure, it is read again now and then
     async _refreshConverting() {
-      if (!this._hass || !this._library || this._busy.has("convert")) return;
+      if (!this._hass || !this._library || this._loading.has("convert")) return;
       const converting = this._library.tonies.filter((f) => f.kind === "creative" && f.transcoding);
       if (!converting.length) return;
-      this._busy.add("convert");
+      this._loading.add("convert");
       try {
-        for (const f of converting) {
-          this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/figure/refresh", tonie_id: f.id }));
-        }
+        for (const f of converting) this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/figure/refresh", tonie_id: f.id }));
       } catch {
         // The next poll of the integration catches up
       }
-      this._busy.delete("convert");
-      this._refreshList();
+      this._loading.delete("convert");
+      this._render();
+    }
+
+    // ---------------------------------------------------------------- tunes
+
+    // The bought Tunes, a voucher to redeem, content from a code
+    _tunesPage() {
+      const t = this._t;
+      const state = this._libraryState();
+      if (state) return state;
+      const lib = this._library;
+      const names = new Map(lib.tonies.map((f) => [f.id, f.name]));
+      const tunes = lib.tunes || [];
+      const rows = tunes.length
+        ? tunes.map((x) => {
+          const on = x.assigned.map((id) => names.get(id) || id).join(", ");
+          const sub = [x.remaining != null ? fill(t.tuneLeft, { n: this._fmt(x.remaining) }) : "", on ? fill(t.tuneOnFigure, { f: on }) : ""].filter(Boolean).join(" · ");
+          return `<div class="item">${this._pic(x.image_url)}<div class="text"><span class="headline">${esc(x.title)}</span>` +
+            `${sub ? `<span class="supporting">${esc(sub)}</span>` : ""}</div>${on ? this._chip(t.tuneInUse, "on") : ""}</div>`;
+        }).join("")
+        : `<div class="item muted">${esc(t.noTunes)}</div>`;
+      let html = this._section(t.tunesTitle, rows, { cls: "list", help: t.tunesHelp });
+      // A voucher counts for an account
+      const entries = this._loadedEntries();
+      for (const e of entries) {
+        const v = this._voucher[e.entry_id] || {};
+        let body = this._formSlot(`voucher:${e.entry_id}`, [{ name: "code", label: t.voucherCode, required: true, selector: { text: {} } }],
+          { code: v.code || "" }, (d) => { this._voucher[e.entry_id] = { ...(this._voucher[e.entry_id] || {}), code: d.code || "" }; }, { enter: `voucher:${e.entry_id}` });
+        if (v.done != null) body += `<ha-alert alert-type="success">${esc(v.done ? fill(t.voucherDone, { n: this._fmt(v.done) }) : t.voucherNone)}</ha-alert>`;
+        html += this._section(entries.length > 1 ? `${t.prefVoucher} · ${e.title}` : t.prefVoucher, body,
+          { help: t.voucherHint, actions: this._btn(`voucher:${e.entry_id}`, t.voucherRedeem, "check", { look: "filled", disabled: !!v.busy }) });
+      }
+      // Ready-made content from a code goes onto a creative figure
+      const creative = lib.tonies.filter((f) => f.kind === "creative");
+      if (creative.length) {
+        const c = this._code;
+        const tonie = creative.some((f) => f.id === c.tonie) ? c.tonie : creative[0].id;
+        const form = this._formSlot("code", [
+          { name: "tonie", label: t.codeFigure, required: true, selector: { select: { mode: "dropdown", options: creative.map((f) => ({ value: f.id, label: f.name })) } } },
+          { name: "token", label: t.codePlaceholder, required: true, selector: { text: {} } },
+        ], { tonie, token: c.token }, (d) => { this._code = { ...this._code, tonie: d.tonie, token: d.token || "" }; });
+        html += this._section(t.fromCode, form, { help: t.codeHint, actions: this._btn("codeadd", t.add, "check", { look: "filled", disabled: c.busy }) });
+      }
+      return html;
+    }
+
+    async _redeemVoucher(entryId) {
+      const v = (this._voucher[entryId] ||= {});
+      const code = String(v.code || "").trim();
+      if (!code || v.busy || !this._hass) return;
+      v.busy = true;
+      v.done = null;
+      this._note = null;
+      this._render();
+      try {
+        const answer = await this._hass.callWS({ type: "storybox_plus/voucher/redeem", entry_id: entryId, code });
+        v.done = answer.count;
+        v.code = "";
+        if (this._library) this._library.tunes = answer.tunes;
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      v.busy = false;
+      this._render();
+    }
+
+    async _redeemCode() {
+      const c = this._code;
+      const creative = (this._library?.tonies || []).filter((f) => f.kind === "creative");
+      const tonie = creative.some((f) => f.id === c.tonie) ? c.tonie : creative[0]?.id;
+      const token = String(c.token || "").trim();
+      if (!tonie || !token || c.busy || !this._hass) return;
+      this._code = { ...c, tonie, busy: true };
+      this._note = null;
+      this._render();
+      try {
+        this._replaceTonie(await this._hass.callWS({ type: "storybox_plus/figure/redeem_token", tonie_id: tonie, token }));
+        this._code = { tonie, token: "", busy: false };
+        this._done = { kind: "success", text: fill(this._t.codeAdded, { f: this._figure(tonie)?.name || "" }) };
+      } catch (err) {
+        this._code = { ...this._code, busy: false };
+        this._note = this._error(err);
+      }
+      this._render();
     }
 
     // ------------------------------------------------------------ listening
 
-    _listening() {
+    _listening(times) {
       const t = this._t;
       const range = this._range;
       const s = this._stats[range];
       const err = this._errors[`stats:${range}`];
-      const chips = RANGES.map(([k]) =>
-        `<button class="chip pick${range === k ? " on" : ""}" data-range="${k}" aria-pressed="${range === k}">${esc(t[`range_${k}`])}</button>`).join("");
-      // Where the numbers come from, and so what they cannot contain: above everything else
-      const note = this._alert(t.noteLocal, "info", t.noteLocalTitle);
-      let html = note + `<div class="filters"><div class="chips">${chips}</div></div>`;
-      if (!s) return html + (err ? this._fail(err) : this._loading());
-      if (err) html += this._fail(err);
-      if (!s.enabled) html += this._alert(t.disabled);
-      const label = s.days ? fill(t.lastDays, { n: s.days }) : s.first_day ? fill(t.since, { d: this._date(s.first_day, true) }) : t.sinceSetup;
-      html += this._card("", `<div class="total"><span class="big">${esc(hm(s.total_seconds))}</span><span class="unit">h</span></div>` +
-        `<div class="muted">${esc(t.total)} · ${esc(label)}</div>` + this._comparison(s));
-      if (!s.total_seconds && !s.top.length && !s.top_placed?.length) return html + this._card("", `<div class="muted">${esc(t.noStats)}</div>`);
-      const max = Math.max(...s.top.map((x) => x.seconds), 1);
+      const options = RANGES.map(([k]) => ({ value: k, label: t[`range_${k}`] }));
+      let html = `<ha-control-select id="range" class="range" label="${esc(t.rangeLabel)}" data-options="${esc(JSON.stringify(options))}" data-value="${esc(range)}"></ha-control-select>`;
+      if (!s) return html + (err ? this._errHtml(err) : this._loadingHtml());
+      if (err) html += this._errHtml(err);
+      if (!s.enabled) {
+        html += this._alertHelp("info", t.disabled, t.disabledHelp,
+          `<ha-button slot="action" appearance="plain" data-act="go" data-key="setup/preferences">${esc(t.pgPreferences)}</ha-button>`);
+      }
+      const empty = !s.total_seconds && !s.top.length && !s.top_placed?.length;
+      if (times) {
+        if (empty) return html + this._section("", `<div class="muted">${esc(t.noStats)}</div>`);
+        return html + this._dayChart(s) + this._heatmap(s);
+      }
+      const label = s.days ? fill(t.lastDays, { n: this._fmt(s.days) }) : s.first_day ? fill(t.since, { d: this._date(s.first_day, true) }) : t.sinceSetup;
+      // Where the numbers come from, and so what they cannot contain: behind the total's (i)
+      html += this._section(t.total, `<div class="total"><span class="big">${esc(hm(s.total_seconds))}</span><span class="unit">h</span></div>` +
+        `<div class="muted">${esc(label)}</div>` + this._comparison(s), { help: t.noteLocal });
+      if (empty) return html + this._section("", `<div class="muted">${esc(t.noStats)}</div>`);
+      const bar = (v, max) => `<div class="bar" role="img" aria-label="${esc(`${this._fmt((100 * v) / max)} %`)}"><div style="width:${((100 * v) / max).toFixed(1)}%"></div></div>`;
       if (s.top.length) {
-        html += this._card(esc(t.top), `<ol class="top">${s.top.map((x, i) =>
+        const max = Math.max(...s.top.map((x) => x.seconds), 1);
+        html += this._section(t.top, `<ol class="top">${s.top.map((x, i) =>
           `<li><span class="rank">${i + 1}</span>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.name || t.unknownFigure)}</span>` +
-          `<div class="bar"><div style="width:${((100 * x.seconds) / max).toFixed(1)}%"></div></div></div><span class="len">${esc(hm(x.seconds))}</span></li>`).join("")}</ol>`);
+          `${bar(x.seconds, max)}</div><span class="len">${esc(hm(x.seconds))}</span></li>`).join("")}</ol>`);
       }
       if (s.top_placed?.length) {
-        const pmax = Math.max(...s.top_placed.map((x) => x.times), 1);
-        html += this._card(esc(t.topPlaced), `<ol class="top placed">${s.top_placed.map((x, i) =>
+        const max = Math.max(...s.top_placed.map((x) => x.times), 1);
+        html += this._section(t.topPlaced, `<ol class="top placed">${s.top_placed.map((x, i) =>
           `<li><span class="rank">${i + 1}</span>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.name || t.unknownFigure)}</span>` +
-          `<div class="bar"><div style="width:${((100 * x.times) / pmax).toFixed(1)}%"></div></div></div><span class="len">${esc(fill(t.placedTimes, { n: x.times }))}</span></li>`).join("")}</ol>`);
+          `${bar(x.times, max)}</div><span class="len">${esc(fill(t.placedTimes, { n: this._fmt(x.times) }))}</span></li>`).join("")}</ol>`);
       }
       if (s.top_chapters?.length) {
-        const cmax = Math.max(...s.top_chapters.map((x) => x.seconds), 1);
-        html += this._card(esc(t.topChapters), `<ol class="top">${s.top_chapters.map((x, i) =>
+        const max = Math.max(...s.top_chapters.map((x) => x.seconds), 1);
+        html += this._section(t.topChapters, `<ol class="top">${s.top_chapters.map((x, i) =>
           `<li><span class="rank">${i + 1}</span>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.title || `${t.chapter} ${x.chapter + 1}`)}</span>` +
           `<span class="supporting">${esc(x.name || t.unknownFigure)} · ${esc(t.chapter)} ${x.chapter + 1}</span>` +
-          `<div class="bar"><div style="width:${((100 * x.seconds) / cmax).toFixed(1)}%"></div></div></div><span class="len">${esc(hm(x.seconds))}</span></li>`).join("")}</ol>`);
+          `${bar(x.seconds, max)}</div><span class="len">${esc(hm(x.seconds))}</span></li>`).join("")}</ol>`);
       }
-      html += this._dayChart(s);
-      html += this._heatmap(s);
       if (s.per_box.length) {
-        html += this._card(esc(t.perBox), `<table class="kv">${s.per_box.map((b) =>
+        html += this._section(t.perBox, `<table class="kv">${s.per_box.map((b) =>
           `<tr><th>${esc(b.name || b.box_id)}</th><td>${esc(hm(b.seconds))} h</td></tr>`).join("")}</table>`);
       }
       return html;
@@ -2039,13 +2088,13 @@ if (!customElements.get("storybox-plus-panel")) {
     _comparison(s) {
       if (!s.days || !Number.isFinite(s.previous_total_seconds) || s.previous_total_seconds <= 0) return "";
       const change = Math.round(((s.total_seconds - s.previous_total_seconds) / s.previous_total_seconds) * 100);
-      const p = `${change > 0 ? "+" : change < 0 ? "−" : "±"}${Math.abs(change)} %`;
+      const p = `${change > 0 ? "+" : change < 0 ? "−" : "±"}${this._fmt(Math.abs(change))} %`;
       const kind = change > 0 ? "ok" : change < 0 ? "warn" : "";
-      return `<div class="compare">${this._chip(fill(this._t.vsBefore, { p, n: s.days }), kind)}</div>`;
+      return `<div class="compare">${this._chip(fill(this._t.vsBefore, { p, n: this._fmt(s.days) }), kind)}</div>`;
     }
 
-    // Weekdays as rows, hours as columns; the shade is the share of the busiest cell.
-    // With several boxes, chips choose one or all of them
+    // Weekdays as rows, hours as columns; the shade is the share of the busiest cell,
+    // each cell says its time in words. With several boxes, one or all of them
     _heatmap(s) {
       const t = this._t;
       const boxes = Array.isArray(s.heatmap_boxes) ? s.heatmap_boxes : [];
@@ -2055,18 +2104,18 @@ if (!customElements.get("storybox-plus-panel")) {
       const max = Math.max(...grid.flat(), 1);
       const days = WEEKDAYS.map((d) => this._dayName(d));
       let rows = "";
-      grid.forEach((hours, w) => {
-        rows += `<div class="hm-day">${esc(days[w])}</div>` + hours.map((v, h) => {
-          const share = v / max;
-          return `<div class="hm-cell" style="--a:${share.toFixed(3)}" title="${esc(`${days[w]} ${pad(h)}:00 · ${hm(v)} h`)}"></div>`;
+      grid.forEach((hrs, w) => {
+        rows += `<div class="hm-day" aria-hidden="true">${esc(days[w])}</div>` + hrs.map((v, h) => {
+          const label = `${days[w]} ${pad(h)}:00 · ${hm(v)} h`;
+          return `<div class="hm-cell" role="img" style="--a:${(v / max).toFixed(3)}" aria-label="${esc(label)}" title="${esc(label)}"></div>`;
         }).join("");
       });
-      const scale = `<div></div>` + Array.from({ length: 24 }, (_, h) => `<div class="hm-hour">${h % 6 === 0 ? pad(h) : ""}</div>`).join("");
-      const chips = boxes.length > 1
-        ? `<div class="chips heat-boxes">` + [["", t.allBoxes], ...boxes.map((b) => [b.box_id, b.name || b.box_id])].map(([id, name]) =>
-          `<button class="chip pick${(pick ? pick.box_id : "") === id ? " on" : ""}" data-heatbox="${esc(id)}" aria-pressed="${(pick ? pick.box_id : "") === id}">${esc(name)}</button>`).join("") + `</div>`
+      const scale = `<div></div>` + Array.from({ length: 24 }, (_, h) => `<div class="hm-hour" aria-hidden="true">${h % 6 === 0 ? pad(h) : ""}</div>`).join("");
+      const options = [{ value: "*", label: t.allBoxes }, ...boxes.map((b) => ({ value: b.box_id, label: b.name || b.box_id }))];
+      const choose = boxes.length > 1
+        ? `<ha-control-select id="heatbox" class="range heat-boxes" label="${esc(t.heatBoxLabel)}" data-options="${esc(JSON.stringify(options))}" data-value="${esc(pick ? pick.box_id : "*")}"></ha-control-select>`
         : "";
-      return this._card(esc(t.whenListened), `${chips}<div class="heatmap">${rows}${scale}</div><div class="muted small">${esc(t.whenHint)}</div>`);
+      return this._section(t.whenListened, `${choose}<div class="heatmap">${rows}${scale}</div>`, { help: t.whenHint });
     }
 
     // One bar per day of the window, per week when there are many; empty days stay empty
@@ -2121,7 +2170,111 @@ if (!customElements.get("storybox-plus-panel")) {
         return `<rect class="hit" x="${x.toFixed(1)}" y="${T}" width="${slot.toFixed(2)}" height="${H - T - B}"><title>${esc(tip)}</title></rect>` +
           (b.v > 0 ? `<rect class="fill" x="${(x + (slot - bw) / 2).toFixed(2)}" y="${y.toFixed(1)}" width="${bw.toFixed(2)}" height="${(H - B - y).toFixed(1)}" rx="1"><title>${esc(tip)}</title></rect>` : "");
       }).join("");
-      return this._card(esc(weekly ? t.perWeek : t.perDay), `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">${grid}${labels}${rects}</svg>`);
+      const busiest = bars.reduce((a, b) => (b.v > a.v ? b : a), bars[0]);
+      const summary = fill(weekly ? t.chartWeeks : t.chartDays, {
+        n: this._fmt(bars.length), total: hm(bars.reduce((a, b) => a + b.v, 0)),
+        top: weekly ? fill(t.weekOf, { d: this._date(busiest.key, true) }) : this._date(busiest.key, true), v: hm(busiest.v),
+      });
+      return this._section(weekly ? t.perWeek : t.perDay, `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(summary)}">${grid}${labels}${rects}</svg>`);
+    }
+
+    // ---------------------------------------------------------------- setup
+
+    // The steps of the setup with their state, leading to the first open one; the version below
+    _setupPage() {
+      const t = this._t;
+      const o = this._overview;
+      if (!o) return this._overviewState();
+      const loaded = o.entries.filter((e) => e.loaded);
+      const homes = this._households();
+      const prefs = this._loadedEntries();
+      const onOff = (v) => (v ? t.sOn : t.sOff);
+      const prefLine = prefs.length
+        ? [["analytics", t.prefAnalyticsShort], ["auto_lock", t.prefAutoLockShort], ["mark_read", t.prefMarkReadShort]]
+          .map(([k, label]) => `${label} ${onOff(prefs[0].preferences[k])}`).join(" · ")
+        : t.sOpen;
+      const steps = [
+        [INTEGRATION_PATH, t.stepAccount, loaded.length > 0,
+          loaded.length ? loaded.map((e) => e.title).join(", ") : o.entries.length ? t.notLoaded : t.noEntry],
+        ["setup/household", t.stepHousehold, homes.length > 0 && homes.every((h) => String(h.name || "").trim()),
+          homes.length ? homes.map((h) => h.name).join(", ") : t.sOpen],
+        ["setup/preferences", t.stepPreferences, prefs.length > 0, prefLine],
+      ];
+      const next = steps.find((x) => !x[2]);
+      const items = steps.map(([path, title, done, sub], i) => this._item("go", path,
+        `<span class="step${done ? " done" : ""}" role="img" aria-label="${esc(done ? t.stepDone : t.stepOpen)}">${done ? icon("check") : `<b>${i + 1}</b>`}</span>`,
+        title, esc(sub))).join("");
+      const actions = next ? this._btn("go", t.next, "", { look: "filled", data: ` data-key="${esc(next[0])}"` }) : "";
+      let html = this._section(t.setupTitle, items, { cls: "list", help: t.setupHelp, actions });
+      // What makes more possible, not needed for the rest
+      const lib = this._library;
+      const known = (v) => (lib ? !!v : null);
+      const extras = [
+        [t.stepFetcher, known(lib?.fetcher), t.h_fetcher],
+        [t.stepPiper, known(lib?.speech), t.h_piper],
+      ].map(([title, done, help]) => `<div class="item"><span class="step${done ? " done" : ""}" role="img" aria-label="${esc(done ? t.stepDone : t.stepOpen)}">` +
+        `${icon(done ? "check" : "plus")}</span><div class="text"><span class="headline">${esc(title)}</span>` +
+        `<span class="supporting">${esc(done == null ? "…" : done ? t.sInstalled : t.sOptional)}</span></div>${this._help(help)}</div>`).join("");
+      html += this._section(t.extrasTitle, extras, { cls: "list" });
+      const a = o.about;
+      if (a?.version) html += `<div class="about">${esc(fill(a.commit ? t.aboutCommit : t.about, a))}</div>`;
+      return html;
+    }
+
+    // The name of each household, and its members as the cloud shows them
+    _householdPage() {
+      const t = this._t;
+      const state = this._overviewState();
+      if (state) return state;
+      const homes = this._households();
+      if (!homes.length) return this._section("", `<div class="muted">${esc(t.noHouseholds)}</div>`);
+      return homes.map((h) => {
+        const scope = `home:${h.id}`;
+        const title = homes.length > 1 ? h.name || h.id : t.prefHousehold;
+        return this._section(title, this._row(scope, "name", t.householdName, t.h_householdName, { text: {} }), { cls: "rows" }) + this._members(h);
+      }).join("");
+    }
+
+    // Who belongs to a household: shown only, managed in the app
+    _members(h) {
+      const t = this._t;
+      if (!Array.isArray(h.members)) return this._alertHelp("info", t.membersUnknown, t.membersHint);
+      const order = { owner: 0, full: 1, limited: 2 };
+      const list = [...h.members].sort((a, b) => (order[a.role] ?? 3) - (order[b.role] ?? 3) || String(a.name).localeCompare(String(b.name)));
+      const rows = list.map((m) => {
+        const full = [m.first_name, m.last_name].filter(Boolean).join(" ");
+        const title = full || m.name;
+        const sub = [full && m.name !== full && m.name !== m.first_name ? m.name : "", m.email && m.email !== title ? m.email : ""].filter(Boolean).join(" · ");
+        const initial = String(title || "?").trim().charAt(0).toUpperCase();
+        return `<div class="item member"><span class="member-avatar" aria-hidden="true">${esc(initial)}</span>` +
+          `<div class="text"><span class="headline">${esc(title)}</span>${sub ? `<span class="supporting">${esc(sub)}</span>` : ""}</div>` +
+          `<span class="badges">${m.self ? this._chip(t.memberYou, "on") : ""}${this._chip(t[`role_${m.role}`] || t.role_unknown, m.role === "owner" ? "ok" : "")}</span></div>`;
+      }).join("");
+      return this._section(fill(t.membersCount, { n: this._fmt(list.length) }), rows, { cls: "list", help: t.membersHint });
+    }
+
+    // The settings of each account by topic, and the version of the cloud
+    _preferencesPage() {
+      const t = this._t;
+      const state = this._overviewState();
+      if (state) return state;
+      const entries = this._loadedEntries();
+      let html = "";
+      for (const e of entries) {
+        const scope = `pref:${e.entry_id}`;
+        const named = (title) => (entries.length > 1 ? `${title} · ${e.title}` : title);
+        html += this._section(named(t.prefListening), this._row(scope, "analytics", t.prefAnalytics, t.prefAnalyticsHint, { boolean: {} }), { cls: "rows" });
+        html += this._section(named(t.prefFigures), this._row(scope, "auto_lock", t.prefAutoLock, t.prefAutoLockHint, { boolean: {} }), { cls: "rows" });
+        html += this._section(named(t.prefNotices), this._row(scope, "mark_read", t.prefMarkRead, t.prefMarkReadHint, { boolean: {} }), { cls: "rows" });
+        // Only the release counts, not the commit behind it
+        const c = e.cloud || {};
+        let cloud;
+        if (!c.version) cloud = this._alertHelp("info", t.cloudUnknown, t.cloudHelp);
+        else if (c.matches) cloud = this._alertHelp("success", `${fill(t.cloudVersion, { v: c.version })} · ${t.cloudTested}`, t.cloudHelp);
+        else cloud = this._alertHelp("warning", `${fill(t.cloudVersion, { v: c.version })} · ${fill(t.cloudUntested, { t: c.tested })}`, fill(t.cloudDiffers, { v: c.release, t: c.tested }));
+        html += this._section(named(t.prefCloud), cloud);
+      }
+      return html;
     }
   }
 
