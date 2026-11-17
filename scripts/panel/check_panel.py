@@ -1558,7 +1558,86 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await phone.context.close()
 
     await checks.run("phone width in dark mode: areas at the bottom, nothing sideways", phone_dark)
+
+    async def phone_safe_area() -> None:
+        phone = await _open(
+            browser, instance, ADMIN, viewport={"width": 390, "height": 844}, color_scheme="dark"
+        )
+        try:
+            measured: dict[str, Any] = {}
+            for name, path in (
+                ("the page", "/storybox-plus/boxes/overview"),
+                ("Home Assistant's automations", "/config/automation/dashboard"),
+            ):
+                await phone.goto(f"{instance.base}{path}")
+                await phone.wait_for_load_state("networkidle")
+                await phone.locator("#ha-launch-screen").wait_for(state="detached")
+                await phone.wait_for_timeout(1500)
+                # As Home Assistant's own debug setting simulates an iPhone's safe area
+                await phone.evaluate(SAFE_AREA)
+                await phone.wait_for_timeout(800)
+                frame = await phone.evaluate(MEASURE_FRAME)
+                expect(isinstance(frame, dict), f"{name}: {frame}")
+                height = frame["viewport"]
+                expect(frame["frame"] == [0, height], f"{name}: the frame spans {frame['frame']}")
+                expect(
+                    frame["toolbar"] == 56 + SAFE_TOP,
+                    f"{name}: the header is {frame['toolbar']} px high",
+                )
+                tabbar = frame["tabbar"]
+                expect(tabbar is not None, f"{name}: no tab bar at the bottom")
+                expect(
+                    tabbar[1] == height and 0 <= tabbar[0] < tabbar[1],
+                    f"{name}: the tab bar spans {tabbar} in a viewport of {height} px",
+                )
+                print(f"     {name}: {frame}")
+                measured[name] = frame
+            ours, theirs = measured.values()
+            expect(ours == theirs, f"the page {ours} differs from Home Assistant's {theirs}")
+        finally:
+            await phone.context.close()
+
+    await checks.run(
+        "phone with a safe area: header and tab bar as on Home Assistant's own pages",
+        phone_safe_area,
+    )
     return checks
+
+
+SAFE_TOP = 47
+# An iPhone's safe area, set the way Home Assistant's debug setting does it
+SAFE_AREA = f"""() => {{
+    const style = document.createElement('style');
+    style.textContent = ':root{{--app-safe-area-inset-top:{SAFE_TOP}px !important;'
+        + '--app-safe-area-inset-bottom:34px !important;}}';
+    document.head.append(style);
+}}"""
+# Where the first hass-tabs-subpage and its bottom tab bar sit ([top, bottom]), and its header's height
+MEASURE_FRAME = """() => {
+    const find = (root) => {
+        for (const el of root.querySelectorAll('*')) {
+            if (el.localName === 'hass-tabs-subpage') return el;
+            const inner = el.shadowRoot && find(el.shadowRoot);
+            if (inner) return inner;
+        }
+        return null;
+    };
+    const frame = find(document);
+    if (!frame) return 'no hass-tabs-subpage';
+    const span = (el) => {
+        if (!el) return null;
+        const box = el.getBoundingClientRect();
+        return [Math.round(box.top), Math.round(box.bottom)];
+    };
+    const root = frame.shadowRoot;
+    const toolbar = root.querySelector('.toolbar');
+    return {
+        viewport: innerHeight,
+        frame: span(frame),
+        toolbar: toolbar ? Math.round(toolbar.getBoundingClientRect().height) : null,
+        tabbar: span(root.querySelector('#tabbar.bottom-bar')),
+    };
+}"""
 
 
 # Every page of the panel, by its address

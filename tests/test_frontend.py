@@ -51,6 +51,7 @@ async def test_panel_is_registered_for_admins(
     assert panel.config["_panel_custom"]["name"] == PANEL_ELEMENT
     assert panel.config["_panel_custom"]["module_url"] == f"{PANEL_PATH}?v={digest}"
     assert panel.config["_panel_custom"]["embed_iframe"] is False
+    assert panel.config["_panel_custom"]["handle_safe_area"] is True
     assert hass.data[DATA_STATIC] is True
 
 

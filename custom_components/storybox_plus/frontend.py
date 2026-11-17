@@ -62,6 +62,8 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
         # The content hash makes browsers fetch every changed page, also within a version
         module_url=f"{PANEL_PATH}?v={digest}",
         require_admin=True,
+        # The frame (hass-tabs-subpage) keeps clear of a notch and rounded corners itself
+        handle_safe_area=True,
     )
 
 
