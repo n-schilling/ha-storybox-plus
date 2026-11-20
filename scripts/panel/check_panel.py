@@ -75,6 +75,11 @@ http:
   server_port: {port}
 frontend:
 config:
+# Home Assistant's frontend asks recorder/info on every page; without a recorder the
+# answer is unknown_command, which it sometimes leaves unhandled in the console. The
+# database lies in the throwaway configuration folder (in memory is not supported)
+recorder:
+  purge_keep_days: 1
 logger:
   default: warning
 """
