@@ -34,7 +34,7 @@ if (!customElements.get("storybox-plus-panel")) {
     ["boxes", "boxes", "tabBoxes", [["overview", "pgBoxes"]]],
     ["figures", "figuresArea", "tabFigures", [["list", "pgFigures"], ["tunes", "pgTunes"]]],
     ["listening", "listening", "tabListening", [["summary", "pgSummary"], ["times", "pgTimes"]]],
-    ["setup", "setup", "tabSetup", [["overview", "pgSetup"], ["household", "pgHousehold"], ["preferences", "pgPreferences"]]],
+    ["setup", "setup", "tabSetup", [["overview", "pgSetup"], ["household", "pgHousehold"], ["preferences", "pgPreferences"], ["log", "pgLog"]]],
   ];
   // The addresses of before the areas (#tab), as bookmarks still have them
   const OLD_HASH = { boxes: "boxes/overview", figures: "figures/list", listening: "listening/summary", preferences: "setup/preferences" };
@@ -53,6 +53,15 @@ if (!customElements.get("storybox-plus-panel")) {
   ];
   // The settings of an account on the page Preferences
   const PREF_KEYS = ["analytics", "auto_lock", "mark_read"];
+  // How long listening sums are kept (days, 0: all) and the bounds of the file size from the app (MB)
+  const ANALYTICS_DAYS = ["365", "730", "1825", "0"];
+  const FETCH_MB = [10, 2000];
+  // The choice of Piper's own default voice; a select shows an empty value as none
+  const DEFAULT_VOICE = "default";
+  // The integration's log levels, and how many of its latest lines the page shows
+  const LOG_LEVELS = ["debug", "info", "warning", "error"];
+  const LOG_LINES = 500;
+  const LOG_MAX_DAYS = 90;
 
   // In-app navigation like Home Assistant's own links, no page reload
   const navigate = (path, replace = false) => {
@@ -70,6 +79,15 @@ if (!customElements.get("storybox-plus-panel")) {
     #refresh.spin { animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .subname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log { font-family: var(--ha-font-family-code, ui-monospace, monospace); font-size: 12px; line-height: 1.5;
+      max-height: 70vh; overflow: auto; }
+    .log-line { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--divider-color); }
+    .log-time, .log-level, .log-source { flex: none; color: var(--secondary-text-color); white-space: nowrap; }
+    .log-level { width: 5.5em; }
+    .log-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .log-line.warning .log-level { color: var(--warning-color); }
+    .log-line.error .log-level, .log-line.critical .log-level { color: var(--error-color); }
+    @media (max-width: 600px) { .log-line { flex-wrap: wrap; } .log-msg { flex-basis: 100%; } }
     .page { display: flex; flex-direction: column; min-height: 100%; }
     .subtabs { flex: none; padding: 0 16px; }
     .sheet { width: 100%; max-width: 1040px; margin: 0 auto; padding: 16px 16px 88px; display: flex; flex-direction: column; gap: 16px; }
@@ -353,6 +371,7 @@ if (!customElements.get("storybox-plus-panel")) {
       const lib = area === "figures" || (area === "setup" && this._page === "overview");
       if (lib && (fresh || !this._library)) this._loadLibrary();
       if (area === "listening" && (fresh || !this._stats[this._range])) this._loadStats(this._range);
+      if (area === "setup" && this._page === "log") this._loadLog();
     }
 
     // The boxes are polled and their progress ticks only while their area shows; the
@@ -411,6 +430,10 @@ if (!customElements.get("storybox-plus-panel")) {
       return this._fetch("library", { type: "storybox_plus/library" }, (d) => { this._library = d; });
     }
 
+    _loadLog() {
+      return this._fetch("log", { type: "storybox_plus/log", limit: LOG_LINES }, (d) => { this._log = d; });
+    }
+
     _loadStats(range) {
       const days = RANGES.find(([k]) => k === range)?.[1] ?? null;
       return this._fetch(`stats:${range}`, { type: "storybox_plus/analytics", days, limit: 10 }, (d) => { this._stats[range] = d; });
@@ -421,6 +444,7 @@ if (!customElements.get("storybox-plus-panel")) {
     get _dataKey() {
       if (this._area === "figures") return "library";
       if (this._area === "listening") return `stats:${this._range}`;
+      if (this._area === "setup" && this._page === "log") return "log";
       return "overview";
     }
 
@@ -500,8 +524,15 @@ if (!customElements.get("storybox-plus-panel")) {
       }
       if (kind === "pref") {
         const p = this._loadedEntries().find((e) => e.entry_id === id)?.preferences;
-        return p ? Object.fromEntries(PREF_KEYS.map((k) => [k, !!p[k]])) : null;
+        if (!p) return null;
+        return {
+          ...Object.fromEntries(PREF_KEYS.map((k) => [k, !!p[k]])),
+          analytics_days: String(p.analytics_days ?? 730),
+          voice: p.voice ? `${p.voice_language}|${p.voice}` : DEFAULT_VOICE,
+          fetch_max_mb: p.fetch_max_mb ?? 200,
+        };
       }
+      if (kind === "log") return this._log ? { level: this._log.level, days: this._log.days } : null;
       return null;
     }
 
@@ -531,6 +562,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (sub === "fig") return this._figView === "settings" ? [`fig:${this._key}`] : [];
       if (this._area === "setup" && this._page === "household") return this._households().map((h) => `home:${h.id}`);
       if (this._area === "setup" && this._page === "preferences") return this._loadedEntries().map((e) => `pref:${e.entry_id}`);
+      if (this._area === "setup" && this._page === "log") return this._log ? ["log:all"] : [];
       return [];
     }
 
@@ -613,9 +645,31 @@ if (!customElements.get("storybox-plus-panel")) {
             e.title = answer.entry_title;
           }
         }
+      } else if (kind === "log") {
+        const msg = { type: "storybox_plus/log/set" };
+        if ("level" in ch) msg.level = ch.level;
+        if ("days" in ch) {
+          msg.days = num(ch.days);
+          if (msg.days < 0 || msg.days > LOG_MAX_DAYS) invalid();
+        }
+        const answer = await ws(msg);
+        this._log = { ...this._log, level: answer.level, days: answer.days, effective: answer.effective };
+        this._loadLog();
       } else if (kind === "pref") {
         const entry = this._loadedEntries().find((e) => e.entry_id === id);
-        entry.preferences = await ws({ type: "storybox_plus/preferences/set", entry_id: id, ...ch });
+        const msg = { type: "storybox_plus/preferences/set", entry_id: id };
+        for (const k of PREF_KEYS) if (k in ch) msg[k] = ch[k];
+        if ("analytics_days" in ch) msg.analytics_days = Number(ch.analytics_days);
+        if ("fetch_max_mb" in ch) {
+          msg.fetch_max_mb = num(ch.fetch_max_mb);
+          if (msg.fetch_max_mb < FETCH_MB[0] || msg.fetch_max_mb > FETCH_MB[1]) invalid();
+        }
+        if ("voice" in ch) {
+          const [language, voice] = ch.voice === DEFAULT_VOICE ? [] : String(ch.voice || "").split("|");
+          msg.voice = voice || null;
+          msg.voice_language = voice ? language : null;
+        }
+        entry.preferences = await ws(msg);
         if ("analytics" in ch) {
           // The integration sets the account up anew; the counted sums change with it
           this._stats = {};
@@ -702,6 +756,12 @@ if (!customElements.get("storybox-plus-panel")) {
           return;
         case "save":
           this._save();
+          return;
+        case "logcopy":
+          this._copyLog();
+          return;
+        case "logsave":
+          this._downloadLog();
           return;
         case "go":
           this._go(key);
@@ -1023,6 +1083,7 @@ if (!customElements.get("storybox-plus-panel")) {
         case "setup/overview": return html + this._setupPage();
         case "setup/household": return html + this._householdPage();
         case "setup/preferences": return html + this._preferencesPage();
+        case "setup/log": return html + this._logPage();
         default: return html + this._boxesPage();
       }
     }
@@ -1884,6 +1945,7 @@ if (!customElements.get("storybox-plus-panel")) {
             this._replaceTonie(ev.figure);
             end();
             if (this._uploads[id] === up) delete this._uploads[id];
+            this._done = { kind: "success", text: fill(this._t.linkAdded, { name: up.name }) };
           } else if (ev.stage === "error") {
             up.error = this._error({ code: ev.code, message: ev.message });
             end();
@@ -2253,6 +2315,105 @@ if (!customElements.get("storybox-plus-panel")) {
       return this._section(fill(t.membersCount, { n: this._fmt(list.length) }), rows, { cls: "list", help: t.membersHint });
     }
 
+    // The integration's log: its level, kept across restarts, and the latest lines
+    _logPage() {
+      const t = this._t;
+      const log = this._log;
+      if (!log) return this._errors.log ? this._errHtml(this._errors.log) : this._loadingHtml();
+      const options = LOG_LEVELS.map((l) => ({ value: l, label: t[`logL_${l}`] }));
+      let level = this._row("log:all", "level", t.logLevel, t.logLevelHint, { select: { mode: "dropdown", options } }) +
+        this._row("log:all", "days", t.logDays, t.logDaysHint, { text: { suffix: t.logDaysUnit } }, true);
+      if (LOG_LEVELS.indexOf(log.effective) >= 0 && LOG_LEVELS.indexOf(log.effective) < LOG_LEVELS.indexOf(log.level)) {
+        level += this._alert(fill(t.logEffective, { l: t[`logL_${log.effective}`] }), "info");
+      }
+      let html = this._section(t.logLevel, level, { cls: "rows" });
+      const lines = log.lines || [];
+      const body = lines.length
+        ? `<div class="log">${lines.map((l) => `<div class="log-line ${esc(l.level)}"><span class="log-time">${esc(this._logTime(l.time))}</span>` +
+          `<span class="log-level">${esc(l.level.toUpperCase())}</span><span class="log-source">${esc(l.source)}</span>` +
+          `<span class="log-msg">${esc(l.message)}</span></div>`).join("")}</div>`
+        : `<div class="muted">${esc(t.logEmpty)}</div>`;
+      const actions = lines.length
+        ? this._btn("logcopy", t.logCopy, "copy") + (log.days ? this._btn("logsave", t.logDownload, "download") : "")
+        : "";
+      html += this._section(t.logLines, body, { help: log.days ? t.logLinesHint : t.logLinesMemoryHint, actions });
+      return html;
+    }
+
+    _logTime(iso) {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      const ms = String(d.getMilliseconds()).padStart(3, "0");
+      return `${d.toLocaleDateString(this._lang, { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString(this._lang, { hour12: false })}.${ms}`;
+    }
+
+    _logText(lines) {
+      return lines.map((l) => `${l.time} ${l.level.toUpperCase()} [${l.source}] ${l.message}`).join("\n");
+    }
+
+    // Every line kept on disk, oldest first, as a text file
+    async _downloadLog() {
+      try {
+        const all = await this._hass.callWS({ type: "storybox_plus/log" });
+        const blob = new Blob([`${this._logText([...all.lines].reverse())}\n`], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `storybox_plus-${new Date().toISOString().slice(0, 10)}.log`;
+        a.click();
+        window.setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      } catch (err) {
+        this._note = this._error(err);
+        this._render();
+      }
+    }
+
+    async _copyLog() {
+      const lines = this._log?.lines || [];
+      const text = this._logText(lines);
+      try {
+        await navigator.clipboard.writeText(text);
+        this._done = { kind: "success", text: this._t.logCopied };
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      this._render();
+    }
+
+    // The Piper voice for text chapters: the voices of the page's language, or Piper's own
+    _voiceRow(scope, e) {
+      const t = this._t;
+      const engine = this._overview?.speech_engine;
+      if (!engine) return this._infoRow(t.prefVoice, t.prefVoiceHint, t.prefVoiceNone);
+      if (!this._voices) {
+        this._loadVoices(engine);
+        return this._infoRow(t.prefVoice, t.prefVoiceHint, t.loading);
+      }
+      const options = [{ value: DEFAULT_VOICE, label: t.prefVoiceDefault }, ...this._voices];
+      const current = this._saved(scope)?.voice;
+      if (current && current !== DEFAULT_VOICE && !options.some((o) => o.value === current)) options.push({ value: current, label: current.split("|")[1] });
+      return this._row(scope, "voice", t.prefVoice, t.prefVoiceHint, { select: { mode: "dropdown", options } });
+    }
+
+    async _loadVoices(engine) {
+      if (this._voicesLoading) return;
+      this._voicesLoading = true;
+      try {
+        const info = await this._hass.callWS({ type: "tts/engine/get", engine_id: engine });
+        const base = String(this._hass.locale?.language || this._hass.language || "en").split(/[-_]/)[0].toLowerCase();
+        const langs = (info.provider?.supported_languages || []).filter((l) => l.split(/[-_]/)[0].toLowerCase() === base);
+        const voices = [];
+        for (const language of langs) {
+          const answer = await this._hass.callWS({ type: "tts/engine/voices", engine_id: engine, language });
+          for (const v of answer.voices || []) voices.push({ value: `${language}|${v.voice_id}`, label: langs.length > 1 ? `${v.name} · ${language}` : v.name });
+        }
+        this._voices = voices;
+      } catch (err) {
+        this._voices = [];
+      }
+      this._voicesLoading = false;
+      this._render();
+    }
+
     // The settings of each account by topic, and the version of the cloud
     _preferencesPage() {
       const t = this._t;
@@ -2263,9 +2424,15 @@ if (!customElements.get("storybox-plus-panel")) {
       for (const e of entries) {
         const scope = `pref:${e.entry_id}`;
         const named = (title) => (entries.length > 1 ? `${title} · ${e.title}` : title);
-        html += this._section(named(t.prefListening), this._row(scope, "analytics", t.prefAnalytics, t.prefAnalyticsHint, { boolean: {} }), { cls: "rows" });
+        const keep = ANALYTICS_DAYS.map((d) => ({ value: d, label: t[`prefKeep_${d}`] }));
+        html += this._section(named(t.prefListening),
+          this._row(scope, "analytics", t.prefAnalytics, t.prefAnalyticsHint, { boolean: {} }) +
+          this._row(scope, "analytics_days", t.prefKeep, t.prefKeepHint, { select: { mode: "dropdown", options: keep } }), { cls: "rows" });
         html += this._section(named(t.prefFigures), this._row(scope, "auto_lock", t.prefAutoLock, t.prefAutoLockHint, { boolean: {} }), { cls: "rows" });
         html += this._section(named(t.prefNotices), this._row(scope, "mark_read", t.prefMarkRead, t.prefMarkReadHint, { boolean: {} }), { cls: "rows" });
+        html += this._section(named(t.prefChapters),
+          this._voiceRow(scope, e) +
+          this._row(scope, "fetch_max_mb", t.prefFetchMax, t.prefFetchMaxHint, { text: { suffix: "MB" } }, true), { cls: "rows" });
         // Only the release counts, not the commit behind it
         const c = e.cloud || {};
         let cloud;

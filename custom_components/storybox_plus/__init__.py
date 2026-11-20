@@ -26,6 +26,7 @@ from .coordinator import RuntimeData, StoryboxConfigEntry, StoryboxCoordinator
 from .favourites import FavouriteChapters
 from .frontend import async_register_frontend, async_unregister_panel
 from .ids import account_identifier, box_of
+from .log import DATA_LOG, async_get_log, async_remove_log
 from .night import NightModes
 from .notices import CloudNotices
 from .preferences import Preferences
@@ -90,6 +91,8 @@ def night_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
 
 async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> bool:
     """Set up one cloud account."""
+    # The log level comes first, so the setup is logged at it
+    await async_get_log(hass)
     session = async_get_clientsession(hass)
 
     @callback
@@ -120,7 +123,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
     # Counting is a preference of the settings tab; switching it off deletes the sums
     analytics: Analytics | None = None
     if preferences.analytics:
-        analytics = Analytics(analytics_store(hass, entry.entry_id), dt_util.now)
+        analytics = Analytics(
+            analytics_store(hass, entry.entry_id), dt_util.now, preferences.analytics_days
+        )
         await analytics.async_load()
     else:
         await analytics_store(hass, entry.entry_id).async_remove()
@@ -215,11 +220,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
     await entry.runtime_data.shuffles.async_save()
     if not any(e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e is not entry):
         async_unregister_panel(hass)
+        if (log := hass.data.pop(DATA_LOG, None)) is not None:
+            await log.async_close()
     return True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> None:
-    """Forget the listening sums, the learned chapters and the favourites of a removed account."""
+    """Forget the listening sums, the learned chapters and the favourites of a removed account.
+
+    The log's settings and files go with the last account.
+    """
+    if not any(
+        e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id
+    ):
+        await async_remove_log(hass)
     await analytics_store(hass, entry.entry_id).async_remove()
     await details_store(hass, entry.entry_id).async_remove()
     await battery_store(hass, entry.entry_id).async_remove()

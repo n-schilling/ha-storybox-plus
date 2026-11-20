@@ -32,8 +32,8 @@ TIMEOUT = aiohttp.ClientTimeout(total=30)
 FILE_TIMEOUT = aiohttp.ClientTimeout(total=600)
 # How often a running job is asked about (s)
 POLL = 1.0
-# The largest file taken from the app: far more than the 90 minutes of audio
-# a figure holds, as m4a
+# The largest file taken from the app unless the preferences say otherwise: far
+# more than the 90 minutes of audio a figure holds, as m4a
 MAX_FILE_BYTES = 200 * 1024 * 1024
 
 # The audio as the cloud takes it
@@ -176,10 +176,13 @@ def _audio_type(value: Any) -> str | None:
 class FetcherClient:
     """The app's HTTP API."""
 
-    def __init__(self, hass: HomeAssistant, fetcher: Fetcher) -> None:
-        """Use Home Assistant's session."""
+    def __init__(
+        self, hass: HomeAssistant, fetcher: Fetcher, max_bytes: int = MAX_FILE_BYTES
+    ) -> None:
+        """Use Home Assistant's session; a file larger than max_bytes is refused."""
         self._session = async_get_clientsession(hass)
         self._fetcher = fetcher
+        self._max_bytes = max_bytes
 
     async def _request(
         self,
@@ -203,7 +206,7 @@ class FetcherClient:
                 if resp.content_type == "application/json":
                     body = await resp.json()
                 else:
-                    body = await _read_limited(resp)
+                    body = await _read_limited(resp, self._max_bytes)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise FetcherUnavailable("unreachable", f"The app does not answer: {err}") from err
         except ValueError as err:
@@ -272,13 +275,14 @@ class FetcherClient:
             _LOGGER.debug("The job %s was not deleted: %s", job_id, err)
 
 
-async def _read_limited(resp: aiohttp.ClientResponse) -> bytes:
-    """Read a body of at most MAX_FILE_BYTES; a larger one is refused, also while it arrives."""
-    if resp.content_length is not None and resp.content_length > MAX_FILE_BYTES:
-        raise FetcherError("too_large", "The app's file is larger than a figure can hold")
+async def _read_limited(resp: aiohttp.ClientResponse, max_bytes: int) -> bytes:
+    """Read a body of at most max_bytes; a larger one is refused, also while it arrives."""
+    message = f"The app's file is larger than the {max_bytes // (1024 * 1024)} MB allowed"
+    if resp.content_length is not None and resp.content_length > max_bytes:
+        raise FetcherError("too_large", message)
     data = bytearray()
     async for chunk in resp.content.iter_chunked(1024 * 1024):
         data.extend(chunk)
-        if len(data) > MAX_FILE_BYTES:
-            raise FetcherError("too_large", "The app's file is larger than a figure can hold")
+        if len(data) > max_bytes:
+            raise FetcherError("too_large", message)
     return bytes(data)

@@ -7,6 +7,8 @@ community project HA-Toniebox (MIT); the code is our own.
 from __future__ import annotations
 
 import logging
+import re
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -115,6 +117,37 @@ async def _error_detail(resp: aiohttp.ClientResponse) -> str:
     return ""
 
 
+# IDs of the cloud are UUIDs or long hex strings; the log keeps their start, enough
+# to tell them apart, so a log shared in an issue does not carry whole IDs
+_LONG_ID = re.compile(r"\b([0-9A-Fa-f]{6})[0-9A-Fa-f-]{10,}\b")
+
+
+def short_ids(text: str) -> str:
+    """Cut the IDs in a text to their first six characters."""
+    return _LONG_ID.sub(r"\1…", text)
+
+
+def _is_write(method: str, path: str) -> bool:
+    """Whether a request changes something; GraphQL only reads here."""
+    return method.upper() != "GET" and path != "/graphql"
+
+
+def _ms(started: float) -> int:
+    return round((time.monotonic() - started) * 1000)
+
+
+_GRAPHQL_FIELD = re.compile(r"\{\s*(\w+)")
+
+
+def _graphql_name(path: str, body: Any) -> str:
+    """The path, and for GraphQL the field asked for, so the log tells the queries apart."""
+    if path != "/graphql" or not isinstance(body, dict):
+        return path
+    query = body.get("query")
+    match = _GRAPHQL_FIELD.search(query) if isinstance(query, str) else None
+    return f"{path} {match[1]}" if match else path
+
+
 class CloudClient:
     """Reads and writes the account's households, boxes and figures."""
 
@@ -131,8 +164,16 @@ class CloudClient:
     async def _request(
         self, method: str, path: str, json: Any = None, *, retry: bool = True
     ) -> Any:
-        """Send one request; a rejected token is refreshed once and the request repeated."""
+        """Send one request; a rejected token is refreshed once and the request repeated.
+
+        Every request is logged: a read at debug level, a change at info level,
+        a refused change as a warning. Only method, path, status and time go
+        to the log, never a token or a body.
+        """
         token = await self._auth.async_access_token()
+        write = _is_write(method, path)
+        shown = short_ids(_graphql_name(path, json))
+        started = time.monotonic()
         try:
             async with self._session.request(
                 method,
@@ -141,16 +182,38 @@ class CloudClient:
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=TIMEOUT,
             ) as resp:
+                took = _ms(started)
                 if resp.status == 401 and retry:
+                    _LOGGER.debug(
+                        "%s %s answered 401 in %s ms, refreshing the token", method, shown, took
+                    )
                     await self._auth.async_refresh()
                     return await self._request(method, path, json, retry=False)
                 if resp.status == 401:
+                    _LOGGER.warning("%s %s: the cloud rejected the token", method, path)
                     raise CloudAuthError("The cloud rejected the token")
                 if resp.status >= 400:
                     detail = await _error_detail(resp)
+                    _LOGGER.log(
+                        logging.WARNING if write else logging.DEBUG,
+                        "%s %s answered %s%s in %s ms",
+                        method,
+                        shown,
+                        resp.status,
+                        detail,
+                        took,
+                    )
                     raise CloudResponseError(
                         f"{method} {path} answered {resp.status}{detail}", resp.status
                     )
+                _LOGGER.log(
+                    logging.INFO if write else logging.DEBUG,
+                    "%s %s answered %s in %s ms",
+                    method,
+                    shown,
+                    resp.status,
+                    took,
+                )
                 if resp.status == 204 or resp.content_length == 0:
                     return None
                 try:
@@ -160,8 +223,22 @@ class CloudClient:
                         f"{method} {path} answered no JSON", resp.status
                     ) from err
         except TimeoutError as err:
+            _LOGGER.log(
+                logging.WARNING if write else logging.DEBUG,
+                "%s %s: no answer after %s ms",
+                method,
+                shown,
+                _ms(started),
+            )
             raise CloudConnectionError(f"Timeout for {method} {path}") from err
         except aiohttp.ClientError as err:
+            _LOGGER.log(
+                logging.WARNING if write else logging.DEBUG,
+                "%s %s: cloud not reached (%s)",
+                method,
+                shown,
+                type(err).__name__,
+            )
             raise CloudConnectionError(
                 f"Cannot reach the cloud for {method} {path}: {type(err).__name__}"
             ) from err
@@ -531,18 +608,39 @@ class CloudClient:
         for key, value in (fields or {}).items():
             form.add_field(str(key), str(value))
         form.add_field("file", data, filename=filename, content_type=content_type)
+        _LOGGER.info(
+            "Uploading %s (%.1f MB, %s) as file %s",
+            filename,
+            len(data) / 1e6,
+            content_type,
+            short_ids(file_id),
+        )
+        started = time.monotonic()
         try:
             async with self._session.post(url, data=form, timeout=UPLOAD_TIMEOUT) as resp:
                 if resp.status >= 300:
+                    _LOGGER.warning(
+                        "The storage refused file %s with %s after %s ms",
+                        short_ids(file_id),
+                        resp.status,
+                        _ms(started),
+                    )
                     raise CloudResponseError(
                         f"The storage refused the file with {resp.status}", resp.status
                     )
         except TimeoutError as err:
+            _LOGGER.warning("Upload of file %s: no answer of the storage", short_ids(file_id))
             raise CloudConnectionError("Timeout while uploading the file") from err
         except aiohttp.ClientError as err:
+            _LOGGER.warning(
+                "Upload of file %s: storage not reached (%s)",
+                short_ids(file_id),
+                type(err).__name__,
+            )
             raise CloudConnectionError(
                 f"Cannot reach the storage for the upload: {type(err).__name__}"
             ) from err
+        _LOGGER.info("The storage took file %s in %s ms", short_ids(file_id), _ms(started))
         return file_id
 
     async def async_add_chapter(

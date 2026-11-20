@@ -189,6 +189,7 @@ class PushClient:
             subscribed: set[str] = set()
             await self._async_subscribe(client, subscribed)
             self._set_connected(True)
+            _LOGGER.info("Push channel connected, following %s boxes", len(subscribed))
             self._resubscribe.clear()
             try:
                 async with asyncio.TaskGroup() as group:
@@ -204,6 +205,11 @@ class PushClient:
             # One message that cannot be handled must not cost the channel
             try:
                 event = self._parse(str(message.topic), message.payload)
+                _LOGGER.debug(
+                    "Push message on …/%s: %s",
+                    str(message.topic).rsplit("/", 2)[-1] if message.topic else "",
+                    type(event).__name__ if event is not None else "ignored",
+                )
                 if event is not None:
                     self._on_event(event)
             except Exception:

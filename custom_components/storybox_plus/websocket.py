@@ -58,7 +58,9 @@ from .coordinator import (
 )
 from .favourites import Favourites
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
+from .log import LEVELS, MAX_DAYS, async_get_log
 from .night import NightMode
+from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +97,9 @@ _CHAPTER_MESSAGES = {
     "unknown_tune": "The account has no such Tune",
     "unsuitable_tune": "The Tune does not fit this figure",
     "no_tune": "No Tune lies on this figure",
+    "tune_on": "A Tune lies on the figure; take it off first",
+    "tune_not_changed": "The cloud took the Tune change but does not show it yet",
+    "chapter_missing": "The cloud answered, but the chapter is not on the figure",
 }
 
 
@@ -120,6 +125,8 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_figure_tune)
     async_register_command(hass, websocket_shuffle_on_swap)
     async_register_command(hass, websocket_preferences)
+    async_register_command(hass, websocket_log)
+    async_register_command(hass, websocket_log_set)
     async_register_command(hass, websocket_rename_household)
     async_register_command(hass, websocket_box_command)
     async_register_command(hass, websocket_redeem_voucher)
@@ -452,6 +459,8 @@ async def websocket_overview(
             "push_connected": push_connected,
             "boxes": boxes,
             "about": await _about(hass),
+            # The Piper voice that speaks text chapters, for the choice of its voices
+            "speech_engine": speech.find_piper(hass),
         },
     )
 
@@ -742,6 +751,14 @@ async def websocket_add_link(
 
     @callback
     def tell(event: dict[str, Any]) -> None:
+        if event.get("stage") == "error":
+            _LOGGER.warning(
+                "Adding a chapter from a link failed: %s (%s)",
+                event.get("message"),
+                event.get("code"),
+            )
+        elif event.get("stage") == "done":
+            _LOGGER.info("Adding a chapter from a link is done")
         if msg_id in connection.subscriptions:
             connection.send_event(msg_id, event)
 
@@ -1281,6 +1298,14 @@ async def websocket_rename_household(
         probatio.Optional("auto_lock"): bool,
         probatio.Optional("mark_read"): bool,
         probatio.Optional("analytics"): bool,
+        probatio.Optional("analytics_days"): probatio.In(list(ANALYTICS_DAYS)),
+        probatio.Optional("voice"): probatio.Any(None, probatio.All(str, probatio.Length(max=200))),
+        probatio.Optional("voice_language"): probatio.Any(
+            None, probatio.All(str, probatio.Length(max=20))
+        ),
+        probatio.Optional("fetch_max_mb"): probatio.All(
+            int, probatio.Range(min=FETCH_MAX_MB[0], max=FETCH_MAX_MB[1])
+        ),
     }
 )
 @async_response
@@ -1294,11 +1319,55 @@ async def websocket_preferences(
         return
     preferences = entry.runtime_data.preferences
     counting = preferences.analytics
-    await preferences.async_set(msg.get("auto_lock"), msg.get("mark_read"), msg.get("analytics"))
+    changes = {k: v for k, v in msg.items() if k not in ("id", "type", "entry_id")}
+    try:
+        await preferences.async_set(**changes)
+    except ValueError:
+        connection.send_error(msg["id"], "invalid_format", "A voice needs its language")
+        return
+    if "analytics_days" in changes and entry.runtime_data.analytics is not None:
+        entry.runtime_data.analytics.set_keep_days(preferences.analytics_days)
+    _LOGGER.info("Preferences of %s changed: %s", entry.title, ", ".join(sorted(changes)))
     connection.send_result(msg["id"], preferences.as_dict())
     if preferences.analytics != counting:
         # Counting starts or ends with the entry: it is set up anew
         hass.config_entries.async_schedule_reload(entry.entry_id)
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/log",
+        # Without a limit, every line kept on disk (for the download)
+        probatio.Optional("limit"): probatio.All(int, probatio.Range(min=1)),
+    }
+)
+@async_response
+async def websocket_log(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """The integration's log settings and its latest lines, newest first."""
+    log = await async_get_log(hass)
+    connection.send_result(msg["id"], await log.async_as_dict(msg.get("limit")))
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/log/set",
+        probatio.Optional("level"): probatio.In(list(LEVELS)),
+        probatio.Optional("days"): probatio.All(int, probatio.Range(min=0, max=MAX_DAYS)),
+    }
+)
+@async_response
+async def websocket_log_set(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Change the log level or how many days the lines are kept, now and for the next start."""
+    log = await async_get_log(hass)
+    await log.async_set(msg.get("level"), msg.get("days"))
+    _LOGGER.info("Log level %s, lines kept for %s days", log.level, log.days)
+    connection.send_result(msg["id"], await log.async_as_dict(0))
 
 
 @require_admin

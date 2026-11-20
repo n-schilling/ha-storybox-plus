@@ -42,7 +42,15 @@ async def test_to_lock(hass: HomeAssistant) -> None:
     store: Store[dict[str, Any]] = Store(hass, 1, "storybox_plus.test.settings")
     prefs = Preferences(store)
     await prefs.async_load()
-    assert prefs.as_dict() == {"analytics": True, "auto_lock": True, "mark_read": False}
+    assert prefs.as_dict() == {
+        "analytics": True,
+        "auto_lock": True,
+        "mark_read": False,
+        "analytics_days": 730,
+        "voice": None,
+        "voice_language": None,
+        "fetch_max_mb": 200,
+    }
     assert prefs.to_lock([_tonie("old"), _tonie("c", TonieKind.CREATIVE)]) == []
     new, locked_already, disc = (
         _tonie("new"),
@@ -55,14 +63,22 @@ async def test_to_lock(hass: HomeAssistant) -> None:
     prefs.locked("new")
     assert prefs.to_lock([new]) == []
     # Switched off: new ones are only noted, also for later
-    await prefs.async_set(False, True)
+    await prefs.async_set(auto_lock=False, mark_read=True)
     assert prefs.to_lock([_tonie("later")]) == []
-    await prefs.async_set(True, None)
+    await prefs.async_set(auto_lock=True, mark_read=None)
     assert prefs.to_lock([_tonie("later")]) == []
     await prefs.async_save()
     again = Preferences(Store(hass, 1, "storybox_plus.test.settings"))
     await again.async_load()
-    assert again.as_dict() == {"analytics": True, "auto_lock": True, "mark_read": True}
+    assert again.as_dict() == {
+        "analytics": True,
+        "auto_lock": True,
+        "mark_read": True,
+        "analytics_days": 730,
+        "voice": None,
+        "voice_language": None,
+        "fetch_max_mb": 200,
+    }
     assert again.to_lock([_tonie("old"), _tonie("later"), _tonie("newest")]) == [_tonie("newest")]
 
 
@@ -148,7 +164,15 @@ async def test_preferences_set(
         {"type": f"{DOMAIN}/preferences/set", "entry_id": config_entry.entry_id, "mark_read": True}
     )
     result = await client.receive_json()
-    assert result["result"] == {"analytics": True, "auto_lock": True, "mark_read": True}
+    assert result["result"] == {
+        "analytics": True,
+        "auto_lock": True,
+        "mark_read": True,
+        "analytics_days": 730,
+        "voice": None,
+        "voice_language": None,
+        "fetch_max_mb": 200,
+    }
     await client.send_json_auto_id(
         {"type": f"{DOMAIN}/preferences/set", "entry_id": "nope", "auto_lock": False}
     )
@@ -318,3 +342,63 @@ async def test_household_members_never_read(
     await client.send_json_auto_id({"type": f"{DOMAIN}/overview"})
     overview = await client.receive_json()
     assert overview["result"]["entries"][0]["households"][0]["members"] is None
+
+
+async def test_new_preferences_are_checked_and_kept(hass: HomeAssistant) -> None:
+    """Days, voice and file size: wrong values are refused or ignored when read."""
+    store: Store[dict[str, Any]] = Store(hass, 1, "storybox_plus.test2.settings")
+    await store.async_save({"analytics_days": 99, "voice": "x", "fetch_max_mb": True, "known": []})
+    prefs = Preferences(store)
+    await prefs.async_load()
+    assert (prefs.analytics_days, prefs.voice, prefs.fetch_max_mb) == (730, None, 200)
+    await prefs.async_set(
+        analytics_days=0, fetch_max_mb=50, voice="de_DE-kerstin-low", voice_language="de_DE"
+    )
+    assert prefs.fetch_max_bytes == 50 * 1024 * 1024
+    again = Preferences(store)
+    await again.async_load()
+    assert (again.analytics_days, again.voice, again.voice_language, again.fetch_max_mb) == (
+        0,
+        "de_DE-kerstin-low",
+        "de_DE",
+        50,
+    )
+    for wrong in ({"analytics_days": 12}, {"fetch_max_mb": 5}, {"voice": "v"}):
+        with pytest.raises(ValueError):
+            await prefs.async_set(**wrong)
+    await prefs.async_set(voice="")
+    assert (prefs.voice, prefs.voice_language) == (None, None)
+
+
+async def test_new_preferences_on_the_page(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The page sets days, voice and file size; the days reach the counted sums at once."""
+    await _setup(hass, config_entry)
+    client = await hass_ws_client(hass)
+    base = {"type": f"{DOMAIN}/preferences/set", "entry_id": config_entry.entry_id}
+    await client.send_json_auto_id(
+        {
+            **base,
+            "analytics_days": 365,
+            "voice": "de_DE-thorsten-high",
+            "voice_language": "de_DE",
+            "fetch_max_mb": 300,
+        }
+    )
+    result = await client.receive_json()
+    assert result["success"], result
+    assert result["result"]["analytics_days"] == 365
+    assert result["result"]["voice"] == "de_DE-thorsten-high"
+    assert config_entry.runtime_data.analytics is not None
+    assert config_entry.runtime_data.analytics.keep_days == 365
+    await client.send_json_auto_id({**base, "voice": "lonely"})
+    refused = await client.receive_json()
+    assert not refused["success"]
+    assert refused["error"]["code"] == "invalid_format"
+    await client.send_json_auto_id({**base, "fetch_max_mb": 5000})
+    assert not (await client.receive_json())["success"]

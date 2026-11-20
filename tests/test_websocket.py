@@ -84,7 +84,15 @@ async def test_overview(
             "title": HOUSEHOLD_NAME,
             "loaded": True,
             "households": [{"id": "hh1", "name": HOUSEHOLD_NAME, "members": []}],
-            "preferences": {"analytics": True, "auto_lock": True, "mark_read": False},
+            "preferences": {
+                "analytics": True,
+                "auto_lock": True,
+                "mark_read": False,
+                "analytics_days": 730,
+                "voice": None,
+                "voice_language": None,
+                "fetch_max_mb": 200,
+            },
             "cloud": {
                 "version": BACKEND_VERSION,
                 "release": "v2026.11.10",

@@ -235,7 +235,7 @@ flowchart LR
 
 ### Listening times and battery
 
-Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, per hour of the day per box, and how often each figure was placed; never single plays. The page ranks the most played figures and chapters and the figures placed most often, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so behind the (i) of the total. Counting is switched under Setup → Preferences, on by default; switching it off deletes the sums and sets the account up anew.
+Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, per hour of the day per box, and how often each figure was placed; never single plays. The page ranks the most played figures and chapters and the figures placed most often, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so behind the (i) of the total. Counting is switched under Setup → Preferences, on by default; switching it off deletes the sums and sets the account up anew. How long the sums are kept is chosen there too: 1, 2 (default) or 5 years, or always; a shorter time deletes the older days at once.
 
 How long a charge lasts from now shows on the card, by the past charges: the level times the average full charge.
 
@@ -244,13 +244,13 @@ How long a charge lasts: every discharge from leaving the charger to the next ch
 ### Sign-in and privacy
 
 - The password is used once for the sign-in; only the refresh token is stored, and the cloud rotates it with every refresh. A refused token asks for a new sign-in of the same account.
-- No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data; the log never contains tokens or the password.
+- No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data; the log never contains tokens, the password or a request's body, and IDs in it are cut short.
 - Changes to the account (chapters, favourites) are offered only on the page, which is for administrators only; the WebSocket commands refuse everybody else. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
 - A link is fetched by the Media Fetcher app inside your Home Assistant, which the integration finds through the Supervisor's list of apps and reaches in the app network without a token; only audio is taken from it, and the file is deleted from the app once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and the platform's terms; the integration does not check that.
 
 ### Chapters from text
 
-A creative figure takes a chapter from text: the page takes a title (or the first words) and the text, Piper, the local voice of Home Assistant, speaks it, and the recording is uploaded as a chapter. The text never leaves the house. Like links, this is optional: without a Piper voice (the Wyoming integration with Piper) the button stays grey and says what is missing.
+A creative figure takes a chapter from text: the page takes a title (or the first words) and the text, Piper, the local voice of Home Assistant, speaks it in the voice chosen under Setup → Preferences (Piper's default voice until one is chosen), and the recording is uploaded as a chapter. The text never leaves the house. Like links, this is optional: without a Piper voice (the Wyoming integration with Piper) the button stays grey and says what is missing.
 
 ### The Media Fetcher app
 
@@ -263,7 +263,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 - **Boxes** (`/storybox-plus/boxes/overview`): every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer of 30 or 60 minutes (left out while a bedtime's alarm is due), its battery's level and online or offline as a dot. A Toniebox 1 gets a small card: its settings in one line and when it was last seen. The cog of a box, or its battery's level, opens the box (`?key=<box>`) with its views **Settings** (with the firmware), **Night mode**, **Bedtimes** and **Battery** (with the charge history) (`&view=settings|night|bedtimes|battery`).
 - **Figures**: **Figures** (`/figures/list`), the library with search over names and chapters and a filter by kind; a figure opens (`?key=<figure>`) with its views **Chapters** (favourite stars for bought figures, the edit mode for creative ones), **Settings** (name, live mode, volume, lock, steering by favourites, shuffling on swap), **Tune** and, for a creative figure, **Add** (files, YouTube, text). **Tunes** (`/figures/tunes`): the bought Tunes, redeeming a voucher and content from a code.
 - **Listening**: **Summary** (the total with the comparison, the most played figures and chapters, the figures placed most often, the sums per box) and **Times** (a chart per day, per week over long spans, and when is listened to by weekday and hour), for 7, 30 or 365 days or since the setup.
-- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app) and **Preferences** (counting the listening time, locking new figures, marking notifications as read, the cloud's version). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
+- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app), **Preferences** (counting the listening time and how long it is kept, locking new figures, marking notifications as read, the Piper voice for text chapters, the largest file taken from a link, the cloud's version) and **Log** (the log level, how many days the lines are kept, the latest lines and a download). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 
 Settings are rows with their explanation behind an (i); one save button appears while something differs from what is saved. Errors read one line by their kind, Home Assistant's message behind the (i). Numbers follow the number format of the user's profile, and number fields take a point or a comma. Addresses of before (`#figures`, `#preferences`, …) lead to the page that took their place; opened without an address while no account is loaded, the page starts at the setup.
 
@@ -380,7 +380,7 @@ actions:
 - **The alarm stays "set as soon as the box is online"**: the box is off or did not confirm; the log says when it did not. Switch the box on.
 - **"An alarm of a bedtime rings at …" from the sleep timer**: a bedtime's alarm is due; switch its alarm off on the page first.
 - **The page looks old after an update**: the script's address carries a hash of its content, so a restart of Home Assistant brings the new page; the companion app may need its frontend cache reset.
-- Debug logging: **Settings → Devices & services → Storybox Plus → ⋮ → Enable debug logging**.
+- **What happened with the cloud**: Setup → Log shows the integration's latest 500 lines, newest first, with buttons to copy them and to download every line kept. The log level (Debug, Info, Warning, Error; Info by default) is set there and kept across restarts, like the log level of an app. The lines are written to one file per day under `.storage/storybox_plus_log` and kept for 7 days by default (0 to 90; 0 writes nothing and the page shows the lines since the start only); older days are deleted, and removing the integration deletes them all. Info logs every change sent to the cloud (chapters, Tunes, settings) with its answer and time, and every Tune that came onto a figure or left it between two polls, also when the app did it; Debug adds every read, every push message and the token refreshes. A refused change is a warning. IDs are cut to their first six characters. The same lines go to Home Assistant's log; Home Assistant's own **Enable debug logging** on the integration's page still works and wins until it is turned off.
 
 ## Interface
 
@@ -417,7 +417,7 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 
 | Command | Parameters |
 |---|---|
-| `storybox_plus/overview` | none; boxes with their live state and the version |
+| `storybox_plus/overview` | none; boxes with their live state, the version and the Piper voice entity (`speech_engine`) |
 | `storybox_plus/library` | none; households and figures with chapters and favourites, the bought Tunes, whether links can be fetched and whether Piper can speak |
 | `storybox_plus/analytics` | `days` (or none for all), `limit` |
 | `storybox_plus/chapters/arrange` | `tonie_id`, `chapters` (IDs in the new order; the rest is removed), optional `titles` (chapter ID → new name) |
@@ -434,7 +434,9 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 | `storybox_plus/voucher/redeem` | `entry_id`, `code`; answers with how many Tunes it brought and the Tunes |
 | `storybox_plus/figure/redeem_token` | `tonie_id` (a creative figure), `token`; answers with the figure |
 | `storybox_plus/figure/lock` | `tonie_id` (a bought figure or disc), `locked` |
-| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`; switching `analytics` sets the account up anew |
+| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `voice` with `voice_language` (null: Piper's default), `fetch_max_mb` (10–2000); switching `analytics` sets the account up anew |
+| `storybox_plus/log` | optional `limit`; the log level, the days kept and the latest lines, newest first (without a limit, all lines kept) |
+| `storybox_plus/log/set` | any of `level` (`debug`, `info`, `warning`, `error`), `days` (0–90) |
 | `storybox_plus/figure/volume` | `tonie_id`, `level` (1 to 13, or null for the box's own volume) |
 | `storybox_plus/bedtime/save` | `box_id`, optional `schedule_id` (none: a new bedtime, which needs `sleep_time`, `wakeup_time`, `days`), `name`, `sleep_time` and `wakeup_time` (`HH:MM`), `days` (`monday` … `sunday`), `enabled`, `alarm_enabled`, `alarm_volume` (0 to 100), `alarm_morning_light`; answers with the box |
 | `storybox_plus/bedtime/delete` | `box_id`, `schedule_id`; answers with the box |
@@ -454,7 +456,7 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 
 Requires Home Assistant 2026.11 or later. Without the Marketplace, copy `custom_components/storybox_plus` into the `custom_components` folder of your configuration directory and restart.
 
-The integration has no options of its own; what can be chosen sits on the page, under Setup.
+The integration has no options of its own; what can be chosen sits on the page, under Setup, the log level included.
 
 ### Removal
 

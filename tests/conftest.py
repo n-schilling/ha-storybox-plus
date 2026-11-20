@@ -12,6 +12,8 @@ import asyncio
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+import logging
+from pathlib import Path
 import re
 from types import SimpleNamespace
 from typing import Any
@@ -27,6 +29,7 @@ from yarl import URL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
+from custom_components.storybox_plus import log as log_module
 from custom_components.storybox_plus.cloud import (
     TOPIC_BATTERY,
     TOPIC_ONLINE,
@@ -302,6 +305,8 @@ class Account:
     detail_query_refused: bool = False
     # Changing chapters (PATCH of a figure, POST of a chapter) answers this status and body
     chapters_error: tuple[int, dict[str, Any]] | None = None
+    # The cloud answers an added chapter without keeping it
+    chapters_dropped: bool = False
     # Changing chapters answers without a body
     chapters_no_body: bool = False
     # Reading the bedtime schedules answers this status
@@ -318,6 +323,9 @@ class Account:
     # The Tunes the account bought, as nodes of tunesItems; reading them answers this status
     tunes: list[dict[str, Any]] = field(default_factory=list)
     tunes_status: int | None = None
+    # Taking a Tune off shows only after this many reads of the Tunes (None: never)
+    tune_off_after_reads: int | None = 0
+    tune_off_pending: list[str] = field(default_factory=list)
     page_size: int = 100
     households: list[dict[str, Any]] = field(default_factory=list)
     boxes: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -620,7 +628,9 @@ class FakeCloud:
         for node in account.tunes:
             mine = node["myTune"]
             assigned = mine["assignedTonies"]
-            if method == "DELETE":
+            if method == "DELETE" and account.tune_off_after_reads != 0:
+                account.tune_off_pending.append(tonie_id)
+            elif method == "DELETE":
                 mine["assignedTonies"] = [a for a in assigned if a["id"] != tonie_id]
             elif mine["id"] == tune_id:
                 if mine["assignCountRemaining"] < 1:
@@ -688,6 +698,8 @@ class FakeCloud:
             return _json(method, url, status, body)
         if chapters_path and method.upper() == "POST":
             self.chapter_adds.append((household, tonie_id, data))
+            if account.chapters_dropped:
+                return _json(method, url, 200, tonie)
             tonie["chapters"].append(
                 {
                     "id": f"ch-{data['file']}",
@@ -784,6 +796,18 @@ class FakeCloud:
         elif "tunesItems" in query:
             if account.tunes_status is not None:
                 return _json(method, url, account.tunes_status, {"message": "error"})
+            if account.tune_off_pending and account.tune_off_after_reads is not None:
+                if account.tune_off_after_reads <= 0:
+                    for node in account.tunes:
+                        mine = node["myTune"]
+                        mine["assignedTonies"] = [
+                            a
+                            for a in mine["assignedTonies"]
+                            if a["id"] not in account.tune_off_pending
+                        ]
+                    account.tune_off_pending.clear()
+                else:
+                    account.tune_off_after_reads -= 1
             fld, nodes = "tunesItems", account.tunes
         else:
             return _json(method, url, 400, {"errors": [{"message": "unknown field"}]})
@@ -1035,6 +1059,23 @@ class FakeFetcher:
 
 
 # ---------------------------------------------------------------- fixtures
+
+
+@pytest.fixture(autouse=True)
+def integration_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Generator[None]:
+    """Let the integration's logger pass everything, as caplog expects, and reset it after.
+
+    The level and the handler live on a process-wide logger; a test must not
+    leave them to the next one. Tests of the level itself set it explicitly.
+    """
+    monkeypatch.setattr(log_module, "DEFAULT_LEVEL", "debug")
+    # The files of the log go to the test's own folder, not the shared test config
+    monkeypatch.setattr(log_module, "log_dir", lambda hass: tmp_path / "log")
+    yield
+    logger = logging.getLogger(log_module.LOGGER_NAME)
+    logger.setLevel(logging.NOTSET)
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
 
 
 @pytest.fixture

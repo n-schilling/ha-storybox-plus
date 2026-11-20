@@ -213,6 +213,8 @@ async def test_chapter_from_text(
     assert speak.await_args.args[1:] == (
         "tts.piper",
         "Gute Nacht, schlaf schön und träum etwas Schönes heute",
+        None,
+        None,
     )
     added = cloud.chapter_adds[-1][2]
     assert added["title"] == "Gute Nacht, schlaf schön und träum"
@@ -256,3 +258,36 @@ async def test_speak(hass: HomeAssistant, audio: Any, expected: Any) -> None:
                 await speech.async_speak(hass, "tts.piper", "Hallo")
         else:
             assert await speech.async_speak(hass, "tts.piper", "Hallo") == expected
+
+
+async def test_speak_with_a_chosen_voice(hass: HomeAssistant) -> None:
+    """A chosen voice goes to Piper with its language; without one, Piper's default speaks."""
+    calls: list[dict[str, Any]] = []
+
+    def generate(*args: Any, **kwargs: Any) -> str:
+        calls.append(kwargs)
+        return "media-source://tts/x"
+
+    async def audio(*args: Any) -> tuple[str, bytes]:
+        return "mp3", b"ID3"
+
+    fake_tts = type(
+        "FakeTts",
+        (),
+        {
+            "generate_media_source_id": staticmethod(generate),
+            "async_get_media_source_audio": staticmethod(audio),
+        },
+    )
+    with (
+        patch.dict("sys.modules", {"homeassistant.components.tts": fake_tts}),
+        patch("homeassistant.components.tts", fake_tts, create=True),
+    ):
+        await speech.async_speak(hass, "tts.piper", "Hallo", "de_DE-kerstin-low", "de_DE")
+        await speech.async_speak(hass, "tts.piper", "Hallo")
+    assert calls[0] == {
+        "engine": "tts.piper",
+        "language": "de_DE",
+        "options": {"voice": "de_DE-kerstin-low"},
+    }
+    assert calls[1] == {"engine": "tts.piper", "language": None, "options": None}

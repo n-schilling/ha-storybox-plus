@@ -44,13 +44,28 @@ def find_piper(hass: HomeAssistant) -> str | None:
     return None
 
 
-async def async_speak(hass: HomeAssistant, engine: str, text: str) -> tuple[str, bytes]:
-    """Let Piper speak the text in its own voice and language; return the file ending and audio."""
+async def async_speak(
+    hass: HomeAssistant,
+    engine: str,
+    text: str,
+    voice: str | None = None,
+    language: str | None = None,
+) -> tuple[str, bytes]:
+    """Let Piper speak the text; return the file ending and audio.
+
+    Without a voice, Piper speaks in its own default voice and language.
+    """
     # Imported here: the text-to-speech integration is only there when set up
     from homeassistant.components import tts
 
     try:
-        media_id = tts.generate_media_source_id(hass, text, engine=engine)
+        media_id = tts.generate_media_source_id(
+            hass,
+            text,
+            engine=engine,
+            language=language if voice else None,
+            options={"voice": voice} if voice else None,
+        )
         extension, data = await tts.async_get_media_source_audio(hass, media_id)
     except Exception as err:  # Piper or the speech pipeline failed, whatever the reason
         raise SpeechError(str(err) or type(err).__name__) from err

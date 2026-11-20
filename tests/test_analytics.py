@@ -367,3 +367,20 @@ async def test_placements(store: Mock, clock: Clock) -> None:
     counter.save_soon()
     data_func, _ = store.async_delay_save.call_args.args
     assert data_func()["placements"][TODAY] == {"box1": {"t2": 2}, "box2": {"t1": 1}}
+
+
+async def test_keep_days_can_change(store: Mock, clock: Clock) -> None:
+    """A shorter time drops older days at once; 0 keeps every day."""
+    far = (START.date() - timedelta(days=1000)).isoformat()
+    year = (START.date() - timedelta(days=400)).isoformat()
+    analytics = Analytics(store, clock.now, keep_days=0)
+    store.async_load.return_value = {
+        "days": {far: {"box1": {"t1": 10}}, year: {"box1": {"t1": 20}}}
+    }
+    await analytics.async_load()
+    assert set(analytics.per_day()) == {far, year}
+    analytics.set_keep_days(730)
+    assert set(analytics.per_day()) == {year}
+    store.async_delay_save.assert_called()
+    analytics.set_keep_days(365)
+    assert analytics.per_day() == {}

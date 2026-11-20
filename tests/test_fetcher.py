@@ -271,8 +271,7 @@ async def test_file_larger_than_a_figure_is_refused(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A file over the limit is refused by its announced length and while it arrives."""
-    monkeypatch.setattr(fetcher, "MAX_FILE_BYTES", 4)
-    client = fetcher.FetcherClient(hass, APP)
+    client = fetcher.FetcherClient(hass, APP, max_bytes=4)
     aioclient_mock.get(f"{APP.url}/jobs/job-1/file", content=b"12345")
     with pytest.raises(fetcher.FetcherError) as announced:
         await client.async_file("job-1")

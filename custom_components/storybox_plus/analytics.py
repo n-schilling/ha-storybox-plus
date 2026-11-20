@@ -38,10 +38,16 @@ class AnalyticsData(TypedDict, total=False):
 class Analytics:
     """Counts listening seconds per figure, box and day."""
 
-    def __init__(self, store: Store[AnalyticsData], now: Callable[[], datetime]) -> None:
-        """Count with the given clock (local time of Home Assistant)."""
+    def __init__(
+        self,
+        store: Store[AnalyticsData],
+        now: Callable[[], datetime],
+        keep_days: int = ANALYTICS_KEEP_DAYS,
+    ) -> None:
+        """Count with the given clock (local time of Home Assistant); keep_days 0 keeps all."""
         self._store = store
         self._now = now
+        self.keep_days = keep_days
         self._days: dict[str, DaySums] = {}
         self._chapters: dict[str, ChapterSums] = {}
         self._hours: dict[str, HourSums] = {}
@@ -140,8 +146,16 @@ class Analytics:
                 self._dirty = True
             start = stop
 
+    def set_keep_days(self, days: int) -> None:
+        """Keep this many days from now on; older sums go at once (0 keeps all)."""
+        self.keep_days = days
+        self._prune()
+        self.save_soon()
+
     def _prune(self) -> None:
-        oldest = (self._now().date() - timedelta(days=ANALYTICS_KEEP_DAYS)).isoformat()
+        if not self.keep_days:
+            return
+        oldest = (self._now().date() - timedelta(days=self.keep_days)).isoformat()
         for sums in (self._days, self._chapters, self._hours, self._placements):
             for day in [d for d in sums if d < oldest]:
                 del sums[day]

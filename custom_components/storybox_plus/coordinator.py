@@ -105,6 +105,12 @@ class BoxError(HomeAssistantError):
         self.code = code
 
 
+# The cloud carries out a Tune change after answering it: it is read this often,
+# this many seconds apart, before the change counts as not done
+TUNE_CONFIRM_TRIES = 6
+TUNE_CONFIRM_PAUSE = 2.0
+
+
 class ChapterError(HomeAssistantError):
     """A change to the chapters of a figure that is refused before the cloud is asked.
 
@@ -342,12 +348,33 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._follow_box_names(state)
         return state
 
-    async def _async_read_tunes(self) -> None:
-        """Read the bought Tunes; a failed read keeps the last ones."""
+    async def _async_read_tunes(self) -> bool:
+        """Read the bought Tunes; a failed read keeps the last ones and answers False.
+
+        A Tune that came onto a figure or left one since the last read is
+        logged, whoever laid it on or took it off.
+        """
         try:
-            self.tunes = await self.client.async_tunes()
+            tunes = await self.client.async_tunes()
         except CloudError as err:
             _LOGGER.debug("Tunes not read: %s", err)
+            return False
+        if self.tunes is not None:
+            before = {t.id: set(t.assigned) for t in self.tunes}
+            for tune in tunes:
+                was = before.get(tune.id, set())
+                for tonie_id in sorted(set(tune.assigned) - was):
+                    _LOGGER.info("Tune %r lies on %s now", tune.title, self._figure_name(tonie_id))
+                for tonie_id in sorted(was - set(tune.assigned)):
+                    _LOGGER.info("Tune %r left %s", tune.title, self._figure_name(tonie_id))
+        self.tunes = tunes
+        return True
+
+    def _figure_name(self, tonie_id: str) -> str:
+        """A figure as the log names it: its name and the start of its ID."""
+        tonie = self.data.tonies.get(tonie_id) if self.data else None
+        name = tonie.name if tonie else "figure"
+        return f"{name!r} ({tonie_id[:6]}…)"
 
     def tune_fits(self, tune: Tune) -> list[str]:
         """Return the figures a Tune can be laid on now: those it fits and does not lie on.
@@ -391,6 +418,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if tune_id is None:
             if self.tune_on(tonie_id) is None:
                 raise ChapterError("no_tune")
+            _LOGGER.info("Taking the Tune off %s", self._figure_name(tonie_id))
             await self.client.async_remove_tune(tonie)
         else:
             tune = next((t for t in self.tunes or () if t.id == tune_id), None)
@@ -398,11 +426,34 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 raise ChapterError("unknown_tune")
             if tonie_id not in self.tune_fits(tune) and tonie_id not in tune.assigned:
                 raise ChapterError("unsuitable_tune")
+            _LOGGER.info("Laying Tune %r on %s", tune.title, self._figure_name(tonie_id))
             await self.client.async_assign_tune(tonie, tune_id)
-        await self._async_read_tunes()
+        await self._async_confirm_tune(tonie_id, tune_id)
         if tonie.kind is TonieKind.CREATIVE:
             await self._async_take_creative(tonie, None)
         self.async_update_listeners()
+
+    async def _async_confirm_tune(self, tonie_id: str, tune_id: str | None) -> None:
+        """Read the Tunes until the cloud shows the change, or refuse after a while.
+
+        The cloud answers a change at once but may carry it out later; a Tune
+        it does not take off in time is reported instead of being shown as
+        gone.
+        """
+        for attempt in range(TUNE_CONFIRM_TRIES):
+            if attempt:
+                await asyncio.sleep(TUNE_CONFIRM_PAUSE)
+            if not await self._async_read_tunes():
+                continue
+            on = self.tune_on(tonie_id)
+            if (on.id if on else None) == tune_id:
+                _LOGGER.debug("The cloud shows the Tune change after %s reads", attempt + 1)
+                return
+        _LOGGER.warning(
+            "The cloud answered the Tune change of %s but does not show it",
+            self._figure_name(tonie_id),
+        )
+        raise ChapterError("tune_not_changed")
 
     async def _async_read_cloud_info(self, state: CloudState) -> None:
         """Read the box pictures, the backend's version and the members, at most once an hour."""
@@ -1233,11 +1284,49 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
     async def async_add_chapter(
         self, tonie_id: str, title: str, data: bytes, filename: str, content_type: str
     ) -> Tonie:
-        """Upload an audio file and append it as a chapter of a creative figure."""
+        """Upload an audio file and append it as a chapter of a creative figure.
+
+        A figure a Tune lies on takes no chapters: the cloud would answer, but
+        the chapter would not play and could be lost. The Tunes are read anew
+        first, since a Tune may have been laid on in the app. The figure the
+        cloud answers with must have the new chapter, or the upload counts as
+        failed.
+        """
         tonie = self._creative(tonie_id)
+        await self.async_refuse_tune(tonie_id)
+        _LOGGER.info("Adding chapter %r to %s", title, self._figure_name(tonie_id))
         file_id = await self.client.async_upload_file(data, filename, content_type)
         answer = await self.client.async_add_chapter(tonie.household_id, tonie_id, title, file_id)
-        return await self._async_take_creative(tonie, answer)
+        figure = await self._async_take_creative(tonie, answer)
+        if not any(c.file == file_id for c in figure.chapters) and len(figure.chapters) <= len(
+            tonie.chapters
+        ):
+            _LOGGER.warning(
+                "The cloud answered chapter %r of %s without it: %s chapters before, %s after",
+                title,
+                self._figure_name(tonie_id),
+                len(tonie.chapters),
+                len(figure.chapters),
+            )
+            raise ChapterError("chapter_missing")
+        _LOGGER.info(
+            "Chapter %r is on %s, now %s chapters",
+            title,
+            self._figure_name(tonie_id),
+            len(figure.chapters),
+        )
+        return figure
+
+    async def async_refuse_tune(self, tonie_id: str) -> None:
+        """Refuse a change of chapters while a Tune lies on the figure, after reading the Tunes."""
+        await self._async_read_tunes()
+        if (on := self.tune_on(tonie_id)) is not None:
+            _LOGGER.info(
+                "%s carries Tune %r: no chapters added", self._figure_name(tonie_id), on.title
+            )
+            raise ChapterError(
+                "tune_on", f"The Tune {on.title!r} lies on the figure; take it off first"
+            )
 
     async def async_add_chapter_from_link(
         self,
@@ -1264,9 +1353,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         app = await fetcher.async_find(self.hass)
         if app is None:
             raise ChapterError("fetcher_missing")
-        client = fetcher.FetcherClient(self.hass, app)
+        await self.async_refuse_tune(tonie_id)
+        client = fetcher.FetcherClient(self.hass, app, self.preferences.fetch_max_bytes)
         progress({"stage": "probe"})
+        _LOGGER.info("Fetching a link for %s through %s", self._figure_name(tonie_id), app.host)
         video = await client.async_info(url)
+        _LOGGER.info("The link is %r (%s s)", video.title, video.seconds)
         free = tonie.seconds_remaining
         if free is not None and video.seconds is not None and video.seconds > free:
             raise ChapterError(
@@ -1286,6 +1378,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             data = await client.async_file(job_id)
         finally:
             await client.async_forget(job_id)
+        _LOGGER.info(
+            "Media Fetcher job %s gave %.1f MB of %s", job_id, len(data) / 1e6, job.content_type
+        )
         progress({"stage": "upload", **about, "done": 0, "total": len(data)})
         return await self.async_add_chapter(
             tonie_id,
@@ -1305,7 +1400,13 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if engine is None:
             raise ChapterError("speech_missing")
         try:
-            extension, data = await speech.async_speak(self.hass, engine, text)
+            extension, data = await speech.async_speak(
+                self.hass,
+                engine,
+                text,
+                self.preferences.voice,
+                self.preferences.voice_language,
+            )
         except speech.SpeechError as err:
             raise ChapterError("speech_failed", f"Piper could not speak the text: {err}") from err
         content_type = {"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg"}.get(

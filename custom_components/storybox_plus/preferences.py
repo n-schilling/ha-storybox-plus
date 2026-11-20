@@ -12,6 +12,12 @@ Three preferences, each per account:
   that come after.
 - mark_read (off by default): a notification of the cloud is marked as read
   there once it was passed on, so the app shows it no more.
+- analytics_days (730 by default): how many days of listening sums are
+  kept; 0 keeps them all.
+- voice, voice_language (none by default): the Piper voice that speaks text
+  chapters; none is Piper's own default voice.
+- fetch_max_mb (200 by default): the largest file taken from the Media
+  Fetcher app.
 
 The figures that were already in the account when the integration first ran
 count as known: whether they are locked stays as it was.
@@ -28,6 +34,10 @@ from .cloud import Tonie, TonieKind
 DEFAULT_ANALYTICS = True
 DEFAULT_AUTO_LOCK = True
 DEFAULT_MARK_READ = False
+DEFAULT_ANALYTICS_DAYS = 730
+ANALYTICS_DAYS = (0, 365, 730, 1825)
+DEFAULT_FETCH_MAX_MB = 200
+FETCH_MAX_MB = (10, 2000)
 LOCKABLE = frozenset({TonieKind.CONTENT, TonieKind.DISC})
 
 
@@ -40,6 +50,10 @@ class Preferences:
         self.analytics = DEFAULT_ANALYTICS
         self.auto_lock = DEFAULT_AUTO_LOCK
         self.mark_read = DEFAULT_MARK_READ
+        self.analytics_days = DEFAULT_ANALYTICS_DAYS
+        self.voice: str | None = None
+        self.voice_language: str | None = None
+        self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
         self._known: set[str] = set()
         # None until the figures of the first run were taken as known
         self._started = False
@@ -55,6 +69,18 @@ class Preferences:
             self.auto_lock = raw["auto_lock"]
         if isinstance(raw.get("mark_read"), bool):
             self.mark_read = raw["mark_read"]
+        if raw.get("analytics_days") in ANALYTICS_DAYS:
+            self.analytics_days = raw["analytics_days"]
+        if isinstance(raw.get("voice"), str) and isinstance(raw.get("voice_language"), str):
+            self.voice = raw["voice"]
+            self.voice_language = raw["voice_language"]
+        mb = raw.get("fetch_max_mb")
+        if (
+            isinstance(mb, int)
+            and not isinstance(mb, bool)
+            and FETCH_MAX_MB[0] <= mb <= FETCH_MAX_MB[1]
+        ):
+            self.fetch_max_mb = mb
         known = raw.get("known")
         if isinstance(known, list):
             self._known = {k for k in known if isinstance(k, str)}
@@ -66,21 +92,40 @@ class Preferences:
             "analytics": self.analytics,
             "auto_lock": self.auto_lock,
             "mark_read": self.mark_read,
+            "analytics_days": self.analytics_days,
+            "voice": self.voice,
+            "voice_language": self.voice_language,
+            "fetch_max_mb": self.fetch_max_mb,
         }
 
-    async def async_set(
-        self,
-        auto_lock: bool | None,
-        mark_read: bool | None,
-        analytics: bool | None = None,
-    ) -> None:
-        """Change the given preferences."""
-        if analytics is not None:
-            self.analytics = analytics
-        if auto_lock is not None:
-            self.auto_lock = auto_lock
-        if mark_read is not None:
-            self.mark_read = mark_read
+    @property
+    def fetch_max_bytes(self) -> int:
+        """The largest file taken from the Media Fetcher app, in bytes."""
+        return self.fetch_max_mb * 1024 * 1024
+
+    async def async_set(self, **changes: Any) -> None:
+        """Change the given preferences; None leaves one as it is, except for the voice.
+
+        A voice comes with its language; an empty voice is Piper's default.
+        """
+        for key in ("analytics", "auto_lock", "mark_read"):
+            if isinstance(changes.get(key), bool):
+                setattr(self, key, changes[key])
+        if (days := changes.get("analytics_days")) is not None:
+            if days not in ANALYTICS_DAYS:
+                raise ValueError(days)
+            self.analytics_days = days
+        if (mb := changes.get("fetch_max_mb")) is not None:
+            if not FETCH_MAX_MB[0] <= mb <= FETCH_MAX_MB[1]:
+                raise ValueError(mb)
+            self.fetch_max_mb = mb
+        if "voice" in changes:
+            voice = changes["voice"] or None
+            language = changes.get("voice_language") or None
+            if voice is not None and language is None:
+                raise ValueError("voice_language")
+            self.voice = voice
+            self.voice_language = language if voice else None
         await self.async_save()
 
     def to_lock(self, tonies: list[Tonie]) -> list[Tonie]:
@@ -117,5 +162,9 @@ class Preferences:
             "analytics": self.analytics,
             "auto_lock": self.auto_lock,
             "mark_read": self.mark_read,
+            "analytics_days": self.analytics_days,
+            "voice": self.voice,
+            "voice_language": self.voice_language,
+            "fetch_max_mb": self.fetch_max_mb,
             "known": sorted(self._known),
         }

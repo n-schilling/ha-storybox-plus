@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-20
+
+### Added
+
+- Setup → Log: the integration's latest lines on the page, with buttons to copy and download them, a log level (Debug, Info, Warning, Error) and how many days the lines are kept (7 by default, 0 to 90), both kept across restarts. The lines are written to one file per day in Home Assistant's storage folder. Every change sent to the cloud is logged at Info with its answer, refused ones as warnings; reads, push messages and token refreshes at Debug. A Tune that comes onto a figure or leaves it between two polls is logged, whoever did it.
+- A chapter fetched from a link is confirmed on the page once it is on the figure.
+- Setup → Preferences: how long listening time is kept (1, 2 or 5 years, or always; it was fixed at 2 years), the Piper voice that speaks text chapters (the voices of Home Assistant's language, or Piper's default), and the largest file taken from the Media Fetcher app (10 to 2000 MB, 200 by default; it was fixed).
+
+### Fixed
+
+- A chapter is no longer sent to a creative figure a Tune lies on: the Tunes are read anew first, and the page says to take the Tune off. Before, the cloud accepted such a chapter and the figure never had it.
+- A chapter the cloud answers without is an error on the page instead of a silent success.
+- Taking a Tune off or laying one on waits until the cloud shows the change; if it does not within about ten seconds, the page says so instead of showing the Tune as gone.
+
 ## [0.10.1] - 2026-11-17
 
 ### Fixed

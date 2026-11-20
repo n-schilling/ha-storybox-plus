@@ -117,6 +117,7 @@ class Auth:
     async def _async_refresh_locked(self) -> TokenSet:
         if not self._refresh_token:
             raise CloudAuthError("No refresh token, a new login is needed")
+        _LOGGER.debug("Refreshing the access token")
         return await self._async_token_request(
             {
                 "client_id": CLIENT_ID,
