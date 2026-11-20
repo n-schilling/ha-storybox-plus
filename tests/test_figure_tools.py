@@ -15,7 +15,7 @@ from homeassistant.components.media_player import (
     ATTR_MEDIA_CONTENT_TYPE,
     SERVICE_PLAY_MEDIA,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.storage import Store
@@ -337,6 +337,9 @@ async def test_notices_passed_on_once(
     seen: list[dict[str, Any]] = []
     stamps: set[str] = set()
 
+    # A callback runs in the event loop, in the order of the events; a plain function
+    # would run in the executor, where the order is left to the threads
+    @callback
     def note(event: Any) -> None:
         # One entry per event fired; the state an entity gets back after a reload is none
         state = event.data["new_state"]
