@@ -437,6 +437,48 @@ async def test_long_session_resets_backoff(
     assert sleeps == [BACKOFF_FIRST, BACKOFF_FIRST]
 
 
+async def test_token_expiry_reopens_at_once_and_stays_up(
+    broker: FakeBroker,
+    sleeps: list[float],
+    channel: Channel,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The broker's drop at the token's expiry is routine: no pause, no "down", only debug lines."""
+    base = time.monotonic()
+    clock = Mock()
+    # the session lasted as long as its token (300 s); the next one runs on
+    clock.monotonic.side_effect = itertools.chain([base + 299], itertools.repeat(base + 299))
+    caplog.set_level(logging.DEBUG)
+    caplog.clear()
+    with patch("custom_components.storybox_plus.cloud.push.time", clock):
+        broker.current.drop()
+        await channel.until(lambda: len(broker.clients) == 2 and channel.push.connected)
+    assert sleeps == []
+    assert channel.connections == [True]
+    assert broker.current.kwargs["password"] == "access-2"
+    levels = {
+        r.getMessage().split(" ")[2]: r.levelno
+        for r in caplog.records
+        if "Push channel" in r.getMessage()
+    }
+    assert levels == {"closed": logging.DEBUG, "connected,": logging.DEBUG}
+
+
+async def test_token_expiry_then_no_token_goes_down(
+    broker: FakeBroker, sleeps: list[float], channel: Channel
+) -> None:
+    """A routine reopening that gets no token reports the channel down and waits."""
+    base = time.monotonic()
+    clock = Mock()
+    clock.monotonic.side_effect = itertools.chain([base + 299], itertools.repeat(base + 299))
+    channel.auth.outcomes.append(CloudConnectionError("Timeout while talking to the login server"))
+    with patch("custom_components.storybox_plus.cloud.push.time", clock):
+        broker.current.drop()
+        await channel.until(lambda: len(broker.clients) == 2 and channel.push.connected)
+    assert sleeps == [BACKOFF_FIRST]
+    assert channel.connections == [True, False, True]
+
+
 async def test_connect_error_backs_off(broker: FakeBroker, sleeps: list[float]) -> None:
     """A broker that refuses the connection is tried again after the pause."""
     broker.connect_errors.append(aiomqtt.MqttCodeError(5, "not authorized"))

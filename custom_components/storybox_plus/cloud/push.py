@@ -76,6 +76,8 @@ SLEEP_NOW_SECONDS = 300
 BACKOFF_FIRST = 5
 BACKOFF_MAX = 300
 KEEPALIVE = 60
+# A session that ends this close to the token's expiry ended because of it (s)
+EXPIRY_GRACE = 15
 # Seconds the broker should keep the session (and queue messages) between reconnects
 SESSION_EXPIRY = 600
 
@@ -136,38 +138,69 @@ class PushClient:
     async def async_run(self) -> None:
         """Keep the channel open until cancelled.
 
-        A refused token ends the loop with CloudAuthError: the account needs a
-        new login, which the caller asks the user for. Any other failure,
-        expected or not, closes the connection and opens a new one.
+        The broker drops the connection when the access token expires (every
+        five minutes). That end is routine: the channel opens again at once
+        with a fresh token, logged at debug level only. Any other end waits
+        before the next attempt, longer each time, and is logged at info
+        level. A refused token ends the loop with CloudAuthError: the account
+        needs a new login, which the caller asks the user for.
         """
         backoff = BACKOFF_FIRST
+        # Whether the next connection is worth an info line: the first one, and
+        # the first after a failure
+        tell = True
         while True:
             try:
-                token = (await self._auth.async_refresh()).access_token
+                tokens = await self._auth.async_refresh()
             except CloudAuthError:
+                self._set_connected(False)
                 raise
             except CloudError as err:
+                self._set_connected(False)
                 _LOGGER.debug("Push channel: no token (%s), retry in %ss", err, backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, BACKOFF_MAX)
+                tell = True
                 continue
             started = time.monotonic()
+            # The broker ends the session when this token expires
+            lifetime = tokens.access_expires_in()
+            routine = False
             try:
-                await self._async_session(token)
+                await self._async_session(tokens.access_token, tell)
             except aiomqtt.MqttError as err:
                 lasted = time.monotonic() - started
-                if lasted > 60:
-                    backoff = BACKOFF_FIRST
-                level = logging.DEBUG if lasted > 60 else logging.INFO
-                _LOGGER.log(level, "Push channel closed (%s), reconnecting in %ss", err, backoff)
+                routine = lasted >= lifetime - EXPIRY_GRACE
+                if routine:
+                    # The channel counts as up while it is reopened at once: what
+                    # depends on it (listening time, battery) goes on undisturbed
+                    _LOGGER.debug(
+                        "Push channel closed as the token expired after %.0f s, reconnecting now",
+                        lasted,
+                    )
+                else:
+                    if lasted > 60:
+                        backoff = BACKOFF_FIRST
+                    _LOGGER.info(
+                        "Push channel closed after %.0f s (%s), reconnecting in %ss",
+                        lasted,
+                        err,
+                        backoff,
+                    )
             except Exception:
                 _LOGGER.exception("Push channel failed, reconnecting in %ss", backoff)
             finally:
-                self._set_connected(False)
+                if not routine:
+                    self._set_connected(False)
+            if routine:
+                backoff = BACKOFF_FIRST
+                tell = False
+                continue
+            tell = True
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, BACKOFF_MAX)
 
-    async def _async_session(self, token: str) -> None:
+    async def _async_session(self, token: str, tell: bool = True) -> None:
         properties = Properties(PacketTypes.CONNECT)  # type: ignore[no-untyped-call]
         properties.SessionExpiryInterval = SESSION_EXPIRY
         async with aiomqtt.Client(
@@ -189,7 +222,11 @@ class PushClient:
             subscribed: set[str] = set()
             await self._async_subscribe(client, subscribed)
             self._set_connected(True)
-            _LOGGER.info("Push channel connected, following %s boxes", len(subscribed))
+            _LOGGER.log(
+                logging.INFO if tell else logging.DEBUG,
+                "Push channel connected, following %s boxes",
+                len(subscribed),
+            )
             self._resubscribe.clear()
             try:
                 async with asyncio.TaskGroup() as group:

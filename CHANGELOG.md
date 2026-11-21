@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-21
+
+### Fixed
+
+- The push channel reopens at once when the cloud drops it at the end of its five-minute token, instead of after a pause of five seconds, and it counts as connected meanwhile: listening time, battery statistics and the alarm check are no longer interrupted every five minutes. The routine reconnect is logged at debug level only; any other drop still waits before the next attempt and is logged at info level.
+
 ## [0.11.0] - 2026-11-20
 
 ### Added

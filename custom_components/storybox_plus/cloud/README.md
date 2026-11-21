@@ -41,7 +41,7 @@ written from scratch and imports nothing from Home Assistant.
 
 ## Push channel (`push.py`)
 
-- MQTT 5 over WebSocket at `wss://ici.tonie.cloud:443/`, user name = the account's UUID, password = the access token. The broker drops the connection when the token expires and refuses the old token on reconnect (`Bad user name or password`): refresh before every connect, never log the refusal in a loop.
+- MQTT 5 over WebSocket at `wss://ici.tonie.cloud:443/`, user name = the account's UUID, password = the access token. The broker drops the connection when the token expires and refuses the old token on reconnect (`Bad user name or password`): refresh before every connect, never log the refusal in a loop. Measured: the drop comes 299–300 s after connecting, so a session that ends within 15 s of its token's expiry is reopened at once with a fresh token; the gap is the refresh and the connect, about half a second.
 - Topics `external/toniebox/{MAC}/…` with the MAC in upper case:
   - `metrics/battery` `{percent, raw, status}`; a box that shuts down sends only nulls.
   - `online-state` `{onlineState: "online"|"offline"}`.
