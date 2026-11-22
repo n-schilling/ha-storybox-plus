@@ -263,3 +263,36 @@ async def test_redeem_token(
         client, {"type": f"{DOMAIN}/figure/redeem_token", "tonie_id": "nope", "token": "x"}
     )
     assert result["error"]["code"] == "unknown_figure"
+
+
+async def test_a_chapter_is_chosen_from_the_list(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The overview names the chapters of what is on the box; one of them is jumped to."""
+    client = await _setup(hass, config_entry, hass_ws_client)
+    channel = push.last
+    channel.connect()
+    channel.playback(TONIE_ID, chapter=0)
+    await client.send_json_auto_id({"type": f"{DOMAIN}/overview"})
+    overview = (await client.receive_json())["result"]
+    chapters = next(b for b in overview["boxes"] if b["id"] == BOX_ID)["playback"]["chapter_list"]
+    assert len(chapters) > 1
+    assert set(chapters[0]) == {"title", "seconds"}
+
+    last = len(chapters) - 1
+    assert (await _call(client, _command("chapter", last)))["success"]
+    assert channel.commands[-1][1:] == (
+        "playback",
+        {"action": "setPosition", "chapter": last, "ms": 0},
+    )
+    sent = len(channel.commands)
+    result = await _call(client, _command("chapter", last + 1))
+    assert result["error"]["code"] == "invalid_value"
+    channel.removed()
+    result = await _call(client, _command("chapter", 0))
+    assert result["error"]["code"] == "nothing_plays"
+    assert len(channel.commands) == sent

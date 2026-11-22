@@ -881,8 +881,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
     async def async_box_command(self, box_id: str, command: str, value: int | None) -> None:
         """Send a player command from the page to a Toniebox 2.
 
-        play, pause, next, previous (chapters), volume (level 0 to 13), sleep
-        (minutes), sleep_clear. The sleep timer is refused while the alarm of
+        play, pause, next, previous (chapters), chapter (its index from 0),
+        volume (level 0 to 13), sleep (minutes), sleep_clear. The sleep timer is refused while the alarm of
         a bedtime is due, as the media player's actions are.
         """
         box_state = self.data.boxes.get(box_id)
@@ -902,6 +902,13 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             if tonie is not None and tonie.chapters:
                 chapter = min(chapter, len(tonie.chapters) - 1)
             await self.push.async_set_position(mac, chapter, 0)
+        elif command == "chapter" and value is not None:
+            if playback is None or playback.tonie_id is None:
+                raise BoxError("nothing_plays")
+            tonie = self.tonie(playback.tonie_id)
+            if tonie is None or value >= len(tonie.chapters):
+                raise BoxError("invalid_value")
+            await self.push.async_set_position(mac, value, 0)
         elif command == "play":
             await self.push.async_play(mac)
         elif command == "pause":

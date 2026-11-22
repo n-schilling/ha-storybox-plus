@@ -587,6 +587,10 @@ async def _save(page: Page) -> None:
     await page.locator(f"{PANEL} ha-button#save").wait_for(state="hidden", timeout=10000)
 
 
+async def _gone(locator: Any) -> bool:
+    return bool(await locator.count() == 0)
+
+
 async def _rows_have_help(page: Page) -> None:
     rows = page.locator(f"{PANEL} ha-settings-row")
     helps = page.locator(f"{PANEL} ha-settings-row [slot=heading] ha-icon-button.help")
@@ -1136,7 +1140,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             "Most played",
             "Most played chapters",
             "Placed most often",
-            "Per box",
+            "Listening time of the Toniebox 2",
             "Active time of the Toniebox 1",
         ):
             expect(part in text, f"{part!r} missing")
@@ -1354,6 +1358,21 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await controls.locator("[data-act$=':pause']").click()
         await page.wait_for_timeout(600)
         expect(await kids.locator("ha-alert[alert-type=error]").count() == 0, "the command failed")
+        # The chapter list opens in Home Assistant's dialog; Escape closes it, a chapter
+        # chosen there closes it too and plays
+        await controls.locator("[data-act^='tracks:']").click()
+        rows = page.locator(f"{PANEL} #overlay ha-dialog ol.tracks li")
+        await rows.first.wait_for(timeout=3000)
+        expect(await rows.count() > 1, "chapters in the list")
+        expect(await page.locator(f"{PANEL} #overlay li.current").count() == 1, "current chapter")
+        await page.keyboard.press("Escape")
+        await _until(lambda: _gone(page.locator(f"{PANEL} #overlay ha-dialog")), "Escape")
+        await controls.locator("[data-act^='tracks:']").click()
+        await rows.last.wait_for(timeout=3000)
+        await rows.last.click()
+        await _until(lambda: _gone(page.locator(f"{PANEL} #overlay ha-dialog")), "a chapter chosen")
+        await page.wait_for_timeout(600)
+        expect(await kids.locator("ha-alert[alert-type=error]").count() == 0, "the jump failed")
         expect("70 %" in card, f"volume not in percent: {card}")
         await controls.locator("[data-act$=':volume:10']").click()
         await controls.locator("[data-act$=':volume:11']").wait_for(timeout=3000)

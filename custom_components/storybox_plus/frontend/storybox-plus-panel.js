@@ -789,6 +789,18 @@ if (!customElements.get("storybox-plus-panel")) {
           this._command(boxId, command, value);
           return;
         }
+        case "tracks":
+          this._tracks = arg;
+          this._update();
+          return;
+        case "jump": {
+          // The list closes; what the box says to the jump shows on its card
+          const [boxId, index] = arg.split(":");
+          this._tracks = null;
+          this._update();
+          this._command(boxId, "chapter", index);
+          return;
+        }
         case "voucher":
           this._redeemVoucher(arg);
           return;
@@ -1015,6 +1027,7 @@ if (!customElements.get("storybox-plus-panel")) {
           <div class="page${this._narrow ? " narrow" : ""}">${tabs}<div class="sheet" id="sheet"></div></div>
           <ha-button slot="fab" id="save" size="l" data-act="save" hidden>${icon("save").replace("<ha-svg-icon", '<ha-svg-icon slot="start"')}${esc(t.save)}</ha-button>
         </hass-tabs-subpage>
+        <div id="overlay"></div>
         <input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden>`;
       const frame = this.shadowRoot.getElementById("frame");
       frame.hass = this._hass;
@@ -1024,6 +1037,46 @@ if (!customElements.get("storybox-plus-panel")) {
       frame.backCallback = sub ? () => this._go(`${this._area}/${this._page}`) : undefined;
       frame.route = this._route || { prefix: PANEL_PATH, path: `/${this._area}/${this._page}` };
       this._sheetHtml = null;
+      this._overlayHtml = null;
+    }
+
+    // The chapters of what is on a box, in Home Assistant's dialog above the overview: a
+    // chapter chosen there plays. The dialog stays while its list is drawn anew
+    _renderOverlay() {
+      const host = this.shadowRoot.getElementById("overlay");
+      if (!host) return;
+      const t = this._t;
+      const b = this._tracks && this._area === "boxes" && !this._sub ? this._boxById(this._tracks) : null;
+      const p = b?.playback;
+      let dialog = host.firstElementChild;
+      // Gone with the figure, the box or the page it was opened on
+      if (!p?.chapter_list?.length || b.online !== true) {
+        this._tracks = null;
+        if (dialog) dialog.open = false;
+        return;
+      }
+      if (!dialog) {
+        dialog = document.createElement("ha-dialog");
+        this._overlayHtml = null;
+        dialog.addEventListener("closed", () => {
+          this._tracks = null;
+          dialog.remove();
+        });
+        host.append(dialog);
+      }
+      dialog.headerTitle = t.tracksTitle;
+      dialog.headerSubtitle = `${p.tonie_name || t.unknownFigure} · ${b.name || b.id}`;
+      const html = `<ol class="tracks">${p.chapter_list.map((c, i) => {
+        const now = i === p.chapter;
+        return `<li role="button" tabindex="0" data-act="jump:${esc(b.id)}:${i}"${now ? ' class="current" aria-current="true"' : ""}>` +
+          `<span class="rank">${i + 1}</span><span class="name">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
+          `${Number.isFinite(c.seconds) ? `<span class="len">${esc(mmss(c.seconds))}</span>` : ""}</li>`;
+      }).join("")}</ol>`;
+      if (html !== this._overlayHtml) {
+        this._overlayHtml = html;
+        dialog.innerHTML = html;
+      }
+      dialog.open = true;
     }
 
     _update() {
@@ -1041,6 +1094,7 @@ if (!customElements.get("storybox-plus-panel")) {
           this._tick();
         }
       }
+      this._renderOverlay();
       // The save button of the settings: only while something is changed
       const fab = root.getElementById("save");
       if (fab) {

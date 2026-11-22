@@ -30,6 +30,7 @@ export const MDI = {
   sleep: "M23,12H17V10L20.39,6H17V4H23V6L19.62,10H23V12M15,16H9V14L12.39,10H9V8H15V10L11.62,14H15V16M7,20H1V18L4.39,14H1V12H7V14L3.62,18H7V20Z",
   pencil: "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z",
   check: "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z",
+  tracks: "M15,6H3V8H15V6M15,10H3V12H15V10M3,16H11V14H3V16M17,6V14.18C16.69,14.07 16.35,14 16,14A3,3 0 0,0 13,17A3,3 0 0,0 16,20A3,3 0 0,0 19,17V8H22V6H17Z",
   close: "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z",
   upload: "M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z",
   up: "M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z",
@@ -170,7 +171,7 @@ export const TEXTS = {
     uploading: "Uploading {name} ({n} of {m}) …",
     range_7: "7 days", range_30: "30 days", range_365: "365 days", range_all: "All", rangeLabel: "Period",
     lastDays: "last {n} days", since: "since {d}", sinceSetup: "since the setup",
-    total: "Listening time", top: "Most played", topPlaced: "Placed most often", placedTimes: "{n}×", perDay: "Per day", perWeek: "Per week", perBox: "Per box",
+    total: "Listening time", top: "Most played", topPlaced: "Placed most often", placedTimes: "{n}×", perDay: "Per day", perWeek: "Per week", perBox: "Listening time of the Toniebox 2",
     weekOf: "Week of {d}", allBoxes: "All boxes", heatBoxLabel: "Box", vsBefore: "{p} compared with the {n} days before",
     chartDays: "Listening time on {n} days, {total} h in all; the most on {top} with {v} h.",
     chartWeeks: "Listening time in {n} weeks, {total} h in all; the most in the {top} with {v} h.",
@@ -190,6 +191,7 @@ export const TEXTS = {
     f_enabled: "Active", f_alarm_enabled: "Alarm at the wake-up", f_alarm_volume: "Alarm volume", f_alarm_morning_light: "Morning light",
     deleteSchedule: "Delete",
     headphones: "Headphones", headphonesBattery: "Headphones {p} %",
+    ctlTracks: "Chapters", tracksTitle: "Chapters",
     ctlPrev: "Previous chapter", ctlNext: "Next chapter", ctlPlay: "Play", ctlPause: "Pause", ctlLouder: "Louder", ctlQuieter: "Quieter",
     ctlSleep: "Sleep timer {m} min", ctlSleepTitle: "Sleep timer", sleepMin: "{m} min", ctlSleepOff: "Cancel the sleep timer",
     boxSettingsOf: "Settings of the box", settingsPending: "Waiting for the box", offlineMode: "Offline mode",
@@ -369,7 +371,7 @@ export const TEXTS = {
     uploading: "Lädt {name} hoch ({n} von {m}) …",
     range_7: "7 Tage", range_30: "30 Tage", range_365: "365 Tage", range_all: "Alles", rangeLabel: "Zeitraum",
     lastDays: "letzte {n} Tage", since: "seit {d}", sinceSetup: "seit der Einrichtung",
-    total: "Hörzeit", top: "Meistgehört", topPlaced: "Am häufigsten aufgelegt", placedTimes: "{n}×", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Pro Box",
+    total: "Hörzeit", top: "Meistgehört", topPlaced: "Am häufigsten aufgelegt", placedTimes: "{n}×", perDay: "Pro Tag", perWeek: "Pro Woche", perBox: "Hörzeit der Toniebox 2",
     weekOf: "Woche vom {d}", allBoxes: "Alle Boxen", heatBoxLabel: "Box", vsBefore: "{p} gegenüber den {n} Tagen davor",
     chartDays: "Hörzeit an {n} Tagen, zusammen {total} h; am meisten am {top} mit {v} h.",
     chartWeeks: "Hörzeit in {n} Wochen, zusammen {total} h; am meisten in der {top} mit {v} h.",
@@ -389,6 +391,7 @@ export const TEXTS = {
     f_enabled: "Aktiv", f_alarm_enabled: "Wecker beim Wecken", f_alarm_volume: "Lautstärke des Weckers", f_alarm_morning_light: "Morgenlicht",
     deleteSchedule: "Löschen",
     headphones: "Kopfhörer", headphonesBattery: "Kopfhörer {p} %",
+    ctlTracks: "Kapitel", tracksTitle: "Kapitel",
     ctlPrev: "Vorheriges Kapitel", ctlNext: "Nächstes Kapitel", ctlPlay: "Abspielen", ctlPause: "Pausieren", ctlLouder: "Lauter", ctlQuieter: "Leiser",
     ctlSleep: "Schlaf-Timer {m} Min.", ctlSleepTitle: "Schlaf-Timer", sleepMin: "{m} Min.", ctlSleepOff: "Schlaf-Timer abbrechen",
     boxSettingsOf: "Einstellungen der Box", settingsPending: "Wartet auf die Box", offlineMode: "Offline-Modus",
@@ -566,6 +569,14 @@ ha-button.batt-btn { --ha-button-font-size: var(--ha-font-size-m, 14px); }
   color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
 .muted { color: var(--secondary-text-color); }
 .small { font-size: var(--ha-font-size-xs, 12px); line-height: 16px; margin-top: 8px; }
+.tracks { list-style: none; margin: 0 -12px; padding: 0 0 8px; }
+.tracks li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; cursor: pointer; }
+.tracks li:hover, .tracks li:focus-visible { background: var(--secondary-background-color); outline: none; }
+.tracks li.current { color: var(--primary-color); font-weight: 500; }
+.tracks li[aria-disabled=true] { cursor: default; opacity: 0.6; }
+.tracks .rank { flex: none; width: 24px; text-align: right; color: var(--secondary-text-color); }
+.tracks .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tracks .len { flex: none; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 8px 0 4px; }
 .ctl-gap { width: 12px; }
 .sleep-pick { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; color: var(--secondary-text-color); }
@@ -677,7 +688,9 @@ export const BoxView = (Base) => class extends Base {
       // Settings, night mode and bedtimes open as the box's page
       const cog = !card && (b.settings || b.bedtime) ? iconButton("cog", t.boxSettingsOf, `class="box-cog" data-act="boxset:${esc(b.id)}"`) : "";
       // The battery's level sits in the head; on the page it opens the box's battery
-      const batt = !live || !show("battery") ? "" : card
+      // Without a level (the box has not reported one since Home Assistant started) no battery shows;
+      // an offline box keeps the last level it reported
+      const batt = !live || !show("battery") || !Number.isFinite(b.battery) ? "" : card
         ? `<span class="fact">${this._batteryLevel(b)}</span>`
         : b.battery_stats
           ? `<ha-button appearance="plain" size="s" class="batt-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}">${this._batteryLevel(b)}</ha-button>`
@@ -709,7 +722,8 @@ export const BoxView = (Base) => class extends Base {
       if (live) {
         // In parts the dashboard card can lay out side by side when it is wide
         const now = show("playback") ? `<div class="now">${this._playback(b.playback)}</div>` : "";
-        const ctl = show("controls") ? this._controls(b) : "";
+        // The chapter list opens above the page; the dashboard card has none
+        const ctl = show("controls") ? this._controls(b, !card) : "";
         body = `<div class="box-body">${body}${now}${ctl ? `<div class="ctl">${ctl}</div>` : ""}</div>`;
       } else body += `<div class="muted">${esc(t.classicNote)}</div>`;
       const notes = [];
@@ -719,7 +733,7 @@ export const BoxView = (Base) => class extends Base {
     }
 
     // Play, pause, chapters, volume and the sleep timer of a Toniebox 2 that is online
-    _controls(b) {
+    _controls(b, tracks = false) {
       const t = this._t;
       if (b.online !== true) return "";
       const p = b.playback;
@@ -734,7 +748,9 @@ export const BoxView = (Base) => class extends Base {
       let html = `<div class="controls">` +
         btn("previous", "prev", t.ctlPrev, !placed) +
         (p?.playing ? btn("pause", "pause", t.ctlPause, !placed) : btn("play", "play", t.ctlPlay, !placed)) +
-        btn("next", "next", t.ctlNext, !placed) + `<span class="ctl-gap"></span>` +
+        btn("next", "next", t.ctlNext, !placed) +
+        (tracks && p?.chapter_list?.length > 1 ? iconButton("tracks", t.ctlTracks, `data-act="tracks:${esc(b.id)}"`) : "") +
+        `<span class="ctl-gap"></span>` +
         btn("volume", "minus", t.ctlQuieter, vol === null || vol <= 0, vol === null ? "" : vol - 1) +
         btn("volume", "plus", t.ctlLouder, vol === null || vol >= max, vol === null ? "" : vol + 1) +
         `<span class="ctl-gap"></span>`;
@@ -764,7 +780,8 @@ export const BoxView = (Base) => class extends Base {
     // nothing is known while the box is switched off
     _batteryLevel(b) {
       const t = this._t;
-      if (!Number.isFinite(b.battery)) return `<span class="batt" aria-hidden="true"><i style="height:0"></i></span>–`;
+      // On the battery's own page, while no level is known
+      if (!Number.isFinite(b.battery)) return "–";
       const low = b.battery < 20 && !b.charging;
       return `<span class="batt${low ? " low" : ""}" aria-hidden="true"><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></span>` +
         `${this._fmt(b.battery)} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;

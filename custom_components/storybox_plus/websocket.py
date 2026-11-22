@@ -208,6 +208,12 @@ def _figure_answer(coordinator: StoryboxCoordinator, tonie: Tonie) -> dict[str, 
     }
 
 
+def _chapter_list(tonie: Tonie | None) -> list[dict[str, Any]]:
+    return (
+        [{"title": c.title or None, "seconds": c.seconds} for c in tonie.chapters] if tonie else []
+    )
+
+
 def _box_dict(
     entry: StoryboxConfigEntry, coordinator: StoryboxCoordinator, box_state: BoxState
 ) -> dict[str, Any]:
@@ -226,6 +232,8 @@ def _box_dict(
             "chapter": play.chapter,
             "chapter_title": chapter_title,
             "chapters": len(tonie.chapters) if tonie else None,
+            # For the page's chapter list: every chapter by name and length
+            "chapter_list": _chapter_list(tonie),
             "playing": play.playing,
             "paused": play.paused,
             "ended": play.ended,
@@ -242,6 +250,7 @@ def _box_dict(
             "chapter": None,
             "chapter_title": None,
             "chapters": len(tonie.chapters) if tonie else None,
+            "chapter_list": _chapter_list(tonie),
             "playing": False,
             "paused": None,
             "ended": None,
@@ -1236,7 +1245,7 @@ async def websocket_redeem_token(
         probatio.Required("type"): f"{DOMAIN}/box/command",
         probatio.Required("box_id"): str,
         probatio.Required("command"): probatio.In(
-            ["play", "pause", "next", "previous", "volume", "sleep", "sleep_clear"]
+            ["play", "pause", "next", "previous", "chapter", "volume", "sleep", "sleep_clear"]
         ),
         probatio.Optional("value"): probatio.All(
             int, probatio.Range(min=0, max=SLEEP_TIMER_MAX_MINUTES)

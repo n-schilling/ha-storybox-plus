@@ -171,6 +171,7 @@ def test_page_is_built_from_home_assistants_elements() -> None:
         "ha-tooltip",
         "ha-filter-chip",
         "ha-control-select",
+        "ha-dialog",
         'slot="fab"',
     ):
         assert element in panel, element

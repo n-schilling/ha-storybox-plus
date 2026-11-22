@@ -9,6 +9,12 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - A Toniebox 1 can be given a presence entity on its settings page: a device tracker (from the router's integration, for example) or a binary sensor for connectivity, such as a ping. The cloud knows nothing live of such a box; with the entity its card shows whether it is online, and the listening summary shows its active time: how long it was in the network. That is an indication, not listening time, and enters none of the listening sums: the box stays awake for some minutes after the last sound, the entity notices its leaving late, and a box in offline mode is not seen. The entity is kept in Home Assistant only; without one, the box shows no state, as before.
+- The card of a Toniebox 2 on the overview opens the list of the chapters of the figure on it, above the page; the one that plays is marked, and a chapter chosen there plays from its start. The dashboard card stays as it is.
+
+### Changed
+
+- A Toniebox 2 that has not reported a battery level since Home Assistant started shows no battery on its card, instead of an empty symbol with a dash; an offline box keeps the last level it reported.
+- Listening → Summary: the sums per box are headed "Listening time of the Toniebox 2", beside the active time of the Toniebox 1.
 
 ## [0.11.1] - 2026-11-21
 

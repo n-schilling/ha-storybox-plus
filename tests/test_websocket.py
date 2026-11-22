@@ -137,6 +137,10 @@ async def test_overview(
         "chapter": 1,
         "chapter_title": "Kapitel 2",
         "chapters": 2,
+        "chapter_list": [
+            {"title": "Kapitel 1", "seconds": None},
+            {"title": "Kapitel 2", "seconds": None},
+        ],
         "playing": True,
         "paused": False,
         "ended": False,
@@ -175,6 +179,10 @@ async def test_overview_before_any_push(
         "chapter": None,
         "chapter_title": None,
         "chapters": 2,
+        "chapter_list": [
+            {"title": "Kapitel 1", "seconds": None},
+            {"title": "Kapitel 2", "seconds": None},
+        ],
         "playing": False,
         "paused": None,
         "ended": None,
