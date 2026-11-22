@@ -780,6 +780,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             lambda: presence.locator("ha-selector-entity").count(),
             "the presence entity's field",
         )
+        await _until(
+            lambda: page.get_by_role("textbox", name="Lag taken off the active time").count(),
+            "the lag's field",
+        )
         await _rows_have_help(page)
 
     await checks.run(

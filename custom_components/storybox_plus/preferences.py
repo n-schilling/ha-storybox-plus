@@ -26,6 +26,8 @@ Three preferences, each per account:
   sensor for connectivity). The cloud knows nothing live of such a box; with
   the entity the page shows it as online or offline and counts how long it
   was awake (see analytics, active time).
+- presence_lag (20 minutes by default): per Toniebox 1 how long it stays in
+  the network after its last use, by the entity; taken off its active time.
 
 The figures that were already in the account when the integration first ran
 count as known: whether they are locked stays as it was.
@@ -48,6 +50,10 @@ DEFAULT_FETCH_MAX_MB = 200
 FETCH_MAX_MB = (10, 2000)
 LOCKABLE = frozenset({TonieKind.CONTENT, TonieKind.DISC})
 PRESENCE_DOMAINS = ("device_tracker", "binary_sensor")
+# Minutes a Toniebox 1 stays in the network after its last use, as its tracker sees it:
+# the box's own standby and the tracker's delay together, measured at about 20
+DEFAULT_PRESENCE_LAG = 20
+PRESENCE_LAG = (0, 120)
 _PREFIXES = tuple(f"{domain}." for domain in PRESENCE_DOMAINS)
 
 
@@ -67,6 +73,8 @@ class Preferences:
         self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
         # box_id -> entity_id
         self.presence: dict[str, str] = {}
+        # box_id -> minutes, where it differs from the default
+        self._presence_lag: dict[str, int] = {}
         self._known: set[str] = set()
         # None until the figures of the first run were taken as known
         self._started = False
@@ -103,6 +111,15 @@ class Preferences:
                 box: entity
                 for box, entity in presence.items()
                 if isinstance(entity, str) and entity.startswith(_PREFIXES)
+            }
+        lags = raw.get("presence_lag")
+        if isinstance(lags, dict):
+            self._presence_lag = {
+                box: lag
+                for box, lag in lags.items()
+                if isinstance(lag, int)
+                and not isinstance(lag, bool)
+                and PRESENCE_LAG[0] <= lag <= PRESENCE_LAG[1]
             }
         known = raw.get("known")
         if isinstance(known, list):
@@ -170,6 +187,17 @@ class Preferences:
             raise ValueError(entity_id)
         await self.async_save()
 
+    def presence_lag(self, box_id: str) -> int:
+        """Return the minutes taken off each stretch of active time of a Toniebox 1."""
+        return self._presence_lag.get(box_id, DEFAULT_PRESENCE_LAG)
+
+    async def async_set_presence_lag(self, box_id: str, minutes: int) -> None:
+        """Set the minutes taken off each stretch of active time of a Toniebox 1."""
+        if not PRESENCE_LAG[0] <= minutes <= PRESENCE_LAG[1]:
+            raise ValueError(minutes)
+        self._presence_lag[box_id] = minutes
+        await self.async_save()
+
     def to_lock(self, tonies: list[Tonie]) -> list[Tonie]:
         """Return the new figures to lock now; the other new ones count as known at once.
 
@@ -210,5 +238,6 @@ class Preferences:
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,
             "presence": self.presence,
+            "presence_lag": self._presence_lag,
             "known": sorted(self._known),
         }

@@ -496,6 +496,7 @@ if (!customElements.get("storybox-plus-panel")) {
           for (const k of ["max_volume", "max_headphone_volume"]) if (k in values) values[k] = String(values[k]);
           // Kept in Home Assistant, not in the cloud: the entity that tells whether the box is in the network
           values.presence_entity = b.presence_entity || null;
+          values.presence_lag = b.presence_lag ?? 20;
         }
         return values;
       }
@@ -615,6 +616,10 @@ if (!customElements.get("storybox-plus-panel")) {
         for (const [k, v] of Object.entries(ch)) {
           if (k === "name") msg.name = String(v || "").trim() || invalid();
           else if (k === "presence_entity") msg[k] = v || null;
+          else if (k === "presence_lag") {
+            msg[k] = num(v);
+            if (msg[k] < 0 || msg[k] > 120) invalid();
+          }
           else if (typeof saved[k] === "number" || k === "max_volume" || k === "max_headphone_volume") msg[k] = num(v);
           else msg[k] = v;
         }
@@ -1295,7 +1300,8 @@ if (!customElements.get("storybox-plus-panel")) {
       });
       if ("presence_entity" in values) {
         const filter = [{ domain: "device_tracker" }, { domain: "binary_sensor", device_class: "connectivity" }];
-        html += this._section(t.grpPresence, this._row(scope, "presence_entity", t.s_presence_entity, t.h_presence_entity, { entity: { filter } }),
+        html += this._section(t.grpPresence, this._row(scope, "presence_entity", t.s_presence_entity, t.h_presence_entity, { entity: { filter } }) +
+          this._row(scope, "presence_lag", t.s_presence_lag, t.h_presence_lag, { text: { suffix: "min" } }, true),
           { cls: "rows", help: t.presenceHint });
       }
       return html;

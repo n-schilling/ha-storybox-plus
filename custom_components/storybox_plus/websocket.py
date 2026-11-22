@@ -60,7 +60,7 @@ from .favourites import Favourites
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 from .log import LEVELS, MAX_DAYS, async_get_log
 from .night import NightMode
-from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB, PRESENCE_DOMAINS
+from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB, PRESENCE_DOMAINS, PRESENCE_LAG
 from .repeat import MODES
 
 _LOGGER = logging.getLogger(__name__)
@@ -272,6 +272,8 @@ def _box_dict(
         "online": box_state.online,
         # A Toniebox 1 only: the entity its online state and active time come from
         "presence_entity": coordinator.presence_entity(box),
+        # The minutes taken off each stretch of its active time
+        "presence_lag": None if box.live else entry.runtime_data.preferences.presence_lag(box.id),
         "last_seen": box.last_seen.isoformat() if box.last_seen else None,
         "battery": box_state.battery.percent if box_state.battery else None,
         "charging": box_state.battery.charging if box_state.battery else None,
@@ -983,6 +985,9 @@ async def websocket_save_schedule(
             str, probatio.Strip, probatio.Length(min=1, max=100)
         ),
         probatio.Optional("presence_entity"): probatio.Any(None, _PRESENCE_ENTITY),
+        probatio.Optional("presence_lag"): probatio.All(
+            int, probatio.Range(min=PRESENCE_LAG[0], max=PRESENCE_LAG[1])
+        ),
         **_setting_schema(),
     }
 )
@@ -997,7 +1002,8 @@ async def websocket_box_settings(
         return
     changes = {k: v for k, v in msg.items() if k == "name" or k in SETTING_FIELDS}
     presence = "presence_entity" in msg
-    if not changes and not presence:
+    lag = "presence_lag" in msg
+    if not changes and not presence and not lag:
         connection.send_error(msg["id"], "invalid_format", "Nothing to change")
         return
     coordinator = entry.runtime_data.coordinator
@@ -1007,6 +1013,8 @@ async def websocket_box_settings(
         box_state = coordinator.data.boxes[msg["box_id"]]
         if presence:
             box_state = await coordinator.async_set_presence(msg["box_id"], msg["presence_entity"])
+        if lag:
+            box_state = await coordinator.async_set_presence_lag(msg["box_id"], msg["presence_lag"])
         if changes:
             box_state = await coordinator.async_change_settings(msg["box_id"], changes)
         return box_state

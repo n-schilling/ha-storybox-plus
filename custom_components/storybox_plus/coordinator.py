@@ -694,7 +694,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
 
     def _count_awake(self, box_id: str, online: bool | None) -> None:
         if self.analytics is not None and self.counts_box(box_id):
-            self.analytics.awake(box_id, online is True)
+            self.analytics.awake(box_id, online is True, self.preferences.presence_lag(box_id) * 60)
             self.analytics.save_soon()
 
     @callback
@@ -728,6 +728,18 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         )
         self._watch_presence(self.data)
         self.async_update_listeners()
+        return box_state
+
+    async def async_set_presence_lag(self, box_id: str, minutes: int) -> BoxState:
+        """Set the minutes taken off each stretch of active time of a Toniebox 1."""
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        if box_state.box.live:
+            raise BoxError("not_supported")
+        await self.preferences.async_set_presence_lag(box_id, minutes)
+        if box_id in self._presence_watched:
+            self._count_awake(box_id, box_state.online)
         return box_state
 
     # ------------------------------------------------------------ push

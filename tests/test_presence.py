@@ -35,10 +35,18 @@ async def _box(client: Any, box_id: str = CLASSIC_BOX_ID) -> dict[str, Any]:
     return box
 
 
-async def _set(client: Any, entity_id: str | None, box_id: str = CLASSIC_BOX_ID) -> dict[str, Any]:
+async def _set(
+    client: Any, entity_id: str | None, box_id: str = CLASSIC_BOX_ID, lag: int = 0
+) -> dict[str, Any]:
+    """Set the entity; the lag is switched off unless the test is about it."""
     return await _ask(
         client,
-        {"type": f"{DOMAIN}/box/settings", "box_id": box_id, "presence_entity": entity_id},
+        {
+            "type": f"{DOMAIN}/box/settings",
+            "box_id": box_id,
+            "presence_entity": entity_id,
+            "presence_lag": lag,
+        },
     )
 
 
@@ -202,7 +210,10 @@ async def test_the_entity_is_watched_from_the_start(
         "version": 1,
         "minor_version": 1,
         "key": key,
-        "data": {"presence": {CLASSIC_BOX_ID: TRACKER, BOX_ID: TRACKER}},
+        "data": {
+            "presence": {CLASSIC_BOX_ID: TRACKER, BOX_ID: TRACKER},
+            "presence_lag": {CLASSIC_BOX_ID: 0, "odd": 500, "flag": True},
+        },
     }
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -263,3 +274,77 @@ async def test_refused(
     answer = await _set(client, entity_id, box_id)
     assert not answer["success"]
     assert answer["error"]["code"] == code
+
+
+def test_the_lag_is_taken_off_every_stretch() -> None:
+    """Time is booked once it is older than the lag; a short stretch counts nothing."""
+    clock = Clock()
+    counter = Analytics(_store(), clock.now)
+    counter.awake("classic", True, 1200)
+    clock.advance(600)
+    counter.tick()
+    assert counter.active_per_box() == {}
+    clock.advance(900)
+    counter.tick()
+    assert counter.active_per_box() == {"classic": 300}
+    # In the network already: the stretch goes on, only the lag follows
+    counter.awake("classic", True, 600)
+    clock.advance(900)
+    counter.awake("classic", False)
+    assert counter.active_per_box() == {"classic": 1800}
+    # Twenty minutes switched on without a use
+    counter.awake("classic", True, 1200)
+    clock.advance(1200)
+    counter.awake("classic", False)
+    counter.awake("classic", True, 1200)
+    clock.advance(300)
+    counter.awake("classic", False)
+    assert counter.active_per_box() == {"classic": 1800}
+
+
+async def test_the_lag_of_a_box(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Twenty minutes go off each stretch by default; the page sets another lag."""
+    client = await hass_ws_client(hass)
+    assert (await _box(client))["presence_lag"] == 20
+    assert (await _box(client, BOX_ID))["presence_lag"] is None
+    hass.states.async_set(TRACKER, "home")
+    answer = await _ask(
+        client,
+        {"type": f"{DOMAIN}/box/settings", "box_id": CLASSIC_BOX_ID, "presence_entity": TRACKER},
+    )
+    assert answer["result"]["presence_lag"] == 20
+    freezer.tick(timedelta(minutes=50))
+    hass.states.async_set(TRACKER, "not_home")
+    await hass.async_block_till_done()
+    assert (await _active(client))[0]["seconds"] == 30 * 60
+
+    # A new lag counts for the stretch that runs
+    hass.states.async_set(TRACKER, "home")
+    await hass.async_block_till_done()
+    lag = {"type": f"{DOMAIN}/box/settings", "box_id": CLASSIC_BOX_ID, "presence_lag": 5}
+    answer = await _ask(client, lag)
+    assert answer["result"]["presence_lag"] == 5
+    assert answer["result"]["presence_entity"] == TRACKER
+    freezer.tick(timedelta(minutes=15))
+    hass.states.async_set(TRACKER, "not_home")
+    await hass.async_block_till_done()
+    assert (await _active(client))[0]["seconds"] == 40 * 60
+    stored = hass_storage[f"{DOMAIN}.{setup_entry.entry_id}.settings"]["data"]
+    assert stored["presence_lag"] == {CLASSIC_BOX_ID: 5}
+
+    for wrong, code in (
+        ({**lag, "presence_lag": 121}, "invalid_format"),
+        ({**lag, "box_id": BOX_ID}, "not_supported"),
+        ({**lag, "box_id": "nothing"}, "unknown_box"),
+    ):
+        assert (await _ask(client, wrong))["error"]["code"] == code
+    with pytest.raises(ValueError):
+        await setup_entry.runtime_data.preferences.async_set_presence_lag(CLASSIC_BOX_ID, -1)

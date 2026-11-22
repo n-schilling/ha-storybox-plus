@@ -11,8 +11,11 @@ playback, so only its listening is counted.
 A Toniebox 1 with a presence entity (see preferences) gets its active time
 instead: how long it was in the network, per day and hour. That is an
 indication only, never listening time: the box stays awake for a while after
-the last sound, and the entity notices its leaving late. It is kept apart
-and enters none of the listening sums.
+the last sound, and the entity notices its leaving late. That lag is taken
+off the end of every stretch in the network, so a stretch no longer than the
+lag counts nothing; time is booked only once it is older than the lag. A
+restart of Home Assistant ends a stretch, so one that spans it loses the lag
+twice. It is kept apart and enters none of the listening sums.
 """
 
 from __future__ import annotations
@@ -62,8 +65,8 @@ class Analytics:
         # box_id -> (tonie_id, chapter index or None, playing since)
         self._active: dict[str, tuple[str, int | None, datetime]] = {}
         self._awake_sums: dict[str, HourSums] = {}
-        # box_id -> in the network since
-        self._awake: dict[str, datetime] = {}
+        # box_id -> (in the network and not yet booked since, the lag to take off its end)
+        self._awake: dict[str, tuple[datetime, timedelta]] = {}
         self._dirty = False
 
     async def async_load(self) -> None:
@@ -119,14 +122,22 @@ class Analytics:
 
     # ------------------------------------------------------------ counting
 
-    def awake(self, box_id: str, awake: bool) -> None:
-        """Note whether a Toniebox 1 is in the network now; anything else than yes ends the count."""
+    def awake(self, box_id: str, awake: bool, lag: float = 0) -> None:
+        """Note whether a Toniebox 1 is in the network now; anything else than yes ends the count.
+
+        lag: the seconds the box stays in the network after its last use,
+        taken off the end of the stretch. A box that is in the network
+        already keeps its stretch; only the lag follows.
+        """
         now = self._now()
-        since = self._awake.pop(box_id, None)
-        if since is not None:
-            self._add_awake(box_id, since, now)
+        delay = timedelta(seconds=max(0.0, lag))
+        current = self._awake.get(box_id)
         if awake:
-            self._awake[box_id] = now
+            self._awake[box_id] = (current[0] if current else now, delay)
+            return
+        if current is not None:
+            del self._awake[box_id]
+            self._add_awake(box_id, current[0], now - current[1])
 
     def _add_awake(self, box_id: str, start: datetime, end: datetime) -> None:
         for key, hour, seconds in _by_hour(start, end):
@@ -160,9 +171,12 @@ class Analytics:
         for box_id, (tonie_id, chapter, since) in list(self._active.items()):
             self._add(box_id, tonie_id, chapter, since, now)
             self._active[box_id] = (tonie_id, chapter, now)
-        for box_id, since in list(self._awake.items()):
-            self._add_awake(box_id, since, now)
-            self._awake[box_id] = now
+        for box_id, (since, delay) in list(self._awake.items()):
+            # Only what stays counted even if the box leaves right now
+            until = now - delay
+            if until > since:
+                self._add_awake(box_id, since, until)
+                self._awake[box_id] = (until, delay)
 
     def _add(
         self, box_id: str, tonie_id: str, chapter: int | None, start: datetime, end: datetime
