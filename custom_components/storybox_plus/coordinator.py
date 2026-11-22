@@ -13,10 +13,15 @@ from typing import Any
 from yarl import URL
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.const import STATE_HOME, STATE_NOT_HOME, STATE_OFF, STATE_ON
+from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.event import async_call_later, async_track_point_in_utc_time
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_point_in_utc_time,
+    async_track_state_change_event,
+)
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -268,8 +273,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._alarm_sent: dict[str, datetime] = {}
         self._alarm_tries: dict[str, tuple[datetime | None, int]] = {}
         self._alarm_timers: dict[str, CALLBACK_TYPE] = {}
+        # Per Toniebox 1 the entity that tells whether it is in the network, as watched now
+        self._presence_watched: dict[str, str] = {}
+        self._presence_unsub: CALLBACK_TYPE | None = None
         entry.async_on_unload(self._cancel_alarm_timers)
         entry.async_on_unload(self._cancel_night_timers)
+        entry.async_on_unload(self._unwatch_presence)
 
     async def async_load_details(self) -> None:
         """Read the chapters learned in earlier runs."""
@@ -326,6 +335,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                     box_state.online = _online_from_rest(box)
             else:
                 box_state = BoxState(box=box, online=_online_from_rest(box))
+            if (entity_id := self.presence_entity(box)) is not None:
+                box_state.online = self._presence_online(entity_id)
             state.boxes[box.id] = box_state
             if box.alarm_capable:
                 await self._async_read_schedules(box_state)
@@ -333,6 +344,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 box_state.schedules = None
         self.push.set_boxes(b.box.mac for b in state.boxes.values() if b.box.live and b.box.mac)
         self._remove_stale_devices(state)
+        self._watch_presence(state)
         if self.analytics is not None:
             self.analytics.tick()
             self.analytics.save_soon()
@@ -634,6 +646,86 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 _LOGGER.debug("A box left the account; its device is removed")
                 registry.async_remove_device(device.id)
         self._missing_polls = {k: v for k, v in self._missing_polls.items() if k in seen}
+
+    # ------------------------------------------------------------ presence of a Toniebox 1
+
+    def presence_entity(self, box: Box) -> str | None:
+        """Return the entity that tells whether a Toniebox 1 is in the network, if one is set."""
+        return None if box.live else self.preferences.presence.get(box.id)
+
+    def _presence_online(self, entity_id: str) -> bool | None:
+        """Read the entity: at home or on is online, away or off is offline, the rest unknown."""
+        state = self.hass.states.get(entity_id)
+        if state is None:
+            return None
+        if state.state in (STATE_HOME, STATE_ON):
+            return True
+        if state.state in (STATE_NOT_HOME, STATE_OFF):
+            return False
+        return None
+
+    def _watch_presence(self, state: CloudState) -> None:
+        """Follow the presence entities of the boxes in the account; count their active time."""
+        wanted = {
+            box_state.box.id: entity_id
+            for box_state in state.boxes.values()
+            if (entity_id := self.presence_entity(box_state.box)) is not None
+        }
+        if wanted == self._presence_watched:
+            return
+        before = self._presence_watched
+        self._unwatch_presence()
+        self._presence_watched = wanted
+        if wanted:
+            self._presence_unsub = async_track_state_change_event(
+                self.hass, sorted(set(wanted.values())), self._presence_changed
+            )
+        for box_id in before.keys() | wanted.keys():
+            self._count_awake(box_id, state.boxes[box_id].online if box_id in wanted else None)
+
+    def _unwatch_presence(self) -> None:
+        if self._presence_unsub is not None:
+            self._presence_unsub()
+            self._presence_unsub = None
+        self._presence_watched = {}
+
+    def _count_awake(self, box_id: str, online: bool | None) -> None:
+        if self.analytics is not None and self.counts_box(box_id):
+            self.analytics.awake(box_id, online is True)
+            self.analytics.save_soon()
+
+    @callback
+    def _presence_changed(self, event: Event[EventStateChangedData]) -> None:
+        """Take a change of a presence entity as the box coming or going."""
+        entity_id = event.data["entity_id"]
+        online = self._presence_online(entity_id)
+        changed = False
+        for box_id, watched in self._presence_watched.items():
+            box_state = self.data.boxes.get(box_id)
+            if watched != entity_id or box_state is None or box_state.online is online:
+                continue
+            box_state.online = online
+            self._count_awake(box_id, online)
+            changed = True
+        if changed:
+            self.async_update_listeners()
+
+    async def async_set_presence(self, box_id: str, entity_id: str | None) -> BoxState:
+        """Set or clear the presence entity of a Toniebox 1."""
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        if box_state.box.live:
+            raise BoxError("not_supported")
+        await self.preferences.async_set_presence(box_id, entity_id)
+        box_state.online = (
+            self._presence_online(entity_id)
+            if entity_id is not None
+            else _online_from_rest(box_state.box)
+        )
+        self._watch_presence(self.data)
+        self.async_update_listeners()
+        return box_state
 
     # ------------------------------------------------------------ push
 

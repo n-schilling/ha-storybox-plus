@@ -128,7 +128,18 @@ def _analytics(today: date) -> dict[str, Any]:
         chapters[key] = per_chapter
         hours[key] = {demo_cloud.KIDS_BOX: per_hour}
         placements[key] = {demo_cloud.KIDS_BOX: placed}
-    return {"days": days, "chapters": chapters, "hours": hours, "placements": placements}
+    # The Toniebox 1 was in the network on some evenings (its presence entity told so)
+    active = {
+        (today - timedelta(days=back)).isoformat(): {demo_cloud.LIVING_BOX: {"18": 2400, "19": 900}}
+        for back in range(1, 20, 3)
+    }
+    return {
+        "days": days,
+        "chapters": chapters,
+        "hours": hours,
+        "placements": placements,
+        "active": active,
+    }
 
 
 def _battery(today: date) -> dict[str, Any]:
@@ -755,6 +766,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await living.click()
         await _until(lambda: _named(page, "Living room"), "the Toniebox 1's page")
         expect(await page.locator(f"{PANEL} #views").count() == 0, "views of a Toniebox 1")
+        # Only a Toniebox 1 takes an entity that tells whether it is in the network
+        presence = page.locator(f"{PANEL} ha-settings-row", has_text="Presence entity")
+        await _until(
+            lambda: presence.locator("ha-selector-entity").count(),
+            "the presence entity's field",
+        )
+        await _rows_have_help(page)
 
     await checks.run(
         "a box as a subpage: rows with their (i), one save button while changed, back arrow",
@@ -1119,6 +1137,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             "Most played chapters",
             "Placed most often",
             "Per box",
+            "Active time of the Toniebox 1",
         ):
             expect(part in text, f"{part!r} missing")
         expect("The Clever Fox" in text, "the most played figure is missing")
@@ -1129,6 +1148,14 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         expect(
             "counts the listening time itself" in await note.evaluate("el => el.textContent"),
             "note",
+        )
+        # The active time stands apart, with why it is no listening time behind its (i)
+        active = page.locator(f"{PANEL} ha-card", has_text="Active time of the Toniebox 1")
+        expect("Living room" in await active.inner_text(), "the Toniebox 1's active time")
+        expect(
+            "not listening time"
+            in await active.locator("ha-tooltip").evaluate("el => el.textContent"),
+            "the active time's note",
         )
         placed = page.locator(f"{PANEL} ol.placed li")
         first = await placed.first.inner_text()

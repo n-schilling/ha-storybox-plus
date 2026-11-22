@@ -102,7 +102,7 @@ The REST API is read every 5 minutes: households, boxes, figures and chapters, a
 | Device | What Home Assistant gets |
 |---|---|
 | Toniebox 2 | online state, battery, charging, media player, figure event, listening times, battery cycles, favourite chapters |
-| Toniebox 1 | no entities: the Toniebox 1 reports nothing live to the cloud, not even whether it is online; nothing is simulated or guessed. Its settings are on the page. |
+| Toniebox 1 | no entities: the Toniebox 1 reports nothing live to the cloud, not even whether it is online; nothing is simulated or guessed. Its settings are on the page. With a presence entity of your own (see [Settings of a box](#settings-of-a-box)) the page shows whether it is online. |
 
 Both generations can be mixed in one account. Figures (bought figures, creative figures, discs) belong to the household, not to a box; the page shows them that way.
 
@@ -204,6 +204,8 @@ A new name reaches the box's device in Home Assistant at once, also one given in
 
 The box takes new settings the next time it is online; until then the page says it waits for the box. Offline mode is shown, not changed: the cloud does not take it. Resetting a box to its factory settings is left to the app.
 
+A Toniebox 1 also takes a presence entity there: a device tracker of the box (from your router's integration, for example) or a binary sensor for connectivity, such as a ping. The cloud knows nothing live of a Toniebox 1; with the entity its card shows a dot for online or offline, unknown while the entity is unavailable. The entity is kept in Home Assistant only and creates no entity of its own. Without one, the box shows no state.
+
 ### Night mode of the light ring
 
 A Toniebox 2 gets a night mode for its light ring: a span (from, until; across midnight when "until" comes first, in the box's time zone), a brightness for the span and one for the rest of the day. The integration sets the light ring when the span begins and when it ends; switched off during the span, the ring gets its normal brightness back at once.
@@ -236,6 +238,8 @@ flowchart LR
 ### Listening times and battery
 
 Home Assistant counts the listening time itself, from what a Toniebox 2 reports live: daily sums per figure and box, per chapter of a figure, per hour of the day per box, and how often each figure was placed; never single plays. The page ranks the most played figures and chapters and the figures placed most often, compares the period with the one of the same length before (once that one was counted in full), and shows when is listened to as a grid of weekdays and hours, for all boxes or one of them. They start with the setup; the Toniebox 1 and anything played while Home Assistant did not run are missing, and the page says so behind the (i) of the total. Counting is switched under Setup → Preferences, on by default; switching it off deletes the sums and sets the account up anew. How long the sums are kept is chosen there too: 1, 2 (default) or 5 years, or always; a shorter time deletes the older days at once.
+
+A Toniebox 1 with a presence entity gets its active time instead, as a section of its own in the summary: how long it was in the network. It is an indication, not listening time, and enters none of the sums above: the box stays awake for some minutes after the last sound, the entity notices its leaving late, and a box in offline mode is not seen at all.
 
 How long a charge lasts from now shows on the card, by the past charges: the level times the average full charge.
 
@@ -361,7 +365,7 @@ actions:
 
 ## Known limitations
 
-- The Toniebox 1 has no live data: no battery, no playback, no figure, not even whether it is online. It gets no device in Home Assistant; its settings are changed on the page.
+- The Toniebox 1 has no live data: no battery, no playback, no figure, not even whether it is online. It gets no device in Home Assistant; its settings are changed on the page. Whether it is online and its active time come only from a presence entity you choose, and are as exact as that entity.
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The box plays whatever figure stands on it; Home Assistant cannot choose a figure.
 - The listening times count from the setup on; the cloud offers no history.

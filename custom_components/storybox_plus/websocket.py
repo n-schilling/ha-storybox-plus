@@ -60,7 +60,7 @@ from .favourites import Favourites
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 from .log import LEVELS, MAX_DAYS, async_get_log
 from .night import NightMode
-from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB
+from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB, PRESENCE_DOMAINS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -259,6 +259,8 @@ def _box_dict(
         "image_url": coordinator.box_picture(box),
         "firmware": box.firmware,
         "online": box_state.online,
+        # A Toniebox 1 only: the entity its online state and active time come from
+        "presence_entity": coordinator.presence_entity(box),
         "last_seen": box.last_seen.isoformat() if box.last_seen else None,
         "battery": box_state.battery.percent if box_state.battery else None,
         "charging": box_state.battery.charging if box_state.battery else None,
@@ -857,6 +859,11 @@ def _setting_schema() -> dict[Any, Any]:
     return schema
 
 
+_PRESENCE_ENTITY = probatio.All(
+    str,
+    probatio.Length(max=255),
+    probatio.Match(rf"^({'|'.join(PRESENCE_DOMAINS)})\.[a-z0-9_]+$"),
+)
 _CLOCK = probatio.Match(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
 # The page's names and the cloud's
 _SCHEDULE_FIELDS = {
@@ -958,6 +965,7 @@ async def websocket_save_schedule(
         probatio.Optional("name"): probatio.All(
             str, probatio.Strip, probatio.Length(min=1, max=100)
         ),
+        probatio.Optional("presence_entity"): probatio.Any(None, _PRESENCE_ENTITY),
         **_setting_schema(),
     }
 )
@@ -971,13 +979,22 @@ async def websocket_box_settings(
         connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
         return
     changes = {k: v for k, v in msg.items() if k == "name" or k in SETTING_FIELDS}
-    if not changes:
+    presence = "presence_entity" in msg
+    if not changes and not presence:
         connection.send_error(msg["id"], "invalid_format", "Nothing to change")
         return
     coordinator = entry.runtime_data.coordinator
-    await _answer_with_box(
-        connection, msg, entry, coordinator.async_change_settings(msg["box_id"], changes)
-    )
+
+    async def _change() -> BoxState:
+        # The entity is kept in Home Assistant only; the cloud hears of the rest
+        box_state = coordinator.data.boxes[msg["box_id"]]
+        if presence:
+            box_state = await coordinator.async_set_presence(msg["box_id"], msg["presence_entity"])
+        if changes:
+            box_state = await coordinator.async_change_settings(msg["box_id"], changes)
+        return box_state
+
+    await _answer_with_box(connection, msg, entry, _change())
 
 
 @require_admin
@@ -1446,6 +1463,7 @@ def websocket_analytics(
     first_day: str | None = None
     per_tonie: dict[str, int] = {}
     per_box: dict[str, int] = {}
+    active_per_box: dict[str, int] = {}
     per_day: dict[str, int] = {}
     placements: dict[str, int] = {}
     names: dict[str, Any] = {}
@@ -1466,6 +1484,8 @@ def websocket_analytics(
             per_tonie[tonie_id] = per_tonie.get(tonie_id, 0) + seconds
         for box_id, seconds in runtime.analytics.per_box(days).items():
             per_box[box_id] = per_box.get(box_id, 0) + seconds
+        for box_id, seconds in runtime.analytics.active_per_box(days).items():
+            active_per_box[box_id] = active_per_box.get(box_id, 0) + seconds
         for day, seconds in runtime.analytics.per_day(days).items():
             per_day[day] = per_day.get(day, 0) + seconds
         for tonie_id, times in runtime.analytics.placements_per_tonie(days).items():
@@ -1544,6 +1564,11 @@ def websocket_analytics(
             "per_box": [
                 {"box_id": b, "name": box_names.get(b), "seconds": s}
                 for b, s in sorted(per_box.items(), key=lambda item: -item[1])
+            ],
+            # How long each Toniebox 1 was in the network: an indication, no listening time
+            "active_per_box": [
+                {"box_id": b, "name": box_names.get(b), "seconds": s}
+                for b, s in sorted(active_per_box.items(), key=lambda item: -item[1])
             ],
         },
     )

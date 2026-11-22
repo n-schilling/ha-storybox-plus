@@ -492,7 +492,11 @@ if (!customElements.get("storybox-plus-panel")) {
         if (!b?.settings) return null;
         const values = { name: b.name || "", ...b.settings.values };
         // A Toniebox 1 knows four steps, chosen from a list of words
-        if (b.generation !== "toniebox_2") for (const k of ["max_volume", "max_headphone_volume"]) if (k in values) values[k] = String(values[k]);
+        if (b.generation !== "toniebox_2") {
+          for (const k of ["max_volume", "max_headphone_volume"]) if (k in values) values[k] = String(values[k]);
+          // Kept in Home Assistant, not in the cloud: the entity that tells whether the box is in the network
+          values.presence_entity = b.presence_entity || null;
+        }
         return values;
       }
       if (kind === "night") {
@@ -607,6 +611,7 @@ if (!customElements.get("storybox-plus-panel")) {
         const msg = { type: "storybox_plus/box/settings", box_id: id };
         for (const [k, v] of Object.entries(ch)) {
           if (k === "name") msg.name = String(v || "").trim() || invalid();
+          else if (k === "presence_entity") msg[k] = v || null;
           else if (typeof saved[k] === "number" || k === "max_volume" || k === "max_headphone_volume") msg[k] = num(v);
           else msg[k] = v;
         }
@@ -1139,7 +1144,8 @@ if (!customElements.get("storybox-plus-panel")) {
     }
 
     // A Toniebox 1 as a small card: its settings in a sentence and when it was last
-    // seen; the cloud knows no connection state of it, so it shows none
+    // seen. The cloud knows no connection state of it; the dot comes from its presence
+    // entity and is missing without one
     _miniBox(b, showHousehold) {
       const t = this._t;
       const seen = b.last_seen ? fill(t.lastSeen, { t: this._relative(b.last_seen) }) : "";
@@ -1152,7 +1158,7 @@ if (!customElements.get("storybox-plus-panel")) {
       const src = safeUrl(b.image_url);
       const pic = src ? `<img class="box-pic small" src="${esc(src)}" alt="">` : "";
       return `<ha-card class="mini-box"><div class="mini-head">${pic}` +
-        `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${chips}</div>${lines}</div>` +
+        `<div class="mini-text"><div class="mini-title"><span class="box-name">${esc(b.name || b.id)}</span>${b.presence_entity ? this._dot(b) : ""}${chips}</div>${lines}</div>` +
         cog + `</div></ha-card>`;
     }
 
@@ -1224,6 +1230,11 @@ if (!customElements.get("storybox-plus-panel")) {
         if (i === 0 && b.firmware) rows.push(this._infoRow(t.firmware, t.h_firmware, b.firmware));
         if (rows.length) html += this._section(t[group], rows.join(""), { cls: "rows" });
       });
+      if ("presence_entity" in values) {
+        const filter = [{ domain: "device_tracker" }, { domain: "binary_sensor", device_class: "connectivity" }];
+        html += this._section(t.grpPresence, this._row(scope, "presence_entity", t.s_presence_entity, t.h_presence_entity, { entity: { filter } }),
+          { cls: "rows", help: t.presenceHint });
+      }
       return html;
     }
 
@@ -2109,6 +2120,11 @@ if (!customElements.get("storybox-plus-panel")) {
         html += this._alertHelp("info", t.disabled, t.disabledHelp,
           `<ha-button slot="action" appearance="plain" data-act="go" data-key="setup/preferences">${esc(t.pgPreferences)}</ha-button>`);
       }
+      // How long a Toniebox 1 was in the network: beside the listening time, never in it
+      const active = s.active_per_box?.length
+        ? this._section(t.activeTime, `<table class="kv">${s.active_per_box.map((b) =>
+          `<tr><th>${esc(b.name || b.box_id)}</th><td>${esc(hm(b.seconds))} h</td></tr>`).join("")}</table>`, { help: t.activeHelp })
+        : "";
       const empty = !s.total_seconds && !s.top.length && !s.top_placed?.length;
       if (times) {
         if (empty) return html + this._section("", `<div class="muted">${esc(t.noStats)}</div>`);
@@ -2118,7 +2134,7 @@ if (!customElements.get("storybox-plus-panel")) {
       // Where the numbers come from, and so what they cannot contain: behind the total's (i)
       html += this._section(t.total, `<div class="total"><span class="big">${esc(hm(s.total_seconds))}</span><span class="unit">h</span></div>` +
         `<div class="muted">${esc(label)}</div>` + this._comparison(s), { help: t.noteLocal });
-      if (empty) return html + this._section("", `<div class="muted">${esc(t.noStats)}</div>`);
+      if (empty) return html + (active || this._section("", `<div class="muted">${esc(t.noStats)}</div>`));
       const bar = (v, max) => `<div class="bar" role="img" aria-label="${esc(`${this._fmt((100 * v) / max)} %`)}"><div style="width:${((100 * v) / max).toFixed(1)}%"></div></div>`;
       if (s.top.length) {
         const max = Math.max(...s.top.map((x) => x.seconds), 1);
@@ -2143,7 +2159,7 @@ if (!customElements.get("storybox-plus-panel")) {
         html += this._section(t.perBox, `<table class="kv">${s.per_box.map((b) =>
           `<tr><th>${esc(b.name || b.box_id)}</th><td>${esc(hm(b.seconds))} h</td></tr>`).join("")}</table>`);
       }
-      return html;
+      return html + active;
     }
 
     // The change against the window of the same length before, while that one was counted

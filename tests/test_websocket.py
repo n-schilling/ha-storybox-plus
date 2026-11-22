@@ -113,6 +113,7 @@ async def test_overview(
         "image_url": "https://img.example.com/box-red.png",
         "firmware": "1.2.3",
         "online": True,
+        "presence_entity": None,
         "last_seen": "2026-11-04T10:00:00+00:00",
         "battery": 80,
         "charging": True,
@@ -361,6 +362,7 @@ async def test_analytics(
         ],
         "per_day": [{"day": today, "seconds": 150}],
         "per_box": [{"box_id": BOX_ID, "name": BOX_NAME, "seconds": 150}],
+        "active_per_box": [],
     }
 
     result = await _ask(client, {"type": f"{DOMAIN}/analytics", "days": 1, "limit": 1})
@@ -397,6 +399,7 @@ async def test_analytics_switched_off(
         "previous_total_seconds": None,
         "per_day": [],
         "per_box": [],
+        "active_per_box": [],
     }
 
 

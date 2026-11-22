@@ -18,6 +18,11 @@ Three preferences, each per account:
   chapters; none is Piper's own default voice.
 - fetch_max_mb (200 by default): the largest file taken from the Media
   Fetcher app.
+- presence (none by default): per Toniebox 1 an entity of Home Assistant that
+  tells whether the box is in the network (a device tracker, or a binary
+  sensor for connectivity). The cloud knows nothing live of such a box; with
+  the entity the page shows it as online or offline and counts how long it
+  was awake (see analytics, active time).
 
 The figures that were already in the account when the integration first ran
 count as known: whether they are locked stays as it was.
@@ -39,6 +44,8 @@ ANALYTICS_DAYS = (0, 365, 730, 1825)
 DEFAULT_FETCH_MAX_MB = 200
 FETCH_MAX_MB = (10, 2000)
 LOCKABLE = frozenset({TonieKind.CONTENT, TonieKind.DISC})
+PRESENCE_DOMAINS = ("device_tracker", "binary_sensor")
+_PREFIXES = tuple(f"{domain}." for domain in PRESENCE_DOMAINS)
 
 
 class Preferences:
@@ -54,6 +61,8 @@ class Preferences:
         self.voice: str | None = None
         self.voice_language: str | None = None
         self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
+        # box_id -> entity_id
+        self.presence: dict[str, str] = {}
         self._known: set[str] = set()
         # None until the figures of the first run were taken as known
         self._started = False
@@ -81,6 +90,13 @@ class Preferences:
             and FETCH_MAX_MB[0] <= mb <= FETCH_MAX_MB[1]
         ):
             self.fetch_max_mb = mb
+        presence = raw.get("presence")
+        if isinstance(presence, dict):
+            self.presence = {
+                box: entity
+                for box, entity in presence.items()
+                if isinstance(entity, str) and entity.startswith(_PREFIXES)
+            }
         known = raw.get("known")
         if isinstance(known, list):
             self._known = {k for k in known if isinstance(k, str)}
@@ -128,6 +144,16 @@ class Preferences:
             self.voice_language = language if voice else None
         await self.async_save()
 
+    async def async_set_presence(self, box_id: str, entity_id: str | None) -> None:
+        """Set or clear the entity that tells whether a Toniebox 1 is in the network."""
+        if entity_id is None:
+            self.presence.pop(box_id, None)
+        elif entity_id.startswith(_PREFIXES):
+            self.presence[box_id] = entity_id
+        else:
+            raise ValueError(entity_id)
+        await self.async_save()
+
     def to_lock(self, tonies: list[Tonie]) -> list[Tonie]:
         """Return the new figures to lock now; the other new ones count as known at once.
 
@@ -166,5 +192,6 @@ class Preferences:
             "voice": self.voice,
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,
+            "presence": self.presence,
             "known": sorted(self._known),
         }

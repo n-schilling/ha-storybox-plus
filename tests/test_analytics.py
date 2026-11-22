@@ -232,6 +232,7 @@ def test_save_soon_writes_once_per_change(analytics: Analytics, clock: Clock, st
         "chapters": {},
         "hours": {TODAY: {"box1": {"10": 10}}},
         "placements": {},
+        "active": {},
     }
     clock.advance(5)
     analytics.tick()
@@ -250,6 +251,7 @@ async def test_async_save_books_what_plays(analytics: Analytics, clock: Clock, s
             "chapters": {},
             "hours": {TODAY: {"box1": {"10": 42}}},
             "placements": {},
+            "active": {},
         }
     )
     clock.advance(8)
@@ -279,6 +281,7 @@ async def test_with_the_real_store(
         "chapters": {TODAY: {"t1": {"2": 30}}},
         "hours": {TODAY: {"box1": {"10": 30}}},
         "placements": {},
+        "active": {},
     }
 
     again = Analytics(Store(hass, 1, key), clock.now)
