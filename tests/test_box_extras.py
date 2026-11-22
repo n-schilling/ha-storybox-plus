@@ -291,7 +291,7 @@ async def test_a_chapter_is_chosen_from_the_list(
     )
     sent = len(channel.commands)
     result = await _call(client, _command("chapter", last + 1))
-    assert result["error"]["code"] == "invalid_value"
+    assert result["error"]["code"] == "unknown_chapter"
     channel.removed()
     result = await _call(client, _command("chapter", 0))
     assert result["error"]["code"] == "nothing_plays"

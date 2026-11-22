@@ -789,6 +789,11 @@ if (!customElements.get("storybox-plus-panel")) {
           this._command(boxId, command, value);
           return;
         }
+        case "repeat": {
+          const [boxId, mode] = arg.split(":");
+          this._setRepeat(boxId, mode === "off" ? null : mode);
+          return;
+        }
         case "tracks":
           this._tracks = arg;
           this._update();
@@ -1481,6 +1486,18 @@ if (!customElements.get("storybox-plus-panel")) {
         this._render();
         return false;
       }
+    }
+
+    // Kept in Home Assistant, not on the box: the answer is the box as it is then
+    async _setRepeat(boxId, mode) {
+      if (!this._hass || this._ctlBusy) return;
+      this._ctlError = null;
+      try {
+        this._replaceBox(await this._hass.callWS({ type: "storybox_plus/box/repeat", box_id: boxId, mode }));
+      } catch (err) {
+        this._ctlError = { id: boxId, err };
+      }
+      this._update();
     }
 
     async _command(boxId, command, value) {

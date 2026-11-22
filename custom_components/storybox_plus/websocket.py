@@ -61,6 +61,7 @@ from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 from .log import LEVELS, MAX_DAYS, async_get_log
 from .night import NightMode
 from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB, PRESENCE_DOMAINS
+from .repeat import MODES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_figure_tune)
     async_register_command(hass, websocket_shuffle_on_swap)
     async_register_command(hass, websocket_preferences)
+    async_register_command(hass, websocket_box_repeat)
     async_register_command(hass, websocket_log)
     async_register_command(hass, websocket_log_set)
     async_register_command(hass, websocket_rename_household)
@@ -297,6 +299,8 @@ def _box_dict(
             else None
         ),
         "playback": playback,
+        # A Toniebox 2 only: the figure on it repeats ("all") or one chapter of it ("one")
+        "repeat": coordinator.repeat_mode(box.id),
         "battery_stats": coordinator.battery_stats.summary(box.id) if box.live else None,
         # How long the battery lasts from now, by the past charges; not while charging
         "battery_remaining_hours": (
@@ -850,6 +854,7 @@ _BOX_MESSAGES = {
     "unknown_household": "The account has no such household",
     "alarm_due": "The alarm of a bedtime is due; the sleep timer would cancel it",
     "nothing_plays": "No figure is on the box",
+    "unknown_chapter": "The figure has no such chapter",
     "invalid_command": "The command needs a value",
 }
 
@@ -1237,6 +1242,32 @@ async def websocket_redeem_token(
     await _answer_with_figure(
         connection, msg, coordinator, coordinator.async_redeem_token(msg["tonie_id"], msg["token"])
     )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/box/repeat",
+        probatio.Required("box_id"): str,
+        probatio.Required("mode"): probatio.Any(None, probatio.In(list(MODES))),
+    }
+)
+@callback
+def websocket_box_repeat(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Let the figure on a Toniebox 2 repeat, or one chapter of it, or end the repeat."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    try:
+        box_state = coordinator.set_repeat(msg["box_id"], msg["mode"])
+    except BoxError as err:
+        connection.send_error(msg["id"], err.code, _BOX_MESSAGES[err.code])
+        return
+    connection.send_result(msg["id"], _box_dict(entry, coordinator, box_state))
 
 
 @require_admin

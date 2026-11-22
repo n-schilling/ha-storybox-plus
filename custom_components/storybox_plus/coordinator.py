@@ -26,7 +26,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from . import bedtime, fetcher, night, speech
+from . import bedtime, fetcher, night, repeat, speech
 from .analytics import Analytics
 from .battery import BatteryStats
 from .cloud import (
@@ -273,6 +273,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._alarm_sent: dict[str, datetime] = {}
         self._alarm_tries: dict[str, tuple[datetime | None, int]] = {}
         self._alarm_timers: dict[str, CALLBACK_TYPE] = {}
+        # Per box: the repeat set for the figure on it, and the playback report before the last
+        self._repeat: dict[str, repeat.Mode] = {}
+        self._repeat_last: dict[str, Playback] = {}
         # Per Toniebox 1 the entity that tells whether it is in the network, as watched now
         self._presence_watched: dict[str, str] = {}
         self._presence_unsub: CALLBACK_TYPE | None = None
@@ -759,7 +762,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             if event.data.tonie_id is not None:
                 box_state.online = True
             action = self.favourites.observe(box_state.box.id, event.data)
-            if action is not None:
+            again = self._observe_repeat(box_state, event.data, action)
+            if again is not None:
+                self.config_entry.async_create_background_task(
+                    self.hass, self._async_play_from(box_state, again), f"{DOMAIN} repeat"
+                )
+            elif action is not None:
                 self.config_entry.async_create_background_task(
                     self.hass, self._async_steer(box_state, action), f"{DOMAIN} favourites"
                 )
@@ -876,6 +884,68 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         except CloudError as err:
             _LOGGER.debug("The box was not steered to a favourite chapter: %s", err)
 
+    # ------------------------------------------------------------ repeat
+
+    def repeat_mode(self, box_id: str) -> repeat.Mode | None:
+        """Return the repeat set for the figure on a box."""
+        return self._repeat.get(box_id)
+
+    def set_repeat(self, box_id: str, mode: repeat.Mode | None) -> BoxState:
+        """Set or end the repeat of the figure on a Toniebox 2."""
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        if not box_state.box.live:
+            raise BoxError("not_supported")
+        if mode is None:
+            self._repeat.pop(box_id, None)
+        elif box_state.tonie_id is None:
+            raise BoxError("nothing_plays")
+        else:
+            self._repeat[box_id] = mode
+        self.async_update_listeners()
+        return box_state
+
+    def _observe_repeat(
+        self, box_state: BoxState, playback: Playback, action: Action | None
+    ) -> int | None:
+        """Take a playback report; return the chapter to play again from its start, if any.
+
+        With favourite chapters at work, "all" starts again at the first
+        favourite instead of pausing after the last one.
+        """
+        box_id = box_state.box.id
+        last = self._repeat_last.get(box_id)
+        if playback.tonie_id is None:
+            # The repeat belongs to the figure: it ends when the figure is taken off
+            self._repeat.pop(box_id, None)
+            self._repeat_last.pop(box_id, None)
+            return None
+        self._repeat_last[box_id] = playback
+        mode = self._repeat.get(box_id)
+        if mode is None:
+            return None
+        again = repeat.decide(mode, playback, last)
+        favourites = self.favourites.get(playback.tonie_id)
+        ends = again is not None or (action is not None and action[0] == "pause")
+        if mode == "all" and ends and favourites and favourites.active and favourites.chapters:
+            again = favourites.chapters[0]
+        if again is not None:
+            self.favourites.forget_pause(box_id)
+            _LOGGER.debug("Repeat %s: chapter %s plays from its start", mode, again + 1)
+        return again
+
+    async def _async_play_from(self, box_state: BoxState, chapter: int) -> None:
+        """Send the box to the start of a chapter and let it play."""
+        mac = box_state.box.mac
+        if mac is None:
+            return
+        try:
+            await self.push.async_set_position(mac, chapter, 0)
+            await self.push.async_play(mac)
+        except CloudError as err:
+            _LOGGER.debug("The box was not sent back for the repeat: %s", err)
+
     # ------------------------------------------------------------ commands of the page
 
     async def async_box_command(self, box_id: str, command: str, value: int | None) -> None:
@@ -907,7 +977,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 raise BoxError("nothing_plays")
             tonie = self.tonie(playback.tonie_id)
             if tonie is None or value >= len(tonie.chapters):
-                raise BoxError("invalid_value")
+                raise BoxError("unknown_chapter")
             await self.push.async_set_position(mac, value, 0)
         elif command == "play":
             await self.push.async_play(mac)

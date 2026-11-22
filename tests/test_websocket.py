@@ -114,6 +114,7 @@ async def test_overview(
         "firmware": "1.2.3",
         "online": True,
         "presence_entity": None,
+        "repeat": None,
         "last_seen": "2026-11-04T10:00:00+00:00",
         "battery": 80,
         "charging": True,

@@ -15,6 +15,7 @@ from homeassistant.components.media_player.const import (
     MediaPlayerEntityFeature,
     MediaPlayerState,
     MediaType,
+    RepeatMode,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -24,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, CloudError, Playback
 from .const import ATTR_MINUTES, DOMAIN, SERVICE_CLEAR_SLEEP_TIMER, SERVICE_SET_SLEEP_TIMER
-from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
+from .coordinator import BoxError, BoxState, StoryboxConfigEntry, StoryboxCoordinator
 from .entity import BoxEntity, async_follow_boxes
 
 # Commands go one at a time to the cloud
@@ -82,6 +83,7 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.SEEK
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
+        | MediaPlayerEntityFeature.REPEAT_SET
         | MediaPlayerEntityFeature.TURN_OFF
         | MediaPlayerEntityFeature.BROWSE_MEDIA
         | MediaPlayerEntityFeature.PLAY_MEDIA
@@ -232,6 +234,24 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
                 mac, chapter, int(max(0.0, position) * 1000)
             )
         )
+
+    @property
+    def repeat(self) -> RepeatMode:
+        """The repeat of the figure on the box."""
+        mode = self.coordinator.repeat_mode(self._box_id)
+        return RepeatMode(mode) if mode else RepeatMode.OFF
+
+    async def async_set_repeat(self, repeat: RepeatMode) -> None:
+        """Let the figure repeat, or one chapter of it, or end the repeat."""
+        try:
+            self.coordinator.set_repeat(
+                self._box_id,
+                "all" if repeat is RepeatMode.ALL else "one" if repeat is RepeatMode.ONE else None,
+            )
+        except BoxError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="nothing_plays"
+            ) from err
 
     async def async_media_next_track(self) -> None:
         """Jump to the next chapter."""

@@ -101,6 +101,10 @@ class FavouriteChapters:
         await self._store.async_save({"tonies": {k: v.as_dict() for k, v in self._tonies.items()}})
         return favourites
 
+    def forget_pause(self, box_id: str) -> None:
+        """Drop the pause after the last favourite: it was not sent, the figure repeats."""
+        self._paused.pop(box_id, None)
+
     def observe(self, box_id: str, playback: Playback | None) -> Action | None:
         """Take a playback report of a box and return what to send, if anything.
 

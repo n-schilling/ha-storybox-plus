@@ -587,6 +587,10 @@ async def _save(page: Page) -> None:
     await page.locator(f"{PANEL} ha-button#save").wait_for(state="hidden", timeout=10000)
 
 
+async def _attr(locator: Any, name: str, value: str) -> bool:
+    return bool(await locator.get_attribute(name) == value)
+
+
 async def _gone(locator: Any) -> bool:
     return bool(await locator.count() == 0)
 
@@ -1358,6 +1362,23 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await controls.locator("[data-act$=':pause']").click()
         await page.wait_for_timeout(600)
         expect(await kids.locator("ha-alert[alert-type=error]").count() == 0, "the command failed")
+        # Repeat: one button through off, the whole figure, one chapter
+        again = controls.locator("ha-icon-button.repeat")
+        for pressed, label in (
+            ("false", "Repeat: off"),
+            ("true", "Repeat: the whole figure"),
+            ("true", "Repeat: this chapter"),
+            ("false", "Repeat: off"),
+        ):
+            await _until(
+                lambda label=label: _attr(again, "label", label), f"the repeat button says {label}"
+            )
+            expect(await again.get_attribute("aria-pressed") == pressed, f"pressed at {label}")
+            await again.click()
+        await _until(lambda: _attr(again, "label", "Repeat: the whole figure"), "repeat set")
+        await again.click()
+        await again.click()
+        await _until(lambda: _attr(again, "label", "Repeat: off"), "repeat off again")
         # The chapter list opens in Home Assistant's dialog; Escape closes it, a chapter
         # chosen there closes it too and plays
         await controls.locator("[data-act^='tracks:']").click()
