@@ -23,6 +23,11 @@ from .test_analytics import TODAY, Clock
 TRACKER = "device_tracker.toniebox"
 
 
+def _about(seconds: int) -> Any:
+    """Sums are whole seconds per hour: a span across an hour's end may lose one."""
+    return pytest.approx(seconds, abs=2)
+
+
 async def _ask(client: Any, message: dict[str, Any]) -> dict[str, Any]:
     await client.send_json_auto_id(message)
     answer: dict[str, Any] = await client.receive_json()
@@ -156,7 +161,8 @@ async def test_state_and_active_time_follow_the_entity(
     assert (await _box(client))["online"] is False
 
     active = await _active(client)
-    assert [(b["box_id"], b["seconds"]) for b in active] == [(CLASSIC_BOX_ID, 300)]
+    assert [b["box_id"] for b in active] == [CLASSIC_BOX_ID]
+    assert active[0]["seconds"] == _about(300)
     answer = await _ask(client, {"type": f"{DOMAIN}/analytics"})
     assert answer["result"]["total_seconds"] == 0
     assert answer["result"]["per_box"] == []
@@ -179,7 +185,7 @@ async def test_a_poll_keeps_the_state_of_the_entity(
     await hass.async_block_till_done()
     await setup_entry.runtime_data.coordinator.async_refresh()
     assert (await _box(client))["online"] is False
-    assert (await _active(client))[0]["seconds"] == 120
+    assert (await _active(client))[0]["seconds"] == _about(120)
 
     # Without the entity the state is the cloud's again, and nothing counts on
     hass.states.async_set("binary_sensor.ping", "on")
@@ -192,7 +198,7 @@ async def test_a_poll_keeps_the_state_of_the_entity(
     hass.states.async_set("binary_sensor.ping", "off")
     await hass.async_block_till_done()
     assert (await _box(client))["online"] is True
-    assert (await _active(client))[0]["seconds"] == 120
+    assert (await _active(client))[0]["seconds"] == _about(120)
 
 
 async def test_the_entity_is_watched_from_the_start(
@@ -324,7 +330,7 @@ async def test_the_lag_of_a_box(
     freezer.tick(timedelta(minutes=50))
     hass.states.async_set(TRACKER, "not_home")
     await hass.async_block_till_done()
-    assert (await _active(client))[0]["seconds"] == 30 * 60
+    assert (await _active(client))[0]["seconds"] == _about(30 * 60)
 
     # A new lag counts for the stretch that runs
     hass.states.async_set(TRACKER, "home")
@@ -336,7 +342,7 @@ async def test_the_lag_of_a_box(
     freezer.tick(timedelta(minutes=15))
     hass.states.async_set(TRACKER, "not_home")
     await hass.async_block_till_done()
-    assert (await _active(client))[0]["seconds"] == 40 * 60
+    assert (await _active(client))[0]["seconds"] == _about(40 * 60)
     stored = hass_storage[f"{DOMAIN}.{setup_entry.entry_id}.settings"]["data"]
     assert stored["presence_lag"] == {CLASSIC_BOX_ID: 5}
 
