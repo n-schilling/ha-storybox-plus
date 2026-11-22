@@ -89,10 +89,12 @@ async def test_overview(
                 "auto_lock": True,
                 "mark_read": False,
                 "analytics_days": 730,
+                "speech_engine": None,
                 "voice": None,
                 "voice_language": None,
                 "fetch_max_mb": 200,
             },
+            "speech_auto": None,
             "cloud": {
                 "version": BACKEND_VERSION,
                 "release": "v2026.11.10",

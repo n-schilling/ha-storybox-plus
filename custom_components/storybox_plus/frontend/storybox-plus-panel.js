@@ -56,7 +56,7 @@ if (!customElements.get("storybox-plus-panel")) {
   // How long listening sums are kept (days, 0: all) and the bounds of the file size from the app (MB)
   const ANALYTICS_DAYS = ["365", "730", "1825", "0"];
   const FETCH_MB = [10, 2000];
-  // The choice of Piper's own default voice; a select shows an empty value as none
+  // The choice of the engine's own default voice; a select shows an empty value as none
   const DEFAULT_VOICE = "default";
   // The integration's log levels, and how many of its latest lines the page shows
   const LOG_LEVELS = ["debug", "info", "warning", "error"];
@@ -532,6 +532,7 @@ if (!customElements.get("storybox-plus-panel")) {
         return {
           ...Object.fromEntries(PREF_KEYS.map((k) => [k, !!p[k]])),
           analytics_days: String(p.analytics_days ?? 730),
+          speech_engine: p.speech_engine || null,
           voice: p.voice ? `${p.voice_language}|${p.voice}` : DEFAULT_VOICE,
           fetch_max_mb: p.fetch_max_mb ?? 200,
         };
@@ -576,6 +577,8 @@ if (!customElements.get("storybox-plus-panel")) {
 
     _setDraft(scope, name, value) {
       (this._drafts[scope] ||= {})[name] = value;
+      // Another engine has other voices: it starts with its default one
+      if (name === "speech_engine") this._drafts[scope].voice = DEFAULT_VOICE;
       this._update();
     }
 
@@ -669,6 +672,7 @@ if (!customElements.get("storybox-plus-panel")) {
           msg.fetch_max_mb = num(ch.fetch_max_mb);
           if (msg.fetch_max_mb < FETCH_MB[0] || msg.fetch_max_mb > FETCH_MB[1]) invalid();
         }
+        if ("speech_engine" in ch) msg.speech_engine = ch.speech_engine || null;
         if ("voice" in ch) {
           const [language, voice] = ch.voice === DEFAULT_VOICE ? [] : String(ch.voice || "").split("|");
           msg.voice = voice || null;
@@ -2466,38 +2470,43 @@ if (!customElements.get("storybox-plus-panel")) {
       this._render();
     }
 
-    // The Piper voice for text chapters: the voices of the page's language, or Piper's own
-    _voiceRow(scope, e) {
+    // Who speaks text chapters: any text-to-speech entity of Home Assistant (none chosen:
+    // Piper, if it is set up), and one of its voices in the page's language or its default
+    _voiceRows(scope, e) {
       const t = this._t;
-      const engine = this._overview?.speech_engine;
-      if (!engine) return this._infoRow(t.prefVoice, t.prefVoiceHint, t.prefVoiceNone);
-      if (!this._voices) {
+      const chosen = this._value(scope, "speech_engine") || null;
+      const rows = this._row(scope, "speech_engine", t.prefEngine, t.prefEngineHint, { entity: { filter: [{ domain: "tts" }] } });
+      const engine = chosen || e.speech_auto;
+      if (!engine) return rows + this._infoRow(t.prefVoice, t.prefVoiceHint, t.prefVoiceNone);
+      const voices = (this._voices ||= {})[engine];
+      if (!voices) {
         this._loadVoices(engine);
-        return this._infoRow(t.prefVoice, t.prefVoiceHint, t.loading);
+        return rows + this._infoRow(t.prefVoice, t.prefVoiceHint, t.loading);
       }
-      const options = [{ value: DEFAULT_VOICE, label: t.prefVoiceDefault }, ...this._voices];
-      const current = this._saved(scope)?.voice;
+      const options = [{ value: DEFAULT_VOICE, label: t.prefVoiceDefault }, ...voices];
+      const current = this._value(scope, "voice");
       if (current && current !== DEFAULT_VOICE && !options.some((o) => o.value === current)) options.push({ value: current, label: current.split("|")[1] });
-      return this._row(scope, "voice", t.prefVoice, t.prefVoiceHint, { select: { mode: "dropdown", options } });
+      return rows + this._row(scope, "voice", t.prefVoice, t.prefVoiceHint, { select: { mode: "dropdown", options } });
     }
 
     async _loadVoices(engine) {
-      if (this._voicesLoading) return;
-      this._voicesLoading = true;
+      const loading = (this._voicesLoading ||= new Set());
+      if (loading.has(engine)) return;
+      loading.add(engine);
+      const voices = [];
       try {
         const info = await this._hass.callWS({ type: "tts/engine/get", engine_id: engine });
         const base = String(this._hass.locale?.language || this._hass.language || "en").split(/[-_]/)[0].toLowerCase();
         const langs = (info.provider?.supported_languages || []).filter((l) => l.split(/[-_]/)[0].toLowerCase() === base);
-        const voices = [];
         for (const language of langs) {
           const answer = await this._hass.callWS({ type: "tts/engine/voices", engine_id: engine, language });
           for (const v of answer.voices || []) voices.push({ value: `${language}|${v.voice_id}`, label: langs.length > 1 ? `${v.name} · ${language}` : v.name });
         }
-        this._voices = voices;
       } catch (err) {
-        this._voices = [];
+        // An engine without a list of voices keeps its default one
       }
-      this._voicesLoading = false;
+      (this._voices ||= {})[engine] = voices;
+      loading.delete(engine);
       this._render();
     }
 
@@ -2518,7 +2527,7 @@ if (!customElements.get("storybox-plus-panel")) {
         html += this._section(named(t.prefFigures), this._row(scope, "auto_lock", t.prefAutoLock, t.prefAutoLockHint, { boolean: {} }), { cls: "rows" });
         html += this._section(named(t.prefNotices), this._row(scope, "mark_read", t.prefMarkRead, t.prefMarkReadHint, { boolean: {} }), { cls: "rows" });
         html += this._section(named(t.prefChapters),
-          this._voiceRow(scope, e) +
+          this._voiceRows(scope, e) +
           this._row(scope, "fetch_max_mb", t.prefFetchMax, t.prefFetchMaxHint, { text: { suffix: "MB" } }, true), { cls: "rows" });
         // Only the release counts, not the commit behind it
         const c = e.cloud || {};

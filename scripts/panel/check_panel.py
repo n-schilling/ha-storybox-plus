@@ -1036,7 +1036,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _goto(page, instance, "figures/list?key=fig-empty&view=add", "ha-card")
         text = await page.locator(f"{PANEL} #sheet").inner_text()
         # Without the Media Fetcher app and Piper their cards say what is needed
-        expect("Needs the Media Fetcher app." in text and "Needs a Piper voice." in text, text)
+        expect("Needs the Media Fetcher app." in text and "Needs a voice." in text, text)
         async with page.expect_file_chooser() as chooser:
             await page.locator(f"{PANEL} ha-button[data-act='upload:fig-empty']").click()
         await (await chooser.value).set_files(

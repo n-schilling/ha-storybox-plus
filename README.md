@@ -254,7 +254,7 @@ How long a charge lasts: every discharge from leaving the charger to the next ch
 
 ### Chapters from text
 
-A creative figure takes a chapter from text: the page takes a title (or the first words) and the text, Piper, the local voice of Home Assistant, speaks it in the voice chosen under Setup → Preferences (Piper's default voice until one is chosen), and the recording is uploaded as a chapter. The text never leaves the house. Like links, this is optional: without a Piper voice (the Wyoming integration with Piper) the button stays grey and says what is missing.
+A creative figure takes a chapter from text: the page takes a title (or the first words) and the text, a voice of Home Assistant speaks it, and the recording is uploaded as a chapter. Without a choice that is Piper, the local voice (the Wyoming integration with Piper): the text never leaves the house then. Under Setup → Preferences any other text-to-speech entity of Home Assistant can be chosen, with one of its voices (its default voice until one is chosen); a voice of a cloud service gets the text to speak it, and a long text may exceed what it takes at once. A chosen entity that is unavailable is not replaced by another. Like links, this is optional: without a voice the button stays grey and says what is missing.
 
 ### The Media Fetcher app
 
@@ -267,7 +267,7 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 - **Boxes** (`/storybox-plus/boxes/overview`): every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, change the volume and set or cancel a sleep timer of 30 or 60 minutes (left out while a bedtime's alarm is due), its battery's level and online or offline as a dot. A Toniebox 1 gets a small card: its settings in one line and when it was last seen. The cog of a box, or its battery's level, opens the box (`?key=<box>`) with its views **Settings** (with the firmware), **Night mode**, **Bedtimes** and **Battery** (with the charge history) (`&view=settings|night|bedtimes|battery`).
 - **Figures**: **Figures** (`/figures/list`), the library with search over names and chapters and a filter by kind; a figure opens (`?key=<figure>`) with its views **Chapters** (favourite stars for bought figures, the edit mode for creative ones), **Settings** (name, live mode, volume, lock, steering by favourites, shuffling on swap), **Tune** and, for a creative figure, **Add** (files, YouTube, text). **Tunes** (`/figures/tunes`): the bought Tunes, redeeming a voucher and content from a code.
 - **Listening**: **Summary** (the total with the comparison, the most played figures and chapters, the figures placed most often, the sums per box) and **Times** (a chart per day, per week over long spans, and when is listened to by weekday and hour), for 7, 30 or 365 days or since the setup.
-- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app), **Preferences** (counting the listening time and how long it is kept, locking new figures, marking notifications as read, the Piper voice for text chapters, the largest file taken from a link, the cloud's version) and **Log** (the log level, how many days the lines are kept, the latest lines and a download). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
+- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app), **Preferences** (counting the listening time and how long it is kept, locking new figures, marking notifications as read, the speech entity and voice for text chapters, the largest file taken from a link, the cloud's version) and **Log** (the log level, how many days the lines are kept, the latest lines and a download). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 
 Settings are rows with their explanation behind an (i); one save button appears while something differs from what is saved. Errors read one line by their kind, Home Assistant's message behind the (i). Numbers follow the number format of the user's profile, and number fields take a point or a comma. Addresses of before (`#figures`, `#preferences`, …) lead to the page that took their place; opened without an address while no account is loaded, the page starts at the setup.
 
@@ -421,11 +421,11 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 
 | Command | Parameters |
 |---|---|
-| `storybox_plus/overview` | none; boxes with their live state, the version and the Piper voice entity (`speech_engine`) |
-| `storybox_plus/library` | none; households and figures with chapters and favourites, the bought Tunes, whether links can be fetched and whether Piper can speak |
+| `storybox_plus/overview` | none; boxes with their live state, the version, and per account the Piper entity that speaks while none is chosen (`speech_auto`) |
+| `storybox_plus/library` | none; households and figures with chapters and favourites, the bought Tunes, whether links can be fetched and whether a voice can speak |
 | `storybox_plus/analytics` | `days` (or none for all), `limit` |
 | `storybox_plus/chapters/arrange` | `tonie_id`, `chapters` (IDs in the new order; the rest is removed), optional `titles` (chapter ID → new name) |
-| `storybox_plus/chapters/add_text` | `tonie_id`, `text` (up to 5000 characters), optional `title` (else the first words); Piper speaks it |
+| `storybox_plus/chapters/add_text` | `tonie_id`, `text` (up to 5000 characters), optional `title` (else the first words); the account's voice speaks it |
 | `storybox_plus/chapters/add` | `tonie_id`, `file_id` (from `/api/file_upload`), optional `title` |
 | `storybox_plus/chapters/add_link` | `tonie_id`, `url`; a subscription that reports the stages |
 | `storybox_plus/favourites/set` | `tonie_id`, `chapters` (positions from 0), `active` |
@@ -438,7 +438,7 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 | `storybox_plus/voucher/redeem` | `entry_id`, `code`; answers with how many Tunes it brought and the Tunes |
 | `storybox_plus/figure/redeem_token` | `tonie_id` (a creative figure), `token`; answers with the figure |
 | `storybox_plus/figure/lock` | `tonie_id` (a bought figure or disc), `locked` |
-| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `voice` with `voice_language` (null: Piper's default), `fetch_max_mb` (10–2000); switching `analytics` sets the account up anew |
+| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `speech_engine` (a `tts` entity; null: Piper), `voice` with `voice_language` (null: the engine's default), `fetch_max_mb` (10–2000); switching `analytics` sets the account up anew |
 | `storybox_plus/log` | optional `limit`; the log level, the days kept and the latest lines, newest first (without a limit, all lines kept) |
 | `storybox_plus/log/set` | any of `level` (`debug`, `info`, `warning`, `error`), `days` (0–90) |
 | `storybox_plus/figure/volume` | `tonie_id`, `level` (1 to 13, or null for the box's own volume) |

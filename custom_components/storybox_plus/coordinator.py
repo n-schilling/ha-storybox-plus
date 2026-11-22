@@ -1560,12 +1560,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         )
 
     async def async_add_chapter_from_text(self, tonie_id: str, text: str, title: str) -> Tonie:
-        """Let Piper speak a text and append it as a chapter of a creative figure.
+        """Let the account's voice speak a text and append it as a chapter of a creative figure.
 
-        Refused when no Piper voice is set up, before anything is spoken.
+        Refused when no voice can speak, before anything is spoken.
         """
         tonie = self._creative(tonie_id)
-        engine = speech.find_piper(self.hass)
+        engine = speech.find_engine(self.hass, self.preferences.speech_engine)
         if engine is None:
             raise ChapterError("speech_missing")
         try:
@@ -1577,7 +1577,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 self.preferences.voice_language,
             )
         except speech.SpeechError as err:
-            raise ChapterError("speech_failed", f"Piper could not speak the text: {err}") from err
+            raise ChapterError(
+                "speech_failed", f"The voice could not speak the text: {err}"
+            ) from err
         content_type = {"mp3": "audio/mpeg", "wav": "audio/wav", "ogg": "audio/ogg"}.get(
             extension, "audio/mpeg"
         )

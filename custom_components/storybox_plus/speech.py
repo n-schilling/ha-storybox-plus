@@ -1,9 +1,11 @@
-"""A chapter from text: Piper, the local voice of Home Assistant, speaks it.
+"""A chapter from text: a voice of Home Assistant speaks it.
 
 Like links through the Media Fetcher app, this is optional: the page offers
-it only while a Piper voice is set up in Home Assistant (the Wyoming
-integration with a Piper entity). The text never leaves the house; only the
-spoken audio goes to the cloud as a chapter.
+it only while a voice can speak. Without a choice that is Piper, the local
+voice of Home Assistant (the Wyoming integration with a Piper entity): the
+text never leaves the house then, only the spoken audio goes to the cloud as
+a chapter. Any other text-to-speech entity can be chosen in the preferences;
+a voice of a cloud service gets the text to speak it.
 """
 
 from __future__ import annotations
@@ -17,7 +19,21 @@ TEXT_MAX = 5000
 
 
 class SpeechError(Exception):
-    """Piper could not speak the text."""
+    """The voice could not speak the text."""
+
+
+def find_engine(hass: HomeAssistant, chosen: str | None) -> str | None:
+    """Return the entity that speaks texts now: the chosen one, or Piper without a choice.
+
+    A chosen voice that is gone or unavailable is not replaced by another:
+    which service gets the text is the user's choice.
+    """
+    if chosen is None:
+        return find_piper(hass)
+    if "tts" not in hass.config.components:
+        return None
+    state = hass.states.get(chosen)
+    return chosen if state is not None and state.state != STATE_UNAVAILABLE else None
 
 
 def find_piper(hass: HomeAssistant) -> str | None:
@@ -51,9 +67,9 @@ async def async_speak(
     voice: str | None = None,
     language: str | None = None,
 ) -> tuple[str, bytes]:
-    """Let Piper speak the text; return the file ending and audio.
+    """Let the engine speak the text; return the file ending and audio.
 
-    Without a voice, Piper speaks in its own default voice and language.
+    Without a voice, the engine speaks in its own default voice and language.
     """
     # Imported here: the text-to-speech integration is only there when set up
     from homeassistant.components import tts
@@ -67,8 +83,8 @@ async def async_speak(
             options={"voice": voice} if voice else None,
         )
         extension, data = await tts.async_get_media_source_audio(hass, media_id)
-    except Exception as err:  # Piper or the speech pipeline failed, whatever the reason
+    except Exception as err:  # The engine or the speech pipeline failed, whatever the reason
         raise SpeechError(str(err) or type(err).__name__) from err
     if not data:
-        raise SpeechError("Piper returned no audio")
+        raise SpeechError("The voice returned no audio")
     return extension, data

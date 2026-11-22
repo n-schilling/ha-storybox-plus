@@ -291,3 +291,51 @@ async def test_speak_with_a_chosen_voice(hass: HomeAssistant) -> None:
         "options": {"voice": "de_DE-kerstin-low"},
     }
     assert calls[1] == {"engine": "tts.piper", "language": None, "options": None}
+
+
+async def test_another_voice_can_be_chosen(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """Any text-to-speech entity speaks once it is chosen; one that is gone is not replaced."""
+    client = await hass_ws_client(hass)
+    _piper(hass)
+    hass.states.async_set("tts.cloud_voice", "unknown")
+    assert speech.find_engine(hass, None) == "tts.piper"
+    assert speech.find_engine(hass, "tts.cloud_voice") == "tts.cloud_voice"
+    assert speech.find_engine(hass, "tts.missing") is None
+
+    base = {"type": f"{DOMAIN}/preferences/set", "entry_id": setup_entry.entry_id}
+    result = await _call(client, {**base, "voice": "de_DE-kerstin-low", "voice_language": "de_DE"})
+    assert result["result"]["voice"] == "de_DE-kerstin-low"
+    # Another engine has other voices: it starts with its default one
+    result = await _call(client, {**base, "speech_engine": "tts.cloud_voice"})
+    assert result["success"], result
+    assert result["result"]["speech_engine"] == "tts.cloud_voice"
+    assert result["result"]["voice"] is None
+    result = await _call(
+        client,
+        {**base, "speech_engine": "tts.cloud_voice", "voice": "Katja", "voice_language": "de-DE"},
+    )
+    assert result["result"]["voice"] == "Katja"
+    overview = await _call(client, {"type": f"{DOMAIN}/overview"})
+    assert overview["result"]["entries"][0]["speech_auto"] == "tts.piper"
+
+    message = {"type": f"{DOMAIN}/chapters/add_text", "tonie_id": CREATIVE_ID, "text": "Hallo"}
+    with patch.object(speech, "async_speak", return_value=("mp3", b"ID3audio")) as speak:
+        assert (await _call(client, message))["success"]
+    assert speak.await_args.args[1:] == ("tts.cloud_voice", "Hallo", "Katja", "de-DE")
+
+    hass.states.async_set("tts.cloud_voice", "unavailable")
+    library = await _call(client, {"type": f"{DOMAIN}/library"})
+    assert library["result"]["speech"] is False
+    assert (await _call(client, message))["error"]["code"] == "speech_missing"
+
+    for wrong in ("light.kitchen", "tts.Bad Name"):
+        refused = await _call(client, {**base, "speech_engine": wrong})
+        assert refused["error"]["code"] == "invalid_format"
+    result = await _call(client, {**base, "speech_engine": None})
+    assert result["result"]["speech_engine"] is None
+    assert result["result"]["voice"] is None

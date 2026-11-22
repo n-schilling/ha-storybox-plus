@@ -14,8 +14,11 @@ Three preferences, each per account:
   there once it was passed on, so the app shows it no more.
 - analytics_days (730 by default): how many days of listening sums are
   kept; 0 keeps them all.
-- voice, voice_language (none by default): the Piper voice that speaks text
-  chapters; none is Piper's own default voice.
+- speech_engine (none by default): the text-to-speech entity that speaks text
+  chapters; none is Piper, if it is set up. A voice of a cloud service gets
+  the text.
+- voice, voice_language (none by default): the voice of that entity; none is
+  its own default voice. A new entity starts with its default voice.
 - fetch_max_mb (200 by default): the largest file taken from the Media
   Fetcher app.
 - presence (none by default): per Toniebox 1 an entity of Home Assistant that
@@ -58,6 +61,7 @@ class Preferences:
         self.auto_lock = DEFAULT_AUTO_LOCK
         self.mark_read = DEFAULT_MARK_READ
         self.analytics_days = DEFAULT_ANALYTICS_DAYS
+        self.speech_engine: str | None = None
         self.voice: str | None = None
         self.voice_language: str | None = None
         self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
@@ -80,6 +84,9 @@ class Preferences:
             self.mark_read = raw["mark_read"]
         if raw.get("analytics_days") in ANALYTICS_DAYS:
             self.analytics_days = raw["analytics_days"]
+        engine = raw.get("speech_engine")
+        if isinstance(engine, str) and engine.startswith("tts."):
+            self.speech_engine = engine
         if isinstance(raw.get("voice"), str) and isinstance(raw.get("voice_language"), str):
             self.voice = raw["voice"]
             self.voice_language = raw["voice_language"]
@@ -109,6 +116,7 @@ class Preferences:
             "auto_lock": self.auto_lock,
             "mark_read": self.mark_read,
             "analytics_days": self.analytics_days,
+            "speech_engine": self.speech_engine,
             "voice": self.voice,
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,
@@ -122,7 +130,8 @@ class Preferences:
     async def async_set(self, **changes: Any) -> None:
         """Change the given preferences; None leaves one as it is, except for the voice.
 
-        A voice comes with its language; an empty voice is Piper's default.
+        A voice comes with its language; an empty voice is the engine's default.
+        Another engine starts with its default voice, unless one comes with it.
         """
         for key in ("analytics", "auto_lock", "mark_read"):
             if isinstance(changes.get(key), bool):
@@ -135,6 +144,13 @@ class Preferences:
             if not FETCH_MAX_MB[0] <= mb <= FETCH_MAX_MB[1]:
                 raise ValueError(mb)
             self.fetch_max_mb = mb
+        if "speech_engine" in changes:
+            engine = changes["speech_engine"] or None
+            if engine is not None and not engine.startswith("tts."):
+                raise ValueError("speech_engine")
+            if engine != self.speech_engine:
+                self.voice = self.voice_language = None
+            self.speech_engine = engine
         if "voice" in changes:
             voice = changes["voice"] or None
             language = changes.get("voice_language") or None
@@ -189,6 +205,7 @@ class Preferences:
             "auto_lock": self.auto_lock,
             "mark_read": self.mark_read,
             "analytics_days": self.analytics_days,
+            "speech_engine": self.speech_engine,
             "voice": self.voice,
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,

@@ -91,7 +91,7 @@ _CHAPTER_MESSAGES = {
     "unknown_file": "The uploaded file is not there any more",
     "empty_file": "The uploaded file is empty",
     "fetcher_missing": "The Media Fetcher app is not installed or not running",
-    "speech_missing": "No Piper voice is set up in Home Assistant",
+    "speech_missing": "No voice for texts is set up in Home Assistant",
     "invalid_url": "Only web links (http or https) can be fetched",
     "not_bought": "Favourites are for bought figures; the chapters of creative figures are arranged instead",
     "not_lockable": "Only bought figures and discs are locked to a household",
@@ -431,6 +431,8 @@ def _entry_extras(entry: StoryboxConfigEntry) -> dict[str, Any]:
             for h in coordinator.data.households.values()
         ],
         "preferences": entry.runtime_data.preferences.as_dict(),
+        # The voice that speaks texts while none is chosen: Piper, if it is set up
+        "speech_auto": speech.find_piper(coordinator.hass),
         "cloud": {
             "version": coordinator.backend_version,
             "release": coordinator.backend_release,
@@ -474,8 +476,6 @@ async def websocket_overview(
             "push_connected": push_connected,
             "boxes": boxes,
             "about": await _about(hass),
-            # The Piper voice that speaks text chapters, for the choice of its voices
-            "speech_engine": speech.find_piper(hass),
         },
     )
 
@@ -593,9 +593,12 @@ async def websocket_library(
             "tonies": tonies,
             "tunes": tunes,
             # The page offers links only while the Media Fetcher app is there,
-            # chapters from text only while a Piper voice is
+            # chapters from text only while the voice of an account can speak
             "fetcher": await fetcher.async_find(hass) is not None,
-            "speech": speech.find_piper(hass) is not None,
+            "speech": any(
+                speech.find_engine(hass, e.runtime_data.preferences.speech_engine) is not None
+                for e in _loaded_entries(hass)
+            ),
         },
     )
 
@@ -1356,6 +1359,9 @@ async def websocket_rename_household(
         probatio.Optional("mark_read"): bool,
         probatio.Optional("analytics"): bool,
         probatio.Optional("analytics_days"): probatio.In(list(ANALYTICS_DAYS)),
+        probatio.Optional("speech_engine"): probatio.Any(
+            None, probatio.All(str, probatio.Match(r"^tts\.[a-z0-9_]{1,200}$"))
+        ),
         probatio.Optional("voice"): probatio.Any(None, probatio.All(str, probatio.Length(max=200))),
         probatio.Optional("voice_language"): probatio.Any(
             None, probatio.All(str, probatio.Length(max=20))
