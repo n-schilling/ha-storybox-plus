@@ -30,7 +30,7 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes with their live state; the Toniebox 2 with its bedtimes, its battery and the charge history, made up for these pictures:
 
-<img src="docs/screenshots/boxes.png" alt="The area Boxes with the areas as tabs in the header, the stamp, refresh and the integration button: a Toniebox 2 playing chapter 3 of a figure, with volume, two bedtimes and the next alarm set on the box, and its battery; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
+<img src="docs/screenshots/boxes.png" alt="The area Boxes with the areas as tabs in the header, the stamp, refresh and the integration button: a Toniebox 2 playing chapter 3 of 8 of a figure, with volume, headphones, the next alarm and its battery, and buttons for chapters, the chapter list, repeat and volume; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
 
 The dashboard card of a Toniebox 2, here seen by a user without administrator rights:
 
@@ -46,7 +46,7 @@ The night mode of the light ring, a view of the box:
 
 The preferences of an account in the area Setup:
 
-<img src="docs/screenshots/preferences.png" alt="The page Preferences: count listening time, lock new figures and discs, mark notifications as read in the cloud, and the cloud's backend version marked as tested" width="700">
+<img src="docs/screenshots/preferences.png" alt="The page Preferences: count listening time and how long it is kept, lock new figures and discs, mark notifications as read in the cloud, and for new chapters the speech entity and voice for texts and the largest file from a link" width="700">
 
 A new bedtime with its days, times and alarm:
 
@@ -62,7 +62,7 @@ The chapters of a creative figure being rearranged, sorted by title or shuffled;
 
 The listening times of the last 30 days, counted by Home Assistant:
 
-<img src="docs/screenshots/listening.png" alt="The page Summary of the area Listening: the period, the total, most played figures, chart per day and sums per box" width="700">
+<img src="docs/screenshots/listening.png" alt="The page Summary of the area Listening: the period, the total with its comparison, the most played figures, the figures placed most often, the most played chapters, the listening time of the Toniebox 2 and the active time of the Toniebox 1" width="700">
 
 The boxes at phone width in dark mode:
 

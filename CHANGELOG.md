@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-23
+
 ### Added
 
 - A Toniebox 1 can be given a presence entity on its settings page: a device tracker (from the router's integration, for example) or a binary sensor for connectivity, such as a ping. The cloud knows nothing live of such a box; with the entity its card shows whether it is online, and the listening summary shows its active time: how long it was in the network. That is an indication, not listening time, and enters none of the listening sums: the box stays awake for some minutes after the last sound, the entity notices its leaving late, and a box in offline mode is not seen. The entity is kept in Home Assistant only; without one, the box shows no state, as before.

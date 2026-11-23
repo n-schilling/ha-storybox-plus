@@ -1188,7 +1188,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         )
         await page.locator(f"{PANEL} .compare").wait_for()
         if shots is not None:
-            await page.set_viewport_size({"width": 1200, "height": 2000})
+            await page.set_viewport_size({"width": 1200, "height": 2110})
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "listening.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
