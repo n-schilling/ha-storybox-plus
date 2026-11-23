@@ -40,7 +40,9 @@ def _report(chapter: int = 1, after: float = 0, **fields: Any) -> Playback:
         # The figure ended: from the first chapter, or the last one again
         ("all", _report(4, ended=True), _report(4), 0),
         ("one", _report(4, ended=True), _report(4), 4),
-        ("all", _report(4, ended=True), None, 0),
+        # An end found as it is, after a restart, starts nothing
+        ("all", _report(4, ended=True), None, None),
+        ("one", _report(4, ended=True), _report(4, tonie_id="other"), None),
         # Reported again while the command travels
         ("all", _report(4, ended=True), _report(4, ended=True), None),
         # A chapter ran out and the next began
@@ -212,3 +214,75 @@ async def test_the_player_says_why_not(
             {"entity_id": entity_id(hass, "media_player", BOX_ID), "repeat": "one"},
             blocking=True,
         )
+
+
+def _stored(hass_storage: dict[str, Any], entry: MockConfigEntry, repeat: dict[str, Any]) -> None:
+    key = f"{DOMAIN}.{entry.entry_id}.settings"
+    hass_storage[key] = {"version": 1, "minor_version": 1, "key": key, "data": {"repeat": repeat}}
+
+
+async def test_the_repeat_goes_on_after_a_restart(
+    hass: HomeAssistant,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_storage: dict[str, Any],
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The repeat is kept with its figure; an end not seen happening is not caught up."""
+    client = await hass_ws_client(hass)
+    push.last.connect()
+    push.last.playback(chapter=1, position=0.0)
+    assert (await _call(client, _repeat("one")))["success"]
+    assert await hass.config_entries.async_reload(setup_entry.entry_id)
+    await hass.async_block_till_done()
+    stored = hass_storage[f"{DOMAIN}.{setup_entry.entry_id}.settings"]["data"]["repeat"]
+    assert stored == {BOX_ID: {"mode": "one", "tonie": TONIE_ID}}
+
+    player = entity_id(hass, "media_player", BOX_ID)
+    assert hass.states.get(player).attributes["repeat"] == "one"
+    channel = push.last
+    channel.connect()
+    # The figure had ended while Home Assistant was away: the box stays silent
+    channel.playback(chapter=1, ended=True)
+    await hass.async_block_till_done()
+    assert channel.commands == []
+    # Played on by hand, the chapter repeats as before
+    channel.playback(chapter=1, position=0.0)
+    freezer.tick(timedelta(seconds=200))
+    channel.playback(chapter=2, position=0.0)
+    await hass.async_block_till_done()
+    assert [c[1:] for c in channel.commands] == [JUMP(1), PLAY]
+
+    # Another figure ends it, and the store forgets it
+    channel.playback(tonie_id="other", chapter=0)
+    await hass.async_block_till_done()
+    assert hass.states.get(player).attributes.get("repeat") in (None, "off")
+    assert await hass.config_entries.async_unload(setup_entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass_storage[f"{DOMAIN}.{setup_entry.entry_id}.settings"]["data"]["repeat"] == {}
+
+
+async def test_a_kept_repeat_that_no_longer_fits_is_dropped(
+    hass: HomeAssistant,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+) -> None:
+    """Kept for another figure, a box that left or in another shape, the repeat is gone."""
+    _stored(
+        hass_storage,
+        config_entry,
+        {
+            BOX_ID: {"mode": "all", "tonie": "replaced"},
+            "gone": {"mode": "one", "tonie": TONIE_ID},
+            CLASSIC_BOX_ID: {"mode": "twice", "tonie": TONIE_ID},
+            "odd": 3,
+        },
+    )
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert config_entry.runtime_data.preferences.repeat == {}
+    player = entity_id(hass, "media_player", BOX_ID)
+    assert hass.states.get(player).attributes.get("repeat") in (None, "off")

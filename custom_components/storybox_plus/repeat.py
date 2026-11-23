@@ -7,7 +7,10 @@ the chapter that just ran out. The beginning of the next chapter can be
 heard for a moment, because the box reports first and the command travels
 through the cloud. Without the cloud or Home Assistant the box plays on as
 it would. The repeat belongs to the figure on the box: it ends when the
-figure is taken off.
+figure is taken off. It is kept in the integration's store with its figure,
+so it goes on after a restart of Home Assistant while that figure is still
+on the box. An end of the figure that Home Assistant did not see happen is
+not caught up: the box would start to play long after it fell silent.
 """
 
 from __future__ import annotations
@@ -27,16 +30,17 @@ def decide(mode: Mode, playback: Playback, last: Playback | None) -> int | None:
     """Return the chapter to play from its start, given a report and the one before it.
 
     The end of the figure starts the first chapter again ("all") or the last
-    one ("one"). A chapter that follows the one before it by itself is sent
-    back with "one"; one a hand skipped to is left alone, and so is anything
-    with "all" before the end.
+    one ("one"), if the report before it showed the figure not yet ended:
+    an end found as it is, after a restart, starts nothing. A chapter that
+    follows the one before it by itself is sent back with "one"; one a hand
+    skipped to is left alone, and so is anything with "all" before the end.
     """
     if playback.tonie_id is None or playback.chapter is None:
         return None
     same = last is not None and last.tonie_id == playback.tonie_id
     if playback.ended:
         # Reported again while the command travels: acted on once
-        if same and last is not None and last.ended:
+        if not same or last is None or last.ended:
             return None
         return 0 if mode == "all" else playback.chapter
     if mode != "one" or not playback.playing or not same or last is None:

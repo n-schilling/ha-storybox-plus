@@ -273,8 +273,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._alarm_sent: dict[str, datetime] = {}
         self._alarm_tries: dict[str, tuple[datetime | None, int]] = {}
         self._alarm_timers: dict[str, CALLBACK_TYPE] = {}
-        # Per box: the repeat set for the figure on it, and the playback report before the last
-        self._repeat: dict[str, repeat.Mode] = {}
+        # Per box: the playback report before the last, for the repeat (kept in the preferences)
         self._repeat_last: dict[str, Playback] = {}
         # Per Toniebox 1 the entity that tells whether it is in the network, as watched now
         self._presence_watched: dict[str, str] = {}
@@ -347,6 +346,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 box_state.schedules = None
         self.push.set_boxes(b.box.mac for b in state.boxes.values() if b.box.live and b.box.mac)
         self._remove_stale_devices(state)
+        self._drop_stale_repeats(state)
         self._watch_presence(state)
         if self.analytics is not None:
             self.analytics.tick()
@@ -900,7 +900,10 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
 
     def repeat_mode(self, box_id: str) -> repeat.Mode | None:
         """Return the repeat set for the figure on a box."""
-        return self._repeat.get(box_id)
+        kept = self.preferences.repeat.get(box_id)
+        if kept is None:
+            return None
+        return "all" if kept[0] == "all" else "one"
 
     def set_repeat(self, box_id: str, mode: repeat.Mode | None) -> BoxState:
         """Set or end the repeat of the figure on a Toniebox 2."""
@@ -910,13 +913,21 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if not box_state.box.live:
             raise BoxError("not_supported")
         if mode is None:
-            self._repeat.pop(box_id, None)
+            self.preferences.set_repeat(box_id, None)
         elif box_state.tonie_id is None:
             raise BoxError("nothing_plays")
         else:
-            self._repeat[box_id] = mode
+            self.preferences.set_repeat(box_id, mode, box_state.tonie_id)
         self.async_update_listeners()
         return box_state
+
+    def _drop_stale_repeats(self, state: CloudState) -> None:
+        """End the repeats kept for a box that left, or for a figure another one replaced."""
+        for box_id, (_mode, tonie_id) in list(self.preferences.repeat.items()):
+            box_state = state.boxes.get(box_id)
+            placed = box_state.tonie_id if box_state is not None else None
+            if box_state is None or (placed is not None and placed != tonie_id):
+                self.preferences.set_repeat(box_id, None)
 
     def _observe_repeat(
         self, box_state: BoxState, playback: Playback, action: Action | None
@@ -930,11 +941,15 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         last = self._repeat_last.get(box_id)
         if playback.tonie_id is None:
             # The repeat belongs to the figure: it ends when the figure is taken off
-            self._repeat.pop(box_id, None)
+            self.preferences.set_repeat(box_id, None)
             self._repeat_last.pop(box_id, None)
             return None
         self._repeat_last[box_id] = playback
-        mode = self._repeat.get(box_id)
+        kept = self.preferences.repeat.get(box_id)
+        if kept is not None and kept[1] != playback.tonie_id:
+            # Another figure meanwhile, while Home Assistant did not look
+            self.preferences.set_repeat(box_id, None)
+        mode = self.repeat_mode(box_id)
         if mode is None:
             return None
         again = repeat.decide(mode, playback, last)

@@ -26,6 +26,8 @@ Three preferences, each per account:
   sensor for connectivity). The cloud knows nothing live of such a box; with
   the entity the page shows it as online or offline and counts how long it
   was awake (see analytics, active time).
+- repeat (none by default): per Toniebox 2 the repeat set for the figure on it
+  ("all" or "one") with that figure, so it goes on after a restart.
 - presence_lag (20 minutes by default): per Toniebox 1 how long it stays in
   the network after its last use, by the entity; taken off its active time.
 
@@ -73,6 +75,8 @@ class Preferences:
         self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
         # box_id -> entity_id
         self.presence: dict[str, str] = {}
+        # box_id -> (mode, the figure it was set for)
+        self.repeat: dict[str, tuple[str, str]] = {}
         # box_id -> minutes, where it differs from the default
         self._presence_lag: dict[str, int] = {}
         self._known: set[str] = set()
@@ -111,6 +115,15 @@ class Preferences:
                 box: entity
                 for box, entity in presence.items()
                 if isinstance(entity, str) and entity.startswith(_PREFIXES)
+            }
+        repeats = raw.get("repeat")
+        if isinstance(repeats, dict):
+            self.repeat = {
+                box: (item["mode"], item["tonie"])
+                for box, item in repeats.items()
+                if isinstance(item, dict)
+                and item.get("mode") in ("all", "one")
+                and isinstance(item.get("tonie"), str)
             }
         lags = raw.get("presence_lag")
         if isinstance(lags, dict):
@@ -187,6 +200,15 @@ class Preferences:
             raise ValueError(entity_id)
         await self.async_save()
 
+    def set_repeat(self, box_id: str, mode: str | None, tonie_id: str | None = None) -> None:
+        """Keep or drop the repeat of the figure on a box; written after a short delay."""
+        if mode is None or tonie_id is None:
+            if self.repeat.pop(box_id, None) is None:
+                return
+        else:
+            self.repeat[box_id] = (mode, tonie_id)
+        self._store.async_delay_save(self._data, 2)
+
     def presence_lag(self, box_id: str) -> int:
         """Return the minutes taken off each stretch of active time of a Toniebox 1."""
         return self._presence_lag.get(box_id, DEFAULT_PRESENCE_LAG)
@@ -239,5 +261,8 @@ class Preferences:
             "fetch_max_mb": self.fetch_max_mb,
             "presence": self.presence,
             "presence_lag": self._presence_lag,
+            "repeat": {
+                box: {"mode": mode, "tonie": tonie} for box, (mode, tonie) in self.repeat.items()
+            },
             "known": sorted(self._known),
         }
