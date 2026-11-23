@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-23
+
+### Changed
+
+- The repository passes the HACS validation without a skipped check: the brand images in the integration's `brand` folder are enough. Nothing changes in the integration itself.
+
 ## [1.0.0] - 2026-11-23
 
 ### Added
