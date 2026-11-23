@@ -203,7 +203,3 @@ First version, for the private test phase.
 - A chapter from a YouTube link: the Media Fetcher app fetches the audio, the integration uploads it named after the video, and the page shows the progress. Without the app the button stays grey and says so.
 - Favourite chapters of bought figures: stars on the page and a switch per figure; while it is on, a Toniebox 2 is steered past every other chapter, backwards to the previous favourite, and paused after the last one.
 - Diagnostics without tokens, names, addresses or listening data.
-
-[0.3.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.3.0
-[0.2.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.2.0
-[0.1.0]: https://github.com/n-schilling/ha-storybox-plus/releases/tag/v0.1.0
