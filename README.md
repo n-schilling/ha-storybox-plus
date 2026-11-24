@@ -1,6 +1,6 @@
 # Storybox Plus
 
-[![Marketplace: custom](https://img.shields.io/badge/Marketplace-custom-41BDF5.svg)](#installation)
+[![Marketplace: default](https://img.shields.io/badge/Marketplace-default-41BDF5.svg)](#installation)
 ![Tested with cloud backend v2026.11.10](https://img.shields.io/badge/cloud%20backend-v2026.11.10-informational.svg)
 
 A Home Assistant integration for the Toniebox. Every box becomes a device with the few entities automations need: is it online, how full is the battery, what plays, which figure was placed. The library of figures, their chapters, the listening times and how long a charge lasts live on a page in the sidebar, for administrators. The integration talks to the manufacturer's cloud, because the boxes have no local interface.
@@ -264,7 +264,7 @@ A creative figure takes a chapter from text: the page takes a title (or the firs
 
 ### The Media Fetcher app
 
-Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for most videos. So the fetching lives in the **Media Fetcher** app, a Home Assistant app of its own with yt-dlp, a runtime and ffmpeg. Install it under **Settings → Apps** and start it, and the page's link button comes alive; without it the button stays grey and says why. The app needs Home Assistant OS or a Supervised installation; without the Supervisor the integration works, only without links.
+Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for most videos. So the fetching lives in the **Media Fetcher** app, a Home Assistant app of its own with yt-dlp, a runtime and ffmpeg. It comes from an app repository of its own, [n-schilling/ha-app-media-fetcher](https://github.com/n-schilling/ha-app-media-fetcher): add that under **Settings → Apps → Install app → ⋮ → Repositories**, install the app and start it, and the page's link button comes alive; without it the button stays grey and says why. The app needs Home Assistant OS or a Supervised installation; without the Supervisor the integration works, only without links.
 
 ### Page
 
@@ -460,18 +460,42 @@ For administrators only, but one; the page uses them. Their answers serve the pa
 
 ## Installation
 
-1. **Settings → Marketplace → Add from link** (top right), enter `https://github.com/n-schilling/ha-storybox-plus` as GitHub link and add it. Adding a repository by link asks you to connect GitHub once.
-2. Install **Storybox Plus** in the Marketplace and restart Home Assistant.
-3. **Settings → Devices & services → Add integration → Storybox Plus** and sign in with the e-mail address and password of the app's account.
-4. Optionally install the **Media Fetcher** app under **Settings → Apps** for chapters from links.
+Storybox Plus is part of the official catalog of the [Home Assistant Marketplace](https://www.home-assistant.io/integrations/marketplace/): you find it there by its name, with nothing to add first. There are three ways to install it, and each one is complete in itself. All need Home Assistant 2026.11 or later.
 
-Requires Home Assistant 2026.11 or later. Without the Marketplace, copy `custom_components/storybox_plus` into the `custom_components` folder of your configuration directory and restart.
+### Easy installation
+
+Through the search in the Marketplace, the way for almost everyone.
+
+1. Open **Settings → Marketplace** and search for **Storybox Plus**.
+2. Install it and restart Home Assistant.
+3. **Settings → Devices & services → Add integration → Storybox Plus** and sign in with the e-mail address and password of the app's account.
+4. Optionally, for chapters from links, install the **Media Fetcher** app. It comes from an app repository of its own, [n-schilling/ha-app-media-fetcher](https://github.com/n-schilling/ha-app-media-fetcher): add that under **Settings → Apps → Install app → ⋮ → Repositories**, then install and start the app.
+
+### Alternative installation
+
+By the link of the repository, if the search does not show Storybox Plus.
+
+1. Open **Settings → Marketplace → Add from link** (top right), enter `https://github.com/n-schilling/ha-storybox-plus` as GitHub link and add it. This asks you to connect GitHub once.
+2. Install **Storybox Plus** and restart Home Assistant.
+3. **Settings → Devices & services → Add integration → Storybox Plus** and sign in with the e-mail address and password of the app's account.
+4. Optionally, for chapters from links, install the **Media Fetcher** app. It comes from an app repository of its own, [n-schilling/ha-app-media-fetcher](https://github.com/n-schilling/ha-app-media-fetcher): add that under **Settings → Apps → Install app → ⋮ → Repositories**, then install and start the app.
+
+### Fully manual installation
+
+Without the Marketplace, by copying the files yourself. Home Assistant then does not tell you about new versions: to update, repeat steps 1 to 4 with the newer release.
+
+1. Open the [latest release](https://github.com/n-schilling/ha-storybox-plus/releases/latest) and download **Source code (zip)**.
+2. Unpack it. Inside is the folder `custom_components/storybox_plus`.
+3. Copy the folder `storybox_plus` into the `custom_components` folder of your configuration directory, the one that holds `configuration.yaml`, so that it ends up as `custom_components/storybox_plus`. Create `custom_components` if it does not exist yet.
+4. Restart Home Assistant.
+5. **Settings → Devices & services → Add integration → Storybox Plus** and sign in with the e-mail address and password of the app's account.
+6. Optionally, for chapters from links, install the **Media Fetcher** app. It comes from an app repository of its own, [n-schilling/ha-app-media-fetcher](https://github.com/n-schilling/ha-app-media-fetcher): add that under **Settings → Apps → Install app → ⋮ → Repositories**, then install and start the app.
 
 The integration has no options of its own; what can be chosen sits on the page, under Setup, the log level included.
 
 ### Removal
 
-**Settings → Devices & services → Storybox Plus → ⋮ → Delete** removes the devices, the entities, the stores and the page. The cloud account is not changed; the token Home Assistant held simply expires. Then remove the integration in the Marketplace and restart.
+**Settings → Devices & services → Storybox Plus → ⋮ → Delete** removes the devices, the entities, the stores and the page. The cloud account is not changed; the token Home Assistant held simply expires. Then remove the integration in the Marketplace and restart. After a fully manual installation, delete the folder `custom_components/storybox_plus` instead and restart.
 
 ## Development
 
