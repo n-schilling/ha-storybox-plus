@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-26
+
 ### Added
 
 - Four entities per Toniebox 2 for what only the page and the dashboard card could tell so far: whether headphones are connected (`binary_sensor`, with their kind and battery as attributes), whether the night mode of the light ring is at work (`binary_sensor`), when the running sleep timer ends and when the next alarm of the bedtimes rings (both `sensor`, timestamps; the alarm only for a box that rings alarms). Automations can use them, a time trigger with an offset for example reminds before the alarm.
