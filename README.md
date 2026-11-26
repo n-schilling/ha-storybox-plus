@@ -409,7 +409,7 @@ actions:
 
 ## Interface
 
-What automations and dashboards can build on. Before 1.0.0 it may still change between minor versions.
+What automations and dashboards can build on. `tests/test_contract.py` pins it: the entities with their IDs and keys, the attributes, the events with their data, the actions, the names of the commands and the stores.
 
 ### Entities
 
