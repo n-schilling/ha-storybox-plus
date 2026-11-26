@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-26
+
+### Fixed
+
+- A presence entity of a Toniebox 1 that changed while Home Assistant was starting wrote an error to the log (`'NoneType' object has no attribute 'boxes'`) and the change was lost until the next one; a change during a later poll of the cloud showed only with the poll after it. The entity is now read once more at the end of every poll.
+
 ## [1.1.0] - 2026-11-26
 
 ### Added

@@ -278,6 +278,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         # Per Toniebox 1 the entity that tells whether it is in the network, as watched now
         self._presence_watched: dict[str, str] = {}
         self._presence_unsub: CALLBACK_TYPE | None = None
+        # The first poll has put its boxes together: from then on there is data
+        self._polled = False
         entry.async_on_unload(self._cancel_alarm_timers)
         entry.async_on_unload(self._cancel_night_timers)
         entry.async_on_unload(self._unwatch_presence)
@@ -361,6 +363,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         await self._async_read_tunes()
         await self._async_read_cloud_info(state)
         self._follow_box_names(state)
+        self._settle_presence(state)
         return state
 
     async def _async_read_tunes(self) -> bool:
@@ -686,6 +689,24 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         for box_id in before.keys() | wanted.keys():
             self._count_awake(box_id, state.boxes[box_id].online if box_id in wanted else None)
 
+    def _settle_presence(self, state: CloudState) -> None:
+        """Read the presence entities once more, at the very end of a poll.
+
+        The boxes of a poll are put together before the cloud has answered
+        everything; an entity that changes in between tells the listener, which
+        knows only the boxes of the poll before, or none during the first poll.
+        Nothing waits between this and the poll's boxes becoming the current
+        ones, so no change is lost.
+        """
+        for box_id, entity_id in self._presence_watched.items():
+            box_state = state.boxes.get(box_id)
+            online = self._presence_online(entity_id)
+            if box_state is None or box_state.online is online:
+                continue
+            box_state.online = online
+            self._count_awake(box_id, online)
+        self._polled = True
+
     def _unwatch_presence(self) -> None:
         if self._presence_unsub is not None:
             self._presence_unsub()
@@ -700,6 +721,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
     @callback
     def _presence_changed(self, event: Event[EventStateChangedData]) -> None:
         """Take a change of a presence entity as the box coming or going."""
+        # During the first poll there are no boxes yet; the end of the poll reads the entity
+        if not self._polled:
+            return
         entity_id = event.data["entity_id"]
         online = self._presence_online(entity_id)
         changed = False

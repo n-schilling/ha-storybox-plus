@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import Any
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.storybox_plus.analytics import Analytics
 from custom_components.storybox_plus.const import DOMAIN
+from custom_components.storybox_plus.coordinator import StoryboxCoordinator
 from custom_components.storybox_plus.preferences import Preferences
 
 from .conftest import BOX_ID, CLASSIC_BOX_ID, FakeCloud, PushChannels, counting_off
@@ -235,6 +236,62 @@ async def test_the_entity_is_watched_from_the_start(
     assert await hass.config_entries.async_unload(config_entry.entry_id)
     await hass.async_block_till_done()
     assert hass_storage[f"{DOMAIN}.{config_entry.entry_id}.analytics"]["data"]["active"]
+
+
+async def test_a_change_during_the_first_poll(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_storage: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The entity changes while the first poll still waits for the cloud: no error, not lost.
+
+    As at a start of Home Assistant, when the tracker's integration reports
+    while this one is being set up.
+    """
+    key = f"{DOMAIN}.{config_entry.entry_id}.settings"
+    hass_storage[key] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": key,
+        "data": {"presence": {CLASSIC_BOX_ID: TRACKER}},
+    }
+    read_notices = StoryboxCoordinator._async_read_notices
+    changed: list[bool] = []
+
+    async def _tracker_reports(coordinator: StoryboxCoordinator) -> None:
+        # The first thing the poll waits for after it began to follow the entity
+        if not changed:
+            changed.append(coordinator.data is None)
+            hass.states.async_set(TRACKER, "home")
+        await read_notices(coordinator)
+
+    config_entry.add_to_hass(hass)
+    with patch.object(StoryboxCoordinator, "_async_read_notices", _tracker_reports):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+    assert changed == [True]
+    assert "Error while dispatching event" not in caplog.text
+    client = await hass_ws_client(hass)
+    assert (await _box(client))["online"] is True
+
+    # A later poll: the change reaches the boxes of this poll too
+    coordinator = config_entry.runtime_data.coordinator
+    changed.clear()
+
+    async def _tracker_leaves(coordinator: StoryboxCoordinator) -> None:
+        if not changed:
+            changed.append(True)
+            hass.states.async_set(TRACKER, "not_home")
+        await read_notices(coordinator)
+
+    with patch.object(StoryboxCoordinator, "_async_read_notices", _tracker_leaves):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+    assert (await _box(client))["online"] is False
 
 
 async def test_state_without_counting(
