@@ -24,7 +24,12 @@ from .cloud import Auth, CloudAuthError, CloudClient, CloudError, PushClient, Pu
 from .const import CONF_REFRESH_TOKEN, CONF_USER_ID, DOMAIN, STORAGE_VERSION
 from .coordinator import RuntimeData, StoryboxConfigEntry, StoryboxCoordinator
 from .favourites import FavouriteChapters
-from .frontend import async_register_frontend, async_unregister_panel
+from .frontend import (
+    async_register_card,
+    async_register_frontend,
+    async_remove_card_resource,
+    async_unregister_panel,
+)
 from .ids import account_identifier, box_of
 from .log import DATA_LOG, async_get_log, async_remove_log
 from .night import NightModes
@@ -192,6 +197,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
     )
 
     await async_register_frontend(hass)
+    await async_register_card(hass)
     async_register_websocket(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -234,6 +240,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
         e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id
     ):
         await async_remove_log(hass)
+        await async_remove_card_resource(hass)
     await analytics_store(hass, entry.entry_id).async_remove()
     await details_store(hass, entry.entry_id).async_remove()
     await battery_store(hass, entry.entry_id).async_remove()

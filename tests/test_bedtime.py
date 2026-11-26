@@ -11,8 +11,10 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant.typing import WebSocketGenerator
 
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.storybox_plus import bedtime
 from custom_components.storybox_plus.bedtime import armed_for, decide, due, next_alarm
@@ -435,6 +437,53 @@ async def test_overview_tells_the_next_alarm(
     push.last.connect()
     push.last.sleep_timer("on", until=TUESDAY_WAKEUP, alarm=True)
     assert (await bedtime_of_box())["next_alarm"]["armed"] is True
+
+
+async def test_next_alarm_sensor(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The sensor names the next alarm and moves on to the one after it once it rang."""
+    await _setup(hass, cloud, config_entry, freezer)
+    sensor = entity_id(hass, "sensor", f"{BOX_ID}_next_alarm")
+    assert hass.states.get(sensor).attributes["device_class"] == "timestamp"
+    assert hass.states.get(sensor).state == TUESDAY_WAKEUP.astimezone(UTC).isoformat()
+    # Monday evening the alarm is within the timer's reach
+    assert hass.states.get(sensor).attributes["due"] is True
+    # A Toniebox 1 rings no alarm
+    assert (
+        er.async_get(hass).async_get_entity_id(
+            "sensor", DOMAIN, f"{config_entry.entry_id}_{CLASSIC_BOX_ID}_next_alarm"
+        )
+        is None
+    )
+
+    freezer.move_to(TUESDAY_WAKEUP + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    wednesday = TUESDAY_WAKEUP + timedelta(days=1)
+    assert hass.states.get(sensor).state == wednesday.astimezone(UTC).isoformat()
+    # A day ahead it is not due yet; it becomes so by the clock alone
+    assert hass.states.get(sensor).attributes["due"] is False
+    freezer.move_to(wednesday - bedtime.ARM_WINDOW + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).attributes["due"] is True
+
+
+async def test_next_alarm_sensor_without_alarm(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Without a bedtime that rings there is no next alarm."""
+    await _setup(hass, cloud, config_entry, freezer, schedules=[raw_schedule(enabled=False)])
+    sensor = entity_id(hass, "sensor", f"{BOX_ID}_next_alarm")
+    assert hass.states.get(sensor).state == STATE_UNKNOWN
 
 
 async def test_save_new_schedule_and_delete(

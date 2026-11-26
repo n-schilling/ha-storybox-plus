@@ -1452,16 +1452,19 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     )
 
     async def dashboard_card() -> None:
-        # The card on a dashboard, seen by a user without administrator rights
+        # The card on a dashboard, seen by a user without administrator rights: as it
+        # comes (no configuration: every Toniebox 2), with parts left out, and in a
+        # sections view with one, three and six rows, where it shows what fits
         registry = await api.ws(instance.token, {"type": "config/entity_registry/list"})
         player = next(
             e["entity_id"]
             for e in registry["result"]
             if e["platform"] == "storybox_plus" and e["entity_id"].startswith("media_player.")
         )
-        card_config = {"type": "custom:storybox-plus-box-card", "entity": player}
+        plain = {"type": "custom:storybox-plus-box-card"}
         slim_config = {
-            **card_config,
+            **plain,
+            "entity": player,
             "show_battery": False,
             "show_picture": False,
             "show_next_alarm": False,
@@ -1484,12 +1487,31 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 "url_path": "storybox-test",
                 "config": {
                     "views": [
-                        {"title": "Kids", "path": "kids", "cards": [card_config, slim_config]}
+                        {"title": "Kids", "path": "kids", "cards": [plain, slim_config]},
+                        {
+                            "title": "Sizes",
+                            "path": "sizes",
+                            "type": "sections",
+                            "sections": [
+                                {
+                                    "type": "grid",
+                                    "cards": [
+                                        {**plain, "grid_options": {"columns": 12, "rows": rows}}
+                                        for rows in (1, 3, 6)
+                                    ]
+                                    + [plain, {**plain, "grid_options": {"columns": 6, "rows": 1}}],
+                                }
+                            ],
+                        },
                     ]
                 },
             },
         )
         expect(saved["success"], str(saved))
+        # The card is a dashboard resource, once
+        resources = await api.ws(instance.token, {"type": "lovelace/resources"})
+        ours = [r for r in resources["result"] if "storybox-plus-card.js?v=" in r["url"]]
+        expect(len(ours) == 1 and ours[0]["type"] == "module", f"resources: {resources['result']}")
         user = await _open(browser, instance, USER, path="/storybox-test/kids")
         try:
             card = user.locator("storybox-plus-box-card ha-card").first
@@ -1497,17 +1519,36 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             text = await card.inner_text()
             for part in ("Kids room", "The Clever Fox", "Headphones 80 %", "Next alarm"):
                 expect(part in text, f"{part!r} missing on the card: {text}")
+            # Home Assistant's own word for the state
+            expect("Playing" in text or "Paused" in text, f"no state on the card: {text}")
             # Neither the settings nor the charge history: no cog, the battery is no button
             expect(await card.locator("[data-act^='boxset:'], .batt-btn").count() == 0, text)
             expect(await card.locator(".card-header .batt").count() == 1, "battery not in the head")
-            volume = card.locator(".fact[title^='level']")
+            # Exactly its controls, each an action of the media player, and they work
+            acts = await card.locator("[data-act]").evaluate_all(
+                "els => els.map((el) => el.getAttribute('data-act').split(':').slice(2, 3)[0])"
+            )
+            expect(
+                set(acts)
+                <= {
+                    "previous",
+                    "play",
+                    "pause",
+                    "next",
+                    "volume_down",
+                    "volume_up",
+                    "sleep",
+                    "sleep_clear",
+                },
+                f"other buttons on the card: {acts}",
+            )
+            volume = card.locator(".fact.vol")
             before = await volume.inner_text()
-            await card.locator("[data-act*=':volume:']").nth(1).click()
+            await card.locator("[data-act$=':volume_up']").click()
 
             async def answered() -> bool:
                 now = await volume.inner_text()
-                pending = await card.locator(".fact.pending").count()
-                return now != before and "%" in now and not pending
+                return now != before and "%" in now
 
             await _until(answered, "the volume the box reports after a press")
             await card.locator("[data-act$=':pause'], [data-act$=':play']").first.click()
@@ -1529,29 +1570,48 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 }"""
             )
             expect(line == "The Tonie cloud did not answer or refused it.", line)
-            written = await user.evaluate(
+            # The card picker knows the card once, it needs no configuration, and its
+            # editor has a text for every field
+            offered = await user.evaluate(
+                """() => {
+                  const element = customElements.get("storybox-plus-box-card");
+                  const form = element.getConfigForm();
+                  const names = (schema) => schema.flatMap((f) => f.schema ? names(f.schema) : [f.name]);
+                  return {
+                    picker: (window.customCards || []).filter((c) => c.type === "storybox-plus-box-card").length,
+                    stub: element.getStubConfig(),
+                    fields: names(form.schema),
+                    labels: names(form.schema).map((name) => form.computeLabel({ name })),
+                  };
+                }"""
+            )
+            expect(offered["picker"] == 1, "the card is not in the card picker once")
+            expect(offered["stub"] == {}, f"the card needs a configuration: {offered['stub']}")
+            expect(len(offered["fields"]) == 12, f"editor fields: {offered['fields']}")
+            expect(
+                not set(offered["fields"]) & set(offered["labels"]),
+                f"an editor field without its text: {offered['labels']}",
+            )
+            # A title names the one box; a box that is none of ours says so
+            odd = await user.evaluate(
                 """async (player) => {
-                  const editor = document.createElement("storybox-plus-box-card-editor");
-                  editor.hass = document.querySelector("home-assistant").hass;
-                  editor.setConfig({ type: "custom:storybox-plus-box-card", entity: player });
-                  let config = null;
-                  editor.addEventListener("config-changed", (e) => { config = e.detail.config; });
-                  editor.querySelector("ha-form").dispatchEvent(new CustomEvent("value-changed", {
-                    detail: { value: { entity: player, show_battery: false, show_volume: true } },
-                  }));
-                  return config;
+                  const hass = document.querySelector("home-assistant").hass;
+                  const make = async (config) => {
+                    const card = document.createElement("storybox-plus-box-card");
+                    card.setConfig({ type: "custom:storybox-plus-box-card", ...config });
+                    document.body.appendChild(card);
+                    card.hass = hass;
+                    await new Promise((r) => setTimeout(r, 300));
+                    const text = card.shadowRoot.textContent;
+                    card.remove();
+                    return text;
+                  };
+                  return [await make({ entity: player, title: "Bedtime story" }), await make({ entity: "sun.sun" })];
                 }""",
                 player,
             )
-            expect(
-                written
-                == {
-                    "type": "custom:storybox-plus-box-card",
-                    "entity": player,
-                    "show_battery": False,
-                },
-                f"editor wrote {written}",
-            )
+            expect("Bedtime story" in odd[0] and "Kids room" not in odd[0], odd[0])
+            expect("This is no Toniebox 2 of Storybox Plus." in odd[1], odd[1])
             # Laid out by its width: side by side in half of a wall display (748 x 262 px),
             # stacked and still whole in a third of it (370 x 262 px), compact in a quarter
             for width, height, columns in ((748, 262, 2), (370, 262, 1), (200, 0, 1)):
@@ -1569,7 +1629,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                       await new Promise((r) => setTimeout(r, 1500));
                       const root = card.shadowRoot;
                       return {
-                        content: root.querySelector("ha-card").scrollHeight,
+                        content: root.querySelector(".content").scrollHeight,
                         columns: getComputedStyle(root.querySelector(".box-body"))
                           .gridTemplateColumns.split(" ").length,
                         buttons: root.querySelectorAll(".controls ha-icon-button").length,
@@ -1584,10 +1644,65 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 expect(size["buttons"] == 5, f"{width} px without its buttons: {size}")
                 if height:
                     expect(size["content"] <= height, f"{width} x {height} px overflows: {size}")
-            offered = await user.evaluate("(window.customCards || []).map((c) => c.type)")
-            expect("storybox-plus-box-card" in offered, f"not in the card picker: {offered}")
             if shots is not None:
+                # Without the mark of the button pressed last
+                await user.mouse.move(0, 0)
+                await user.evaluate("document.activeElement?.blur?.()")
+                await user.wait_for_timeout(400)
                 await card.screenshot(path=str(shots / "card.png"))
+            # What does not fit is left out: one row, three rows, six rows; no rows; half as wide
+            await user.goto(f"{instance.base}/storybox-test/sizes")
+            cards = user.locator("storybox-plus-box-card")
+            await cards.nth(2).locator(".card-header").wait_for(timeout=30000)
+            await cards.nth(4).locator(".compact").wait_for()
+            await user.wait_for_timeout(500)
+            forms = await cards.evaluate_all(
+                """els => els.map((el) => {
+                  const root = el.shadowRoot;
+                  const card = root.querySelector("ha-card");
+                  const content = root.querySelector(".content");
+                  const sub = root.querySelector(".compact .sub");
+                  let cut = null;
+                  if (sub) {
+                    const probe = document.createElement("span");
+                    probe.className = sub.className;
+                    probe.style.cssText = "position:absolute;visibility:hidden;overflow:visible;width:auto;display:inline-block";
+                    probe.textContent = sub.textContent;
+                    sub.parentElement.appendChild(probe);
+                    cut = probe.getBoundingClientRect().width > sub.getBoundingClientRect().width;
+                    probe.remove();
+                  }
+                  return {
+                    form: root.querySelector(".compact") ? "small" : root.querySelector(".controls") ? "large" : "medium",
+                    fits: content.getBoundingClientRect().bottom <= card.getBoundingClientRect().bottom + 1,
+                    spare: card.clientHeight - content.scrollHeight,
+                    playback: !!root.querySelector(".play"),
+                    cut,
+                    text: sub ? sub.textContent : "",
+                  };
+                })"""
+            )
+            expect(
+                [f["form"] for f in forms] == ["small", "medium", "large", "large", "small"],
+                f"the forms by their rows: {forms}",
+            )
+            expect(all(f["fits"] for f in forms), f"a card that cuts off what it shows: {forms}")
+            expect(forms[1]["playback"], "the medium card does not say what plays")
+            expect(
+                abs(forms[3]["spare"]) <= 2, f"a card without rows is off its content: {forms[3]}"
+            )
+            for index in (0, 4):
+                expect(
+                    forms[index]["cut"] is False, f"a second line that is cut off: {forms[index]}"
+                )
+                expect("The Clever Fox" in forms[index]["text"], f"the small card: {forms[index]}")
+            if shots is not None:
+                # High enough for the whole section, so Home Assistant's header covers nothing
+                await user.set_viewport_size({"width": 1200, "height": 2200})
+                await user.wait_for_timeout(500)
+                await user.locator("hui-grid-section").first.screenshot(
+                    path=str(shots / "card-sizes.png")
+                )
         finally:
             await user.context.close()
 

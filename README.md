@@ -281,36 +281,51 @@ At the end of the header: when the open page's data came ("As of 14:53:23", left
 
 ### Dashboard card
 
-The card of a Toniebox 2 from the page, for any dashboard: `custom:storybox-plus-box-card`, offered in the card picker as **Storybox Plus · Toniebox**. It loads with the integration; there is no resource to add.
+The integration brings a dashboard card, **Storybox Plus · Toniebox** in the card picker (`custom:storybox-plus-box-card`). It is for every user, not only administrators: it shows what plays on the Tonieboxes 2, whether they are online, the battery, the volume, headphones, a running sleep timer, the next alarm and the night mode at work, and it has the buttons of a media player. It leaves out what only administrators see: the settings, the bedtimes and the charge history. It loads with the integration and is kept in the dashboard resources; there is nothing to add by hand.
 
 ```yaml
 type: custom:storybox-plus-box-card
-entity: media_player.kids_room
 ```
 
-It shows what the page's card shows (online or offline, the battery's level, volume, headphones, the sleep timer, the next alarm, the night mode at work, what plays) and has the same buttons: play, pause, skip chapters, louder and quieter, a sleep timer of 30 or 60 minutes. It leaves out what only administrators see: the settings, the bedtimes and the charge history.
+Without any configuration it shows every Toniebox 2, one below the other. `entity` (the media player of a box) shows that one box.
 
-Each part can be left out, in the card's editor or in its YAML; all of them show unless turned off:
+<img src="docs/screenshots/card-sizes.png" alt="The dashboard card in a sections view: in one row the name with what plays and the battery; in three rows the head and the figure with its chapter and progress; in six rows also volume, headphones, the next alarm and the buttons; below, the card without rows and, half as wide, in one row" width="500">
 
-| Option | Leaves out when `false` |
+The card is as high as what it shows. Given fewer rows in a sections view, it shows what fits, the most important first:
+
+1. the name of the box and whether it is online,
+2. what plays: the figure, its chapter and the state,
+3. the battery and the picture of the box,
+4. the progress within the chapter,
+5. volume, headphones, the sleep timer, the next alarm, the night mode,
+6. the buttons.
+
+That makes three forms: **large** has everything, **medium** ends after the progress (4), **small** is one row with the name and one line of what plays (1 to 3; where that line is too long, the figure alone). The card takes the largest that fits; `size` sets one instead: `small`, `medium` or `large`. A tap on a small row opens Home Assistant's dialog of the box.
+
+The large form lays itself out by its width: from 600 px what plays stands beside the facts and buttons, so it fits a wide, low tile such as half of a wall display (748 × 262 px); narrower it stacks, tighter, and still fits 370 × 262 px; under 300 px it is compact.
+
+<img src="docs/screenshots/card-wide.png" alt="The dashboard card at 748 by 262 pixels: name, online dot and battery in the head; on the left the figure that plays with its progress, on the right volume, headphones, the next alarm and the buttons" width="600">
+
+Every part can be switched on or off, in the card's editor or in YAML; all of them show unless turned off:
+
+| Option | |
 |---|---|
-| `show_picture` | the picture of the box in the head |
-| `show_battery` | the battery's level in the head |
+| `entity` | the media player of one Toniebox 2; none: every Toniebox 2 |
+| `title` | a name in place of the box's; with several boxes a heading above them |
+| `size` | `small`, `medium` or `large`; none: by the space the card gets |
+| `show_playback` | the figure that plays, its chapter and progress |
+| `show_battery` | the battery's level |
+| `show_picture` | the picture of the box |
 | `show_volume` | the volume |
 | `show_headphones` | the headphones while connected |
 | `show_sleep_timer` | a running sleep timer |
 | `show_next_alarm` | the next alarm of a bedtime |
 | `show_night_mode` | the chip of the light ring's night mode at work |
-| `show_playback` | the figure that plays, its chapter and progress |
 | `show_controls` | the buttons |
 
-The name and the dot for online or offline always show.
+The card reads entities and nothing else: the list of the boxes from the attribute of `sensor.<account>_boxes`, the media player of each box and, by the integration's own keys, the sensors of the same device, so a renamed entity changes nothing and a disabled sensor leaves its part out. States and times read as Home Assistant writes them for the user's profile.
 
-The card takes any width from a quarter of a section on (half by default); its height follows the content. It lays itself out by the width it gets: from 600 px what plays stands beside the facts and buttons, so it fits a wide, low tile such as half of a wall display (748 × 262 px); narrower it stacks, tighter, and still fits 370 × 262 px; under 300 px it is compact.
-
-<img src="docs/screenshots/card-wide.png" alt="The dashboard card at 748 by 262 pixels: name, online dot and battery in the head; on the left the figure that plays with its progress, on the right volume, headphones, the next alarm and the buttons" width="600">
-
-Every user who may read the box's media player sees the card, not only administrators; the buttons are the media player's actions and `storybox_plus.set_sleep_timer`. The card asks the integration again when the media player changes and every 30 seconds.
+Its buttons are the one exception to reading, for what every user may operate on the media player anyway. They call `media_player.media_play`, `media_pause`, `media_next_track`, `media_previous_track`, `volume_up`, `volume_down`, and `storybox_plus.set_sleep_timer` (30 or 60 minutes) and `clear_sleep_timer`, each on the box's media player; a refused press reads one line. While the alarm of a bedtime is due, the sleep timer's buttons are left out.
 
 ## Examples
 
@@ -405,8 +420,13 @@ IDs as created in English, for a box named "Kids room". Every unique ID starts w
 | `binary_sensor.kids_room_connectivity` | `<entry>_<box>_connectivity` | Toniebox 2 | connected to the cloud; unknown while nothing tells |
 | `sensor.kids_room_battery` | `<entry>_<box>_battery` | Toniebox 2 | battery in percent; unavailable while the box is switched off |
 | `binary_sensor.kids_room_charging` | `<entry>_<box>_charging` | Toniebox 2 | charging |
+| `binary_sensor.kids_room_headphones` | `<entry>_<box>_headphones` | Toniebox 2 | headphones are connected, with the attributes `kind` (as the box names it, `bluetooth` for example) and `battery` (percent, of wireless ones); unknown until the box says, unavailable while the box is switched off |
+| `binary_sensor.kids_room_night_mode` | `<entry>_<box>_night_mode` | Toniebox 2 | the [night mode of the light ring](#night-mode-of-the-light-ring) is at work: switched on and within its span |
+| `sensor.kids_room_sleep_timer` | `<entry>_<box>_sleep_timer` | Toniebox 2 | when the running sleep timer ends (a timestamp); unknown while none runs. The timer that carries a bedtime's alarm is not one |
+| `sensor.kids_room_next_alarm` | `<entry>_<box>_next_alarm` | Toniebox 2 that rings alarms | when the next alarm of the [bedtimes](#bedtimes-and-the-alarm) rings (a timestamp); unknown without one. The attribute `due` is true while the alarm is close enough for the box's timer to carry it: a sleep timer is refused then |
+| `sensor.<account>_boxes` | `<entry>_boxes` | the account's device | how many Tonieboxes 2 the account has; the attribute `boxes` lists them for dashboards, each with `name` (as in Home Assistant), `entity_id` (its media player) and `picture`. The attribute is not recorded |
 | `binary_sensor.<account>_live_channel` | `<entry>_live_channel` | the account's device, with a Toniebox 2 | the push channel is connected; live state and commands of every Toniebox 2 go through it |
-| `media_player.kids_room` | `<entry>_<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length |
+| `media_player.kids_room` | `<entry>_<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length, and the attributes `chapters` (how many the figure has) and `box_picture` (the address of the box's picture) |
 | `event.kids_room_figure` | `<entry>_<box>_figure` | Toniebox 2 | event types `placed`, `removed` with `tonie_id` and `tonie` (name) |
 | `event.<account>_cloud_notification` | `<entry>_notification` | the account's device | event type `notification` with `kind` (the cloud's type, `system` for a broadcast), `text`, `time`, `tonie_id`, `tonie`, `reason` (why a conversion failed) |
 
@@ -423,7 +443,7 @@ Both target the media player of a Toniebox 2. While the alarm of a bedtime is du
 
 ### WebSocket commands
 
-For administrators only, but one; the page uses them. Their answers serve the page and are not part of this interface. `storybox_plus/box/card` (`entity_id` of a box's media player) serves the dashboard card: it answers every user who may read that entity, with the box's live state and nothing of its settings.
+For administrators only; the page uses them. Their answers serve the page and are not part of this interface. The dashboard card uses none of them: it reads entities.
 
 | Command | Parameters |
 |---|---|

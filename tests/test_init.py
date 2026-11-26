@@ -73,9 +73,14 @@ async def test_setup_creates_devices_and_entities(
         f"{BOX_ID}_connectivity",
         f"{BOX_ID}_charging",
         f"{BOX_ID}_battery",
+        f"{BOX_ID}_headphones",
+        f"{BOX_ID}_night_mode",
+        f"{BOX_ID}_sleep_timer",
+        f"{BOX_ID}_next_alarm",
         f"{BOX_ID}_figure",
         "notification",
         "live_channel",
+        "boxes",
     }
     assert all(e.unique_id.startswith(f"{setup_entry.entry_id}_") for e in entities)
     assert hass.states.get(entity_id(hass, "binary_sensor", f"{BOX_ID}_connectivity")).name == (
@@ -276,7 +281,8 @@ async def test_unload_keeps_panel_for_other_account(
     assert len(cards()) == 1
     assert await hass.config_entries.async_unload(second.entry_id)
     assert not async_panel_exists(hass, PANEL_URL_PATH)
-    assert cards() == []
+    # A card cannot be taken back from open pages: it stays loaded for this run
+    assert len(cards()) == 1
 
 
 async def test_remove_entry_deletes_analytics(

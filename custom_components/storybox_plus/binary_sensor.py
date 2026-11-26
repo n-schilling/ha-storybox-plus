@@ -1,6 +1,9 @@
-"""Whether a Toniebox 2 is online and charges, and whether the live channel is up."""
+"""A Toniebox 2: online, charging, headphones, night mode; and whether the live channel is up."""
 
 from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
@@ -10,8 +13,9 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import night
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
-from .entity import BoxEntity, account_device_info, async_follow_boxes
+from .entity import BoxEntity, TimedBoxEntity, account_device_info, async_follow_boxes
 
 PARALLEL_UPDATES = 0
 
@@ -30,6 +34,8 @@ async def async_setup_entry(
         return [
             ConnectivitySensor(coordinator, box_state.box.id),
             ChargingSensor(coordinator, box_state.box.id),
+            HeadphonesSensor(coordinator, box_state.box.id),
+            NightModeSensor(coordinator, box_state.box.id),
         ]
 
     async_follow_boxes(entry, async_add_entities, _factory)
@@ -80,6 +86,62 @@ class ChargingSensor(BoxEntity, BinarySensorEntity):
         """Return whether the box charges."""
         battery = self.box_state.battery if self.box_state else None
         return battery.charging if battery else None
+
+
+class HeadphonesSensor(BoxEntity, BinarySensorEntity):
+    """Whether headphones are connected to the Toniebox 2, with their kind and battery."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+
+    def __init__(self, coordinator: StoryboxCoordinator, box_id: str) -> None:
+        """Initialize."""
+        super().__init__(coordinator, box_id, "headphones")
+
+    @property
+    def available(self) -> bool:
+        """Return whether the box is not switched off: then nothing is known of headphones."""
+        box_state = self.box_state
+        return super().available and box_state is not None and box_state.online is not False
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether headphones are connected; unknown until the box says."""
+        headphones = self.box_state.headphones if self.box_state else None
+        return headphones.connected if headphones else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the kind the box names and the battery of wireless headphones."""
+        headphones = self.box_state.headphones if self.box_state else None
+        connected = headphones is not None and headphones.connected
+        return {
+            "kind": headphones.kind if headphones and connected else None,
+            "battery": headphones.battery if headphones and connected else None,
+        }
+
+
+class NightModeSensor(TimedBoxEntity, BinarySensorEntity):
+    """Whether the night mode of the light ring is at work: switched on and within its span."""
+
+    def __init__(self, coordinator: StoryboxCoordinator, box_id: str) -> None:
+        """Initialize."""
+        super().__init__(coordinator, box_id, "night_mode")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether it is night for the box's light ring."""
+        box_state = self.box_state
+        if box_state is None:
+            return None
+        return self.coordinator.night_phase(box_state) == "night"
+
+    def _next_change(self) -> datetime | None:
+        """The start or the end of the span, whichever comes first."""
+        box_state = self.box_state
+        mode = self.coordinator.night_modes.get(self._box_id) if box_state else None
+        if box_state is None or mode is None or not mode.enabled:
+            return None
+        return night.next_change(mode, self.coordinator.now_at(box_state.box))
 
 
 class LiveChannelSensor(CoordinatorEntity[StoryboxCoordinator], BinarySensorEntity):

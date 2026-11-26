@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
+from freezegun.api import FrozenDateTimeFactory
 import probatio
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 
 from homeassistant.components.media_player import (
     ATTR_MEDIA_SEEK_POSITION,
@@ -31,8 +33,11 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.util import dt as dt_util
 
-from custom_components.storybox_plus.cloud import CloudConnectionError
+from custom_components.storybox_plus.cloud import TOPIC_HEADPHONES, CloudConnectionError
+from custom_components.storybox_plus.cloud.models import parse_headphones
 from custom_components.storybox_plus.const import (
     ATTR_MINUTES,
     DOMAIN,
@@ -50,6 +55,7 @@ from .conftest import (
     TONIE_SERIES,
     FakeCloud,
     PushChannels,
+    device,
     entity_id,
 )
 
@@ -159,6 +165,81 @@ async def test_battery_and_charging(
     assert hass.states.get(charging).state == STATE_OFF
 
 
+async def test_headphones(
+    hass: HomeAssistant, push: PushChannels, setup_entry: MockConfigEntry
+) -> None:
+    """Headphones are unknown until the box says, and nothing is known of a box switched off."""
+    headphones = entity_id(hass, "binary_sensor", f"{BOX_ID}_headphones")
+    assert hass.states.get(headphones).state == STATE_UNKNOWN
+
+    push.last.send(
+        TOPIC_HEADPHONES, parse_headphones({"connected": [{"type": "bluetooth", "battery": 55}]})
+    )
+    state = hass.states.get(headphones)
+    assert state.state == STATE_ON
+    assert (state.attributes["kind"], state.attributes["battery"]) == ("bluetooth", 55)
+
+    push.last.send(TOPIC_HEADPHONES, parse_headphones({"connected": []}))
+    state = hass.states.get(headphones)
+    assert state.state == STATE_OFF
+    assert (state.attributes["kind"], state.attributes["battery"]) == (None, None)
+
+    push.last.online(False)
+    assert hass.states.get(headphones).state == STATE_UNAVAILABLE
+
+
+async def test_sleep_timer_end(
+    hass: HomeAssistant,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The sensor names the end of a running timer and forgets it once it ran out."""
+    timer = entity_id(hass, "sensor", f"{BOX_ID}_sleep_timer")
+    assert hass.states.get(timer).state == STATE_UNKNOWN
+    assert hass.states.get(timer).attributes["device_class"] == "timestamp"
+
+    until = dt_util.utcnow().replace(microsecond=0) + timedelta(minutes=30)
+    push.last.sleep_timer("on", until=until)
+    assert hass.states.get(timer).state == until.isoformat()
+
+    # A timer that ends with an alarm is the bedtime's, not a sleep timer
+    push.last.sleep_timer("on", until=until, alarm=True)
+    assert hass.states.get(timer).state == STATE_UNKNOWN
+    push.last.sleep_timer("on", until=until)
+    push.last.sleep_timer("off", until=until)
+    assert hass.states.get(timer).state == STATE_UNKNOWN
+
+    # The box says nothing when the timer runs out: the clock alone ends it
+    push.last.sleep_timer("on", until=until)
+    assert hass.states.get(timer).state == until.isoformat()
+    freezer.move_to(until + timedelta(seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(timer).state == STATE_UNKNOWN
+
+
+async def test_boxes_summary(hass: HomeAssistant, setup_entry: MockConfigEntry) -> None:
+    """The account's sensor counts the Tonieboxes 2 and lists them, following the registries."""
+    summary = entity_id(hass, "sensor", "boxes")
+    player = entity_id(hass, MP_DOMAIN, BOX_ID)
+    state = hass.states.get(summary)
+    assert state.state == "1"
+    (box,) = state.attributes["boxes"]
+    assert box["entity_id"] == player
+    assert box["name"] == "Kinderzimmer"
+    assert set(box) == {"name", "entity_id", "picture"}
+
+    # A media player with another entity ID, a box given another name in Home Assistant
+    er.async_get(hass).async_update_entity(player, new_entity_id="media_player.kids")
+    await hass.async_block_till_done()
+    assert hass.states.get(summary).attributes["boxes"][0]["entity_id"] == "media_player.kids"
+    box_device = device(hass, setup_entry, BOX_ID)
+    dr.async_get(hass).async_update_device(box_device.id, name_by_user="Kids")
+    await hass.async_block_till_done()
+    assert hass.states.get(summary).attributes["boxes"][0]["name"] == "Kids"
+
+
 # -- media player --
 
 
@@ -218,6 +299,22 @@ async def test_player_attributes(
     assert "media_position" not in attributes
     assert "media_position_updated_at" not in attributes
     assert "media_track" in attributes
+
+
+async def test_player_names_the_box_picture_and_the_chapters(
+    hass: HomeAssistant, push: PushChannels, setup_entry: MockConfigEntry
+) -> None:
+    """A dashboard reads the chapters of the figure and the box's picture from the player."""
+    push.last.online(True)
+    tonie = setup_entry.runtime_data.coordinator.tonie(TONIE_ID)
+    # Until the box reports what it plays, the figure the cloud names counts
+    assert _player(hass).attributes["media_album_name"] == TONIE_NAME
+    assert _player(hass).attributes["chapters"] == len(tonie.chapters)
+    assert "box_picture" in _player(hass).attributes
+    push.last.playback(TONIE_ID, chapter=0)
+    assert _player(hass).attributes["chapters"] == len(tonie.chapters)
+    push.last.removed()
+    assert _player(hass).attributes["chapters"] is None
 
 
 async def test_player_title_fallbacks(

@@ -11,13 +11,14 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant.typing import WebSocketGenerator
 
+from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from custom_components.storybox_plus.const import DOMAIN
 from custom_components.storybox_plus.night import NightMode, NightModes, next_change, phase
 
-from .conftest import BOX_ID, CLASSIC_BOX_ID, FakeCloud, PushChannels
+from .conftest import BOX_ID, CLASSIC_BOX_ID, FakeCloud, PushChannels, entity_id
 
 BERLIN = ZoneInfo("Europe/Berlin")
 EVENING = datetime(2026, 11, 9, 22, 0, tzinfo=BERLIN)
@@ -126,10 +127,13 @@ async def test_night_mode_dims_and_restores(
 ) -> None:
     """Set at night, the ring dims at once; at the end of the span it comes back, once."""
     client = await _setup(hass, cloud, config_entry, freezer, hass_ws_client)
+    sensor = entity_id(hass, "binary_sensor", f"{BOX_ID}_night_mode")
+    assert hass.states.get(sensor).state == STATE_OFF
     result = await _call(client, _night_message())
     assert result["success"], result
     await hass.async_block_till_done()
     assert _rings(cloud) == [10]
+    assert hass.states.get(sensor).state == STATE_ON
     overview = await _call(client, {"type": f"{DOMAIN}/overview"})
     box = next(b for b in overview["result"]["boxes"] if b["id"] == BOX_ID)
     assert box["night"] == {
@@ -151,6 +155,7 @@ async def test_night_mode_dims_and_restores(
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert _rings(cloud) == [10, 60]
+    assert hass.states.get(sensor).state == STATE_OFF
     classic = next(b for b in overview["result"]["boxes"] if b["id"] == CLASSIC_BOX_ID)
     assert classic["night"] is None
 
@@ -213,6 +218,37 @@ async def test_refused_change_tried_again(
     await config_entry.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
     assert _rings(cloud) == [10]
+
+
+async def test_night_sensor_follows_the_clock(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The sensor tells the phase of the span, also while the cloud refuses the light ring."""
+    client = await _setup(hass, cloud, config_entry, freezer, hass_ws_client)
+    sensor = entity_id(hass, "binary_sensor", f"{BOX_ID}_night_mode")
+    await _call(client, _night_message())
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == STATE_ON
+    cloud.main.rest_status = 500
+    freezer.move_to(datetime(2026, 11, 10, 7, 0, 1, tzinfo=BERLIN))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert _rings(cloud) == [10]
+    assert hass.states.get(sensor).state == STATE_OFF
+    # Switched off, it is not at work at night either
+    cloud.main.rest_status = None
+    freezer.move_to(datetime(2026, 11, 10, 22, 0, tzinfo=BERLIN))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == STATE_ON
+    await _call(client, _night_message(enabled=False))
+    await hass.async_block_till_done()
+    assert hass.states.get(sensor).state == STATE_OFF
 
 
 @pytest.mark.parametrize(

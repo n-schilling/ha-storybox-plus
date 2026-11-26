@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Four entities per Toniebox 2 for what only the page and the dashboard card could tell so far: whether headphones are connected (`binary_sensor`, with their kind and battery as attributes), whether the night mode of the light ring is at work (`binary_sensor`), when the running sleep timer ends and when the next alarm of the bedtimes rings (both `sensor`, timestamps; the alarm only for a box that rings alarms). Automations can use them, a time trigger with an offset for example reminds before the alarm.
+- A sensor on the account's device counts the Tonieboxes 2 and lists them in its attribute `boxes` (name, media player, picture), so a dashboard shows the boxes without searching for them.
+- The dashboard card needs no configuration: without `entity` it shows every Toniebox 2. It has a `title` and a `size`, and in a sections view it follows the rows it gets: large with everything, medium with what plays, small as one row.
+- The media player of a Toniebox 2 has the attributes `chapters` (how many chapters the figure has) and `box_picture` (the address of the box's picture).
+
+### Changed
+
+- The dashboard card reads the entities of its box and nothing else; the WebSocket command `storybox_plus/box/card` it asked before is gone. It follows the entities at once instead of asking every 30 seconds. With that, the volume shows in percent only and its buttons are the media player's steps, the battery does not show while the box is switched off, a sleep timer shows only with its end, and the figure's picture comes through Home Assistant.
+- The dashboard card is kept in the dashboard resources (created on setup, pointed to the new version after an update, removed with the last account; resources kept in YAML are left alone) beside being loaded on every page. Its editor is Home Assistant's form. Times on the card and the page follow the 12 or 24 hours of the user's profile.
+- The media player names the figure on a box from the cloud until the box itself reports what it plays, after a restart of Home Assistant for example.
+
 ## [1.0.1] - 2026-11-23
 
 ### Changed

@@ -4,6 +4,7 @@
   "after_dependencies": [
     "frontend",
     "hassio",
+    "lovelace",
     "panel_custom",
     "tts"
   ],

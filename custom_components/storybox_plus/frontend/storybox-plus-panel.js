@@ -17,7 +17,7 @@ const WEEKS_FROM = 120;
 // What the page shares with the dashboard card; the version of this script keeps both in step
 const {
   MDI, esc, icon, iconButton, fill, time, safeUrl, pad, hm, mmss, hours, cap, dayKey, parseDay, WEEKDAYS, clock, STYLE, BoxView,
-  fieldNumber, numOrNull,
+  fieldNumber, numOrNull, timeOptions,
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 if (!customElements.get("storybox-plus-panel")) {
@@ -1350,7 +1350,7 @@ if (!customElements.get("storybox-plus-panel")) {
       let html = "";
       const next = bt.next_alarm;
       if (next) {
-        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
         const state = next.armed ? t.alarmArmed : next.due ? t.alarmPending : t.alarmLater;
         html += `<ha-alert alert-type="${next.armed ? "success" : "info"}" class="alarm-next">${esc(`${fill(t.nextAlarm, { t: when })} · ${state}`)}</ha-alert>`;
       }

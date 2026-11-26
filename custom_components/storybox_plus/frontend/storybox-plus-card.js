@@ -1,28 +1,52 @@
-// Storybox Plus: the card of a Toniebox 2 for dashboards. It shows what the box's
-// card on the page shows (what plays, volume, battery, headphones, sleep timer,
-// next alarm, night mode) and has its buttons, but neither its settings nor the
-// charge history. It is open to every user who may read the box's media player:
-// the state comes from the integration's card command, the buttons call the
-// media player's actions.
+// Storybox Plus: the dashboard card of the Tonieboxes 2. It shows every user what
+// is going on: what plays, online or not, the battery, volume, headphones, the
+// sleep timer, the next alarm, the night mode. It reads the entities of the boxes
+// and nothing else; its buttons call actions every user may call on a box's media
+// player anyway. Neither settings nor the charge history: those are on the page.
+//
+// Without a box in its configuration it shows every Toniebox 2, from the list the
+// summary entity of each account carries. It is as high as what it shows; given
+// fewer rows in a sections view it draws itself large, then medium, then small,
+// and keeps the first that fits.
 const {
-  STYLE, BoxView, TEXTS,
+  STYLE, BoxView, TEXTS, esc,
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 const CARD = "storybox-plus-box-card";
-// What the card can leave out, each on by default (show_<part>: false hides it)
-const PARTS = ["picture", "battery", "volume", "headphones", "sleep_timer", "next_alarm", "night_mode", "playback", "controls"];
-const EDITOR = `${CARD}-editor`;
-// The card asks again this often, for what has no entity of its own (ms)
-const REFRESH = 30000;
-// A changed entity is asked about after this pause, so a burst of changes asks once (ms)
-const SETTLE = 400;
+const DOMAIN = "storybox_plus";
+// Every action the buttons may call, each on the box's media player
+const ACTIONS = [
+  "media_player.media_play", "media_player.media_pause", "media_player.media_next_track", "media_player.media_previous_track",
+  "media_player.volume_up", "media_player.volume_down", "storybox_plus.set_sleep_timer", "storybox_plus.clear_sleep_timer",
+];
+// The entities of a box the card reads beside its media player, by the integration's own keys
+const KEYS = ["connectivity", "battery", "charging", "headphones", "night_mode", "sleep_timer", "next_alarm"];
+// The card from most to least: what does not fit is left out in this order
+const SIZES = ["large", "medium", "small"];
+// What the card can leave out, from the least important to the most: the buttons
+// go first, the name and whether the box is online always show
+const PARTS = ["controls", "night_mode", "next_alarm", "sleep_timer", "headphones", "volume", "picture", "battery", "playback"];
+// The parts only the large card has
+const DETAILS = ["controls", "night_mode", "next_alarm", "sleep_timer", "headphones", "volume"];
+// Everything informs, so everything is on
+const DEFAULTS = { size: "auto", ...Object.fromEntries(PARTS.map((part) => [`show_${part}`, true])) };
 
-// The page's sheet, without its full-window frame, and the card's own layouts by its
-// width: side by side from 600 px (a wide, low tile such as half of a wall display),
-// stacked below, compact under 300 px (a quarter of a sections view)
+const known = (state) => (state && state.state !== "unavailable" && state.state !== "unknown" ? state : null);
+const number = (value) => (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
+// The language of the last card that got its data, for the editor's labels
+let language = "en";
+const texts = (lang) => ((lang || "en").toLowerCase().startsWith("de") ? TEXTS.de : TEXTS.en);
+
+// The page's sheet without its full-window frame; the large card lays itself out by
+// its width: side by side from 600 px (a wide, low tile such as half of a wall
+// display), stacked below, compact under 300 px (a quarter of a sections view)
 const CARD_STYLE = `
-  :host { display: block; height: auto; background: none; }
+  :host { display: block; height: 100%; background: none; }
   ha-card { height: 100%; container-type: inline-size; overflow: hidden; }
+  .content.fill { height: 100%; }
+  .heading { padding: 12px 16px 0; font-size: var(--ha-font-size-l, 16px); font-weight: var(--ha-font-weight-medium, 500); }
+  .box + .box { border-top: 1px solid var(--divider-color); }
+  .card-header { padding: 12px 16px 8px; font-size: var(--ha-font-size-xl, 20px); line-height: 28px; font-weight: var(--ha-font-weight-normal, 400); }
   .box-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "facts" "now" "ctl"; }
   .box-body > .facts { grid-area: facts; }
   .box-body > .now { grid-area: now; min-width: 0; }
@@ -33,10 +57,9 @@ const CARD_STYLE = `
     .box-body > .facts { margin-bottom: 4px; }
     .box-body > .ctl .controls { margin-top: 0; }
   }
-  /* Narrower than side by side: a tighter head, spacing and buttons, so the card
-     still fits a low tile such as the third of a wall display (370 x 262 px) */
+  /* Narrower than side by side: tighter spacing and buttons, so the card still
+     fits a low tile such as the third of a wall display (370 x 262 px) */
   @container (max-width: 599px) {
-    ha-card .card-header { padding: 12px 16px 8px; font-size: 20px; line-height: 28px; }
     .box-pic { width: 32px; height: 32px; }
     .facts { gap: 4px 16px; margin-bottom: 8px; }
     .progress { margin-top: 6px; }
@@ -44,7 +67,7 @@ const CARD_STYLE = `
     .card-content { padding-bottom: 8px; }
   }
   @container (max-width: 299px) {
-    ha-card .card-header { gap: 6px; }
+    .card-header { gap: 6px; }
     .box-pic { width: 28px; height: 28px; }
     .box-name { font-size: var(--ha-font-size-l, 16px); }
     .facts { gap: 2px 12px; margin-bottom: 8px; font-size: var(--ha-font-size-s, 13px); }
@@ -53,202 +76,388 @@ const CARD_STYLE = `
     .controls .ctl-gap { display: none; }
     .sleep-pick { display: none; }
   }
+  /* Home Assistant's buttons have no height until they have drawn themselves */
+  .controls { min-height: 48px; }
+  /* The small card: one row per box, a name line and one second line */
+  .compact { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; cursor: pointer; }
+  .content.fill .compact:only-child { height: 100%; }
+  .compact .box-pic { width: 32px; height: 32px; margin: 0; }
+  .compact .who { flex: 1; min-width: 0; }
+  .compact .name { display: flex; align-items: center; gap: 6px; font-weight: var(--ha-font-weight-medium, 500); line-height: 20px; }
+  .compact .name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compact .sub { font-size: var(--ha-font-size-xs, 12px); line-height: 16px; color: var(--secondary-text-color);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compact .status { flex: none; }
 `;
-
-const texts = (hass) => ((hass?.locale?.language || hass?.language || "en").toLowerCase().startsWith("de") ? TEXTS.de : TEXTS.en);
 
 if (!customElements.get(CARD)) {
   class StoryboxPlusBoxCard extends BoxView(HTMLElement) {
+    static getStubConfig() {
+      return {};
+    }
+
+    // A field for every option, the parts in one expandable group
+    static getConfigForm() {
+      const t = texts(language);
+      return {
+        schema: [
+          { name: "entity", selector: { entity: { filter: { integration: DOMAIN, domain: "media_player" } } } },
+          { name: "title", selector: { text: {} } },
+          {
+            name: "size",
+            selector: { select: { mode: "dropdown", options: [["auto", t.sizeAuto], ["small", t.sizeSmall], ["medium", t.sizeMedium], ["large", t.sizeLarge]]
+              .map(([value, label]) => ({ value, label })) } },
+          },
+          {
+            type: "expandable", name: "parts", title: t.cardShow, flatten: true,
+            schema: [...PARTS].reverse().map((part) => ({ name: `show_${part}`, selector: { boolean: {} } })),
+          },
+        ],
+        computeLabel: (field) => {
+          const now = texts(language);
+          return { entity: now.cardEntity, title: now.cardTitle, size: now.cardSize }[field.name] ?? now[field.name] ?? field.name;
+        },
+      };
+    }
+
     constructor() {
       super();
       this.attachShadow({ mode: "open" });
-      this._box_ = null;
-      // Why the card shows no box: "denied", "unknown" or the error of the call
-      this._failure = null;
-      this._upgrade(["hass"]);
-      this.shadowRoot.addEventListener("click", (e) => {
-        const target = e.composedPath().find((el) => el instanceof Element && el.hasAttribute?.("data-act"));
-        if (!target || target.hasAttribute("disabled")) return;
-        const act = target.getAttribute("data-act");
-        if (act.startsWith("ctl:")) {
-          const [, , command, value] = act.split(":");
-          this._command(command, value);
-        }
-      });
-    }
-
-    static getConfigElement() {
-      return document.createElement(EDITOR);
-    }
-
-    // The first media player of the integration, for the card picker's preview
-    static getStubConfig(hass) {
-      const found = Object.values(hass?.entities || {}).find(
-        (e) => e.platform === "storybox_plus" && e.entity_id.startsWith("media_player."),
-      );
-      return { entity: found?.entity_id || "" };
+      this._config = { ...DEFAULTS };
+      this._key = null;
+      // The entities of each box by their keys, looked up once per registry
+      this._found = new Map();
+      this._over = new Set();
+      this._upgrade(["hass", "layout"]);
     }
 
     setConfig(config) {
       if (!config || typeof config !== "object") throw new Error("Invalid configuration");
-      this._config = { ...config };
-      this._box_ = null;
-      this._failure = null;
-      this._seen = undefined;
-      if (this._hass) this._load();
+      this._config = { ...DEFAULTS, ...config };
+      this._key = null;
       this._render();
     }
 
     set hass(hass) {
-      const first = !this._hass;
       this._hass = hass;
-      const state = this._config?.entity ? hass.states[this._config.entity] : undefined;
-      // The media player changes with what plays, the volume and the connection: ask again then
-      if (first || state !== this._seen) {
-        this._seen = state;
-        window.clearTimeout(this._settle);
-        this._settle = window.setTimeout(() => this._load(), first ? 0 : SETTLE);
-      }
+      language = hass?.locale?.language || hass?.language || language;
+      this._render();
     }
 
-    connectedCallback() {
-      this._timer = window.setInterval(() => this._load(), REFRESH);
-      this._ticker = window.setInterval(() => this._tick(), 1000);
-      if (this._hass) this._load();
-    }
-
-    disconnectedCallback() {
-      window.clearInterval(this._timer);
-      window.clearInterval(this._ticker);
-      window.clearTimeout(this._settle);
+    // Home Assistant sets it: "grid" in a sections view, where the card has a fixed height
+    set layout(layout) {
+      this._layout = layout;
+      this._key = null;
+      this._render();
     }
 
     getCardSize() {
       return 4;
     }
 
-    // Any width from a quarter of a section on; the height follows the content
+    // As high as what it shows, until someone gives it fewer rows
     getGridOptions() {
-      return { columns: 6, min_columns: 3, rows: "auto" };
+      return { columns: 6, rows: "auto", min_columns: 3, min_rows: 1 };
     }
 
-    async _load() {
-      const entity = this._config?.entity;
-      if (!this._hass || !entity || document.visibilityState === "hidden") return this._render();
-      try {
-        this._box_ = await this._hass.callWS({ type: "storybox_plus/box/card", entity_id: entity });
-        this._failure = null;
-        // The box's word on the volume counts again
-        this._volSent = null;
-      } catch (err) {
-        this._box_ = null;
-        this._failure = err?.code === "unauthorized" ? "denied" : err?.code === "unknown_box" ? "unknown" : err;
+    connectedCallback() {
+      this._observer = new ResizeObserver(() => {
+        this._key = null;
+        this._render();
+      });
+      this._observer.observe(this);
+      // What the card shows grows after it was measured (a picture loads, a button
+      // draws itself): measure again then, and only then
+      this._grown = new ResizeObserver(() => {
+        const card = this.shadowRoot.querySelector("ha-card");
+        const content = this.shadowRoot.querySelector(".content");
+        // Only a size that turned out too high gives way, to the next smaller one:
+        // it is remembered, so the card never goes back and forth
+        if (!card || !content || !this._drawn || this._drawn.last || content.scrollHeight <= this._room(card) + 1) return;
+        this._over.add(this._drawn.size);
+        this._key = null;
+        this._render();
+      });
+      this._watch();
+      this._ticker = window.setInterval(() => this._tick(), 1000);
+      if (!this._listening) {
+        this._listening = true;
+        this.shadowRoot.addEventListener("click", (e) => this._clicked(e));
+        // A row that opens something reacts to Enter and Space as well
+        this.shadowRoot.addEventListener("keydown", (e) => {
+          if ((e.key === "Enter" || e.key === " ") && e.composedPath()[0]?.hasAttribute?.("data-entity")) {
+            e.preventDefault();
+            this._clicked(e);
+          }
+        });
       }
       this._render();
     }
 
-    // The buttons are the media player's actions, which every user may call
-    async _command(command, value) {
-      const b = this._box_;
-      if (!b || !this._hass || this._ctlBusy) return;
-      const target = { entity_id: this._config.entity };
-      const calls = {
-        play: ["media_player", "media_play", {}],
-        pause: ["media_player", "media_pause", {}],
-        next: ["media_player", "media_next_track", {}],
-        previous: ["media_player", "media_previous_track", {}],
-        volume: ["media_player", "volume_set", { volume_level: Number(value) / (b.volume_max || 13) }],
-        sleep: ["storybox_plus", "set_sleep_timer", { minutes: Number(value) }],
-        sleep_clear: ["storybox_plus", "clear_sleep_timer", {}],
+    disconnectedCallback() {
+      this._observer?.disconnect();
+      this._grown?.disconnect();
+      window.clearInterval(this._ticker);
+    }
+
+    // The height the card has for its content
+    _room(card) {
+      const style = getComputedStyle(card);
+      return card.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    }
+
+    _watch() {
+      const content = this.shadowRoot.querySelector(".content");
+      if (content && this._grown) {
+        this._grown.disconnect();
+        this._grown.observe(content);
+      }
+    }
+
+    _clicked(e) {
+      const path = e.composedPath().filter((el) => el instanceof Element);
+      const button = path.find((el) => el.hasAttribute("data-act"));
+      if (button) {
+        if (button.hasAttribute("disabled")) return;
+        const [kind, player, command, value] = button.getAttribute("data-act").split(":");
+        if (kind === "ctl") this._command(player, command, value);
+        return;
+      }
+      // A tap on a small row opens Home Assistant's own dialog of the box: reading, no action
+      const row = path.find((el) => el.hasAttribute("data-entity"));
+      if (row) this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: row.dataset.entity }, bubbles: true, composed: true }));
+    }
+
+    // The media players of the boxes to show: the one configured, else every box the
+    // summary entities of the accounts list. null: a configured one that is no box of ours
+    _players() {
+      const hass = this._hass;
+      const c = this._config;
+      if (c.entity) return hass.states[c.entity] && hass.entities?.[c.entity]?.platform === DOMAIN ? [c.entity] : null;
+      const players = [];
+      for (const entry of Object.values(hass.entities || {})) {
+        if (entry.platform !== DOMAIN || entry.translation_key !== "boxes") continue;
+        for (const box of hass.states[entry.entity_id]?.attributes.boxes || []) {
+          if (hass.states[box.entity_id] && !players.includes(box.entity_id)) players.push(box.entity_id);
+        }
+      }
+      return players;
+    }
+
+    // The entities of a box by their keys: those of the media player's device
+    _entities(player) {
+      const hass = this._hass;
+      const kept = this._found.get(player);
+      if (kept?.registry === hass.entities) return kept;
+      const device = hass.entities?.[player]?.device_id;
+      const ids = {};
+      if (device) {
+        for (const entry of Object.values(hass.entities)) {
+          if (entry.platform === DOMAIN && entry.device_id === device && KEYS.includes(entry.translation_key)) ids[entry.translation_key] = entry.entity_id;
+        }
+      }
+      const found = { registry: hass.entities, ids, device };
+      this._found.set(player, found);
+      return found;
+    }
+
+    // A box as the shared drawing takes it, read from its entities
+    _read(player) {
+      const hass = this._hass;
+      const state = hass.states[player];
+      const { ids, device } = this._entities(player);
+      const of = (key) => known(hass.states[ids[key]]);
+      const a = state.attributes;
+      const named = hass.devices?.[device];
+      const online = of("connectivity") ? of("connectivity").state === "on"
+        : state.state === "off" ? false : known(state) ? true : null;
+      const figure = a.media_album_name || null;
+      const playing = state.state === "playing";
+      const paused = state.state === "paused";
+      const track = number(a.media_track);
+      const level = number(a.volume_level);
+      const phones = of("headphones");
+      // The state in Home Assistant's own word
+      const word = hass.formatEntityState ? hass.formatEntityState(state) : state.state;
+      return {
+        id: player,
+        name: named?.name_by_user || named?.name || a.friendly_name || player,
+        generation: "toniebox_2",
+        image_url: a.box_picture,
+        online,
+        word,
+        battery: number(of("battery")?.state),
+        charging: of("charging")?.state === "on",
+        volume: null,
+        volume_percent: level === null ? null : Math.round(level * 100),
+        headphones: phones?.state === "on" ? { connected: true, battery: number(phones.attributes.battery) } : null,
+        sleep_timer: of("sleep_timer") ? { state: "on", until: of("sleep_timer").state } : null,
+        bedtime: of("next_alarm") ? { next_alarm: { at: of("next_alarm").state, due: of("next_alarm").attributes.due === true } } : null,
+        night: of("night_mode")?.state === "on" ? { mode: { enabled: true }, phase: "night" } : null,
+        playback: figure || playing || paused ? {
+          tonie_id: figure || player,
+          tonie_name: figure,
+          image_url: a.entity_picture ? hass.hassUrl(a.entity_picture) : null,
+          chapter: track === null ? null : track - 1,
+          chapter_title: a.media_title && a.media_title !== figure ? a.media_title : null,
+          chapters: number(a.chapters),
+          playing,
+          paused,
+          state_text: word,
+          position: number(a.media_position),
+          duration: number(a.media_duration),
+          received_at: a.media_position_updated_at || null,
+        } : null,
       };
-      const call = calls[command];
-      if (!call) return;
-      this._ctlBusy = b.id;
+    }
+
+    // The buttons are actions of the media player, which every user may call
+    async _command(player, command, value) {
+      if (!this._hass || this._ctlBusy) return;
+      const calls = {
+        play: ["media_player.media_play", {}],
+        pause: ["media_player.media_pause", {}],
+        next: ["media_player.media_next_track", {}],
+        previous: ["media_player.media_previous_track", {}],
+        volume_up: ["media_player.volume_up", {}],
+        volume_down: ["media_player.volume_down", {}],
+        sleep: ["storybox_plus.set_sleep_timer", { minutes: Number(value) }],
+        sleep_clear: ["storybox_plus.clear_sleep_timer", {}],
+      };
+      const [action, data] = calls[command] || [];
+      if (!ACTIONS.includes(action)) return;
+      this._ctlBusy = player;
       this._ctlError = null;
       this._render();
       try {
-        await this._hass.callService(call[0], call[1], call[2], target);
-        // The next press goes on from the level just sent, until the box answers
-        if (command === "volume") {
-          b.volume = Number(value);
-          this._volSent = { box: b.id };
-        }
+        await this._hass.callService(...action.split("."), data, { entity_id: player });
       } catch (err) {
-        this._ctlError = { id: b.id, err };
+        // The integration's own refusals read their own line
+        this._ctlError = { id: player, err: err?.translation_domain === DOMAIN && err.translation_key ? { code: err.translation_key } : err };
       }
       this._ctlBusy = null;
       this._render();
-      window.setTimeout(() => this._load(), 1500);
     }
 
     _render() {
+      if (!this._hass || !this.isConnected) return;
+      const players = this._players();
+      const boxes = (players || []).map((player) => this._read(player));
+      const fixed = this._layout === "grid";
+      const key = JSON.stringify([players === null, boxes, this._config, this._lang, this._hass.locale, fixed,
+        this.clientWidth, this.clientHeight, this._ctlBusy || "", this._ctlError ? [this._ctlError.id, this._ctlError.err?.code || ""] : ""]);
+      if (key === this._key) return;
+      this._key = key;
+      const root = this.shadowRoot;
+      let card = root.querySelector("ha-card");
+      if (!card) {
+        // The frame stays: a new ha-card shows its content only once it has drawn
+        // itself, so what is measured right after creating it would be nothing
+        root.innerHTML = `<style>${STYLE}${CARD_STYLE}</style><ha-card><div class="content"></div></ha-card>`;
+        card = root.querySelector("ha-card");
+        this._watch();
+        card.updateComplete?.then(() => {
+          this._key = null;
+          this._render();
+        });
+      }
+      const content = root.querySelector(".content");
+      // Draws the card and says whether its content is higher than the card
+      const draw = (html, whole = false) => {
+        content.className = `content${whole ? " fill" : ""}`;
+        content.innerHTML = html;
+        return content.scrollHeight > this._room(card) + 1;
+      };
+      this._drawn = null;
       const t = this._t;
-      let body;
-      if (!this._config?.entity) body = this._card("", this._alert(t.cardNoEntity, "info"));
-      else if (this._failure === "denied" || this._failure === "unknown") {
-        body = this._card("", this._alert(this._failure === "denied" ? t.cardDenied : t.cardUnknown, "warning"));
-      } else if (this._failure) {
-        // A card for every user shows the line only, not Home Assistant's message
-        body = this._card("", this._errHtml(this._error(this._failure)));
-      } else if (!this._box_) body = this._card("", `<div class="muted">${t.loading}</div>`);
-      else body = this._box(this._box_, false, this._config);
-      const html = `<style>${STYLE}${CARD_STYLE}</style>${body}`;
-      if (html === this._html) return;
-      this._html = html;
-      this.shadowRoot.innerHTML = html;
+      if (!boxes.length) {
+        // A configured entity that is no box of ours, or no box at all
+        draw(`<div class="card-content bare">${this._alert(players === null ? t.cardUnknown : t.cardMissing, players === null ? "warning" : "info")}</div>`);
+        return;
+      }
+      const c = this._config;
+      const wanted = SIZES.includes(c.size) ? [c.size] : SIZES;
+      // The sizes that turned out too high for this space and these parts: Home
+      // Assistant's buttons draw themselves after the card measured
+      const shape = JSON.stringify([this.clientWidth, this.clientHeight, c, fixed,
+        boxes.map((b) => [b.online, !!b.playback, b.playback?.playing, !!b.headphones, !!b.sleep_timer, !!b.bedtime, !!b.night, b.battery === null])]);
+      if (shape !== this._shape) {
+        this._shape = shape;
+        this._over = new Set();
+      }
+      for (const size of wanted) {
+        const last = size === wanted[wanted.length - 1];
+        if (fixed && !last && this._over.has(size)) continue;
+        const overflows = draw(this._view(boxes, size), size === "small");
+        this._drawn = { size, last };
+        // Only a card with a fixed height can be too small for what it shows
+        if (!fixed || !overflows) break;
+        this._over.add(size);
+      }
+      // A second line that is cut off gives way to a shorter one. Measured beside the
+      // line, to the fraction of a pixel: scrollWidth and clientWidth are whole
+      // numbers and call a text that is a hair too wide a fit
+      for (const line of content.querySelectorAll(".sub[data-lines]")) {
+        const probe = document.createElement("span");
+        probe.className = line.className;
+        probe.style.cssText = "position: absolute; visibility: hidden; overflow: visible; width: auto; display: inline-block;";
+        line.parentElement.appendChild(probe);
+        const room = line.getBoundingClientRect().width;
+        for (const text of JSON.parse(line.dataset.lines)) {
+          line.textContent = text;
+          probe.textContent = text;
+          if (probe.getBoundingClientRect().width <= room) break;
+        }
+        probe.remove();
+      }
       this._tick();
     }
-  }
 
-  class StoryboxPlusBoxCardEditor extends HTMLElement {
-    setConfig(config) {
-      this._config = { ...config };
-      this._render();
+    // The card in one size. One box takes the title as its name; several get it as a heading
+    _view(boxes, size) {
+      const c = this._config;
+      const single = boxes.length === 1;
+      const heading = c.title && !single ? `<div class="heading">${esc(c.title)}</div>` : "";
+      // The medium card is the large one without what only the large one has
+      const shown = size === "large" ? c : { ...c, ...Object.fromEntries(DETAILS.map((part) => [`show_${part}`, false])) };
+      return heading + boxes.map((box) => {
+        const b = single && c.title ? { ...box, name: c.title } : box;
+        if (size === "small") return this._compact(b);
+        const { title, body } = this._boxParts(b, false, shown);
+        return `<div class="box"><h1 class="card-header">${title}</h1><div class="card-content">${body}</div></div>`;
+      }).join("");
     }
 
-    set hass(hass) {
-      this._hass = hass;
-      this._render();
-    }
-
-    _render() {
-      if (!this._hass || !this._config) return;
-      const t = texts(this._hass);
-      if (!this._form) {
-        this._form = document.createElement("ha-form");
-        this._form.addEventListener("value-changed", (e) => {
-          const value = { ...e.detail.value };
-          // Only what is turned off is written; on is the default
-          for (const part of PARTS) if (value[`show_${part}`] !== false) delete value[`show_${part}`];
-          const kept = Object.fromEntries(Object.entries(this._config).filter(([k]) => !k.startsWith("show_")));
-          this._config = { ...kept, ...value };
-          this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true }));
-        });
-        this.appendChild(this._form);
-      }
-      this._form.hass = this._hass;
-      this._form.schema = [
-        { name: "entity", required: true, selector: { entity: { domain: "media_player", integration: "storybox_plus" } } },
-        {
-          name: "show", type: "expandable", flatten: true, title: t.cardShow, expanded: true,
-          schema: [{ type: "grid", name: "", flatten: true, column_min_width: "200px",
-            schema: PARTS.map((part) => ({ name: `show_${part}`, selector: { boolean: {} } })) }],
-        },
-      ];
-      // A part shows unless turned off
-      this._form.data = { entity: this._config.entity || "", ...Object.fromEntries(PARTS.map((part) => [`show_${part}`, this._config[`show_${part}`] !== false])) };
-      this._form.computeLabel = (field) => (field.name === "entity" ? t.cardEntity : t[field.name] || field.name);
+    // One row: the name with its dot, and one second line, the first of these that fits
+    _compact(b) {
+      const t = this._t;
+      const c = this._config;
+      const p = c.show_playback ? b.playback : null;
+      const figure = p ? p.tonie_name || t.unknownFigure : "";
+      const lines = [];
+      if (b.online === false) lines.push(b.word);
+      else if (p?.playing) lines.push(...(p.chapter_title ? [`${figure} · ${p.chapter_title}`] : []), figure, b.word);
+      else if (p?.paused) lines.push(`${figure} · ${b.word}`, figure, b.word);
+      else if (p) lines.push(figure);
+      else lines.push(c.show_playback ? t.nothing : b.word);
+      const pic = c.show_picture && typeof b.image_url === "string" && /^https?:\/\//i.test(b.image_url) ? `<img class="box-pic" src="${esc(b.image_url)}" alt="">` : "";
+      const battery = c.show_battery && Number.isFinite(b.battery) ? `<span class="status"><span class="fact">${this._batteryLevel(b)}</span></span>` : "";
+      return `<div class="compact" data-entity="${esc(b.id)}" role="button" tabindex="0">${pic}<div class="who">` +
+        `<div class="name"><span>${esc(b.name)}</span>${this._dot(b)}</div>` +
+        `<div class="sub" data-lines="${esc(JSON.stringify(lines))}">${esc(lines[0])}</div></div>${battery}</div>`;
     }
   }
 
   customElements.define(CARD, StoryboxPlusBoxCard);
-  customElements.define(EDITOR, StoryboxPlusBoxCardEditor);
   window.customCards = window.customCards || [];
-  window.customCards.push({
-    type: CARD,
-    name: `Storybox Plus · ${texts(document.querySelector("home-assistant")?.hass).cardName}`,
-    description: texts(document.querySelector("home-assistant")?.hass).cardDescription,
-    preview: true,
-    documentationURL: "https://github.com/n-schilling/ha-storybox-plus#dashboard-card",
-  });
+  if (!window.customCards.some((card) => card.type === CARD)) {
+    const t = texts(document.querySelector("home-assistant")?.hass?.language);
+    window.customCards.push({
+      type: CARD,
+      name: `Storybox Plus · ${t.cardName}`,
+      description: t.cardDescription,
+      preview: true,
+      documentationURL: "https://github.com/n-schilling/ha-storybox-plus#dashboard-card",
+    });
+  }
 }

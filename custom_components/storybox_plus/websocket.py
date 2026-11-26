@@ -15,7 +15,6 @@ from typing import Any
 
 import probatio
 
-from homeassistant.auth.permissions.const import POLICY_READ
 from homeassistant.components.file_upload import process_uploaded_file
 from homeassistant.components.websocket_api import async_register_command
 from homeassistant.components.websocket_api.connection import ActiveConnection
@@ -26,8 +25,6 @@ from homeassistant.components.websocket_api.decorators import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import Unauthorized
-from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
 from homeassistant.util.hass_dict import HassKey
 
@@ -111,7 +108,6 @@ def async_register_websocket(hass: HomeAssistant) -> None:
         return
     hass.data[DATA_WEBSOCKET] = True
     async_register_command(hass, websocket_overview)
-    async_register_command(hass, websocket_box_card)
     async_register_command(hass, websocket_library)
     async_register_command(hass, websocket_analytics)
     async_register_command(hass, websocket_arrange_chapters)
@@ -480,80 +476,6 @@ async def websocket_overview(
             "about": await _about(hass),
         },
     )
-
-
-def _card_dict(entry: StoryboxConfigEntry, box_state: BoxState) -> dict[str, Any]:
-    """What the dashboard card shows of a box: the live state, nothing of its settings.
-
-    The card is open to every user who may read the box's media player, so
-    it leaves out what only administrators see on the page: settings,
-    bedtimes, the charge history, the household and the firmware.
-    """
-    full = _box_dict(entry, entry.runtime_data.coordinator, box_state)
-    card = {
-        key: full[key]
-        for key in (
-            "id",
-            "name",
-            "generation",
-            "image_url",
-            "online",
-            "battery",
-            "charging",
-            "volume",
-            "volume_max",
-            "volume_percent",
-            "headphones",
-            "sleep_timer",
-            "playback",
-        )
-    }
-    bedtime_info = full["bedtime"]
-    card["bedtime"] = {"next_alarm": bedtime_info["next_alarm"]} if bedtime_info else None
-    night_info = full["night"]
-    mode = night_info["mode"] if night_info else None
-    card["night"] = (
-        {"mode": {"enabled": mode["enabled"]}, "phase": night_info["phase"]}
-        if night_info and mode
-        else None
-    )
-    return card
-
-
-@websocket_command(
-    {
-        probatio.Required("type"): f"{DOMAIN}/box/card",
-        probatio.Required("entity_id"): str,
-    }
-)
-@callback
-def websocket_box_card(
-    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
-) -> None:
-    """Return what the dashboard card shows of the box behind a media player.
-
-    Not only for administrators: whoever may read the media player may read this.
-    """
-    entity_id: str = msg["entity_id"]
-    if not connection.user.permissions.check_entity(entity_id, POLICY_READ):
-        raise Unauthorized(entity_id=entity_id, permission=POLICY_READ)
-    found = er.async_get(hass).async_get(entity_id)
-    entry = (
-        hass.config_entries.async_get_entry(found.config_entry_id)
-        if found is not None
-        and found.platform == DOMAIN
-        and found.domain == "media_player"
-        and found.config_entry_id
-        else None
-    )
-    box_state = None
-    if entry is not None and entry.state is ConfigEntryState.LOADED and found is not None:
-        box_id = found.unique_id.removeprefix(f"{entry.entry_id}_")
-        box_state = entry.runtime_data.coordinator.data.boxes.get(box_id)
-    if entry is None or box_state is None:
-        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
-        return
-    connection.send_result(msg["id"], _card_dict(entry, box_state))
 
 
 @require_admin

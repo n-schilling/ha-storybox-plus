@@ -1,11 +1,33 @@
 {
   "entity": {
+    "binary_sensor": {
+      "headphones": {
+        "default": "mdi:headphones",
+        "state": {
+          "off": "mdi:headphones-off"
+        }
+      },
+      "night_mode": {
+        "default": "mdi:weather-night"
+      }
+    },
     "event": {
       "figure": {
         "default": "mdi:teddy-bear"
       },
       "notification": {
         "default": "mdi:bell-badge"
+      }
+    },
+    "sensor": {
+      "sleep_timer": {
+        "default": "mdi:sleep"
+      },
+      "next_alarm": {
+        "default": "mdi:alarm"
+      },
+      "boxes": {
+        "default": "mdi:speaker-multiple"
       }
     }
   },

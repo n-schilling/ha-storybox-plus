@@ -55,8 +55,9 @@ export const MDI = {
 
 export const TEXTS = {
   en: {
-    cardName: "Toniebox", cardDescription: "The live state of a Toniebox 2 with its buttons.", cardEntity: "Toniebox 2 (media player)",
-    cardNoEntity: "Choose the media player of a Toniebox 2.", cardUnknown: "This is no Toniebox 2 of Storybox Plus.", cardDenied: "You may not see this Toniebox.",
+    cardName: "Toniebox", cardDescription: "What plays on the Tonieboxes 2, with their buttons.", cardEntity: "Toniebox 2 (none: all of them)",
+    cardMissing: "No Toniebox 2 to show.", cardUnknown: "This is no Toniebox 2 of Storybox Plus.",
+    cardTitle: "Title", cardSize: "Size", sizeAuto: "By the space the card gets", sizeSmall: "Small", sizeMedium: "Medium", sizeLarge: "Large",
     cardShow: "Show", show_picture: "Picture of the box", show_battery: "Battery", show_volume: "Volume", show_headphones: "Headphones",
     show_sleep_timer: "Running sleep timer", show_next_alarm: "Next alarm", show_night_mode: "Night mode of the light ring",
     show_playback: "What plays", show_controls: "Buttons",
@@ -257,8 +258,9 @@ export const TEXTS = {
     cloudDiffers: "The cloud runs release {v}; Storybox Plus was tested with {t}. Should something not work, the cloud's interface may have changed.",
   },
   de: {
-    cardName: "Toniebox", cardDescription: "Der Live-Stand einer Toniebox 2 mit ihren Knöpfen.", cardEntity: "Toniebox 2 (Media Player)",
-    cardNoEntity: "Wähle den Media Player einer Toniebox 2.", cardUnknown: "Das ist keine Toniebox 2 von Storybox Plus.", cardDenied: "Diese Toniebox darfst du nicht sehen.",
+    cardName: "Toniebox", cardDescription: "Was auf den Tonieboxen 2 läuft, mit ihren Knöpfen.", cardEntity: "Toniebox 2 (keine: alle)",
+    cardMissing: "Keine Toniebox 2 zum Anzeigen.", cardUnknown: "Das ist keine Toniebox 2 von Storybox Plus.",
+    cardTitle: "Titel", cardSize: "Größe", sizeAuto: "Nach dem Platz, den die Karte bekommt", sizeSmall: "Klein", sizeMedium: "Mittel", sizeLarge: "Groß",
     cardShow: "Anzeigen", show_picture: "Bild der Box", show_battery: "Akku", show_volume: "Lautstärke", show_headphones: "Kopfhörer",
     show_sleep_timer: "Laufender Schlaf-Timer", show_next_alarm: "Nächster Wecker", show_night_mode: "Nachtmodus des Lichtrings",
     show_playback: "Was gerade läuft", show_controls: "Knöpfe",
@@ -508,6 +510,12 @@ export const formatNumber = (hass, v, d = 0) => (Number.isFinite(v)
   : "–");
 // A number in a text field, and back: typing takes a point or a comma
 export const fieldNumber = (hass, v) => (Number.isFinite(v) ? v.toLocaleString(numberLocale(hass), { useGrouping: false, maximumFractionDigits: 3 }) : "");
+// How the user's profile wants a time written: 12 or 24 hours (else the language's
+// way) and, where the profile says so, in Home Assistant's time zone
+export const timeOptions = (hass) => ({
+  ...(hass?.locale?.time_format === "12" ? { hourCycle: "h12" } : hass?.locale?.time_format === "24" ? { hourCycle: "h23" } : {}),
+  ...(hass?.locale?.time_zone === "server" && hass?.config?.time_zone ? { timeZone: hass.config.time_zone } : {}),
+});
 export const numOrNull = (v) => {
   const n = parseFloat(String(v).replace(",", "."));
   return Number.isFinite(n) && /^\s*[-+]?\d*[.,]?\d*\s*$/.test(String(v)) ? n : null;
@@ -687,6 +695,12 @@ export const BoxView = (Base) => class extends Base {
     // card: the dashboard card's configuration, null on the page. The card has neither the
     // cog nor the battery's view, and leaves out each part its show_<part> turns off.
     _box(b, showHousehold, card = null) {
+      const { title, body } = this._boxParts(b, showHousehold, card);
+      return this._card(title, body);
+    }
+
+    // The head and the body of a box's card, for a card that draws its own frame
+    _boxParts(b, showHousehold, card = null) {
       const t = this._t;
       const live = b.generation === "toniebox_2";
       const show = (part) => !card || card[`show_${part}`] !== false;
@@ -705,12 +719,13 @@ export const BoxView = (Base) => class extends Base {
       const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span>${this._dot(b)}` +
         `<span class="chips">${chips}</span><span class="status">${batt}</span>${cog}`;
       const facts = [];
-      if (Number.isFinite(b.volume) && show("volume")) {
-        // The box's own percent once it reported the level; a level just sent shows as a level
+      if ((Number.isFinite(b.volume) || Number.isFinite(b.volume_percent)) && show("volume")) {
+        // The box's own percent once it reported the level; a level just sent shows as a level.
+        // The dashboard card knows the percent only: the media player's volume
         const sent = this._volSent?.box === b.id;
-        const level = fill(t.volumeLevel, { v: this._fmt(b.volume), max: this._fmt(b.volume_max ?? 13) });
+        const level = Number.isFinite(b.volume) ? fill(t.volumeLevel, { v: this._fmt(b.volume), max: this._fmt(b.volume_max ?? 13) }) : "";
         const shown = Number.isFinite(b.volume_percent) && !sent ? `${this._fmt(b.volume_percent)} %` : level;
-        facts.push(`<span class="fact${sent ? " pending" : ""}" title="${esc(level)}">${icon("volume")}${esc(shown)}</span>`);
+        facts.push(`<span class="fact vol${sent ? " pending" : ""}"${level ? ` title="${esc(level)}"` : ""}>${icon("volume")}${esc(shown)}</span>`);
       }
       if (b.headphones?.connected && show("headphones")) {
         const hp = Number.isFinite(b.headphones.battery) ? fill(t.headphonesBattery, { p: this._fmt(b.headphones.battery) }) : t.headphones;
@@ -721,7 +736,7 @@ export const BoxView = (Base) => class extends Base {
       // The next alarm and a night mode at work stay on the card; the rest is behind the cog
       const next = b.bedtime?.next_alarm;
       if (next && show("next_alarm")) {
-        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
         facts.push(`<span class="fact">${icon("alarm")}${esc(fill(t.nextAlarm, { t: when }))}</span>`);
       }
       if (b.night?.mode?.enabled && b.night.phase === "night" && show("night_mode")) facts.push(this._chip(t.nightMode, "on"));
@@ -736,7 +751,7 @@ export const BoxView = (Base) => class extends Base {
       const notes = [];
       if (!live && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
-      return this._card(title, body);
+      return { title, body };
     }
 
     // Play, pause, chapters, volume and the sleep timer of a Toniebox 2 that is online
@@ -747,6 +762,7 @@ export const BoxView = (Base) => class extends Base {
       const placed = !!p?.tonie_id;
       const vol = Number.isFinite(b.volume) ? b.volume : null;
       const max = b.volume_max ?? 13;
+      const step = vol === null && Number.isFinite(b.volume_percent);
       const busy = this._ctlBusy === b.id;
       const alarm = b.bedtime?.next_alarm?.due;
       const timerOn = !!this._sleep(b.sleep_timer);
@@ -759,8 +775,11 @@ export const BoxView = (Base) => class extends Base {
         (tracks && p?.chapter_list?.length > 1 ? iconButton("tracks", t.ctlTracks, `data-act="tracks:${esc(b.id)}"`) : "") +
         (tracks ? this._repeatButton(b, placed, busy) : "") +
         `<span class="ctl-gap"></span>` +
-        btn("volume", "minus", t.ctlQuieter, vol === null || vol <= 0, vol === null ? "" : vol - 1) +
-        btn("volume", "plus", t.ctlLouder, vol === null || vol >= max, vol === null ? "" : vol + 1) +
+        // Without a level (the dashboard card) the buttons are the media player's steps
+        (step
+          ? btn("volume_down", "minus", t.ctlQuieter, b.volume_percent <= 0) + btn("volume_up", "plus", t.ctlLouder, b.volume_percent >= 100)
+          : btn("volume", "minus", t.ctlQuieter, vol === null || vol <= 0, vol === null ? "" : vol - 1) +
+            btn("volume", "plus", t.ctlLouder, vol === null || vol >= max, vol === null ? "" : vol + 1)) +
         `<span class="ctl-gap"></span>`;
       // The alarm of a bedtime uses the same timer; the timer stays out of its way
       if (!alarm) {
@@ -789,7 +808,7 @@ export const BoxView = (Base) => class extends Base {
       if (!timer?.state || timer.alarm || /^(off|inactive|disabled|stopped|finished|none|idle)$/i.test(timer.state)) return null;
       const until = time(timer.until);
       if (!Number.isFinite(until)) return this._t.sleepOn;
-      return fill(this._t.sleepUntil, { t: new Date(until).toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit" }) });
+      return fill(this._t.sleepUntil, { t: new Date(until).toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) }) });
     }
 
     // The level with its little battery, the drawing hidden from a screen reader;
@@ -806,7 +825,8 @@ export const BoxView = (Base) => class extends Base {
     _playback(p) {
       const t = this._t;
       if (!p) return `<div class="play">${this._pic(null)}<div class="text"><span class="headline muted">${esc(t.nothing)}</span></div></div>`;
-      const [state, kind, ic] = p.playing ? [t.playing, "ok", "play"] : p.paused ? [t.paused, "warn", "pause"] : [t.placed, "", ""];
+      // The dashboard card brings the state in Home Assistant's own word
+      const [state, kind, ic] = p.playing ? [p.state_text || t.playing, "ok", "play"] : p.paused ? [p.state_text || t.paused, "warn", "pause"] : [t.placed, "", ""];
       let chapter = "";
       if (p.chapter != null) {
         chapter = `${esc(t.chapter)} ${p.chapter + 1}${Number.isFinite(p.chapters) ? ` / ${p.chapters}` : ""}` +

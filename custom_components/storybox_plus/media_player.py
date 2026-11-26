@@ -23,7 +23,7 @@ from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, CloudError, Playback
+from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, CloudError, Playback, Tonie
 from .const import ATTR_MINUTES, DOMAIN, SERVICE_CLEAR_SLEEP_TIMER, SERVICE_SET_SLEEP_TIMER
 from .coordinator import BoxError, BoxState, StoryboxConfigEntry, StoryboxCoordinator
 from .entity import BoxEntity, async_follow_boxes
@@ -75,6 +75,8 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
     _attr_media_content_type = MediaType.MUSIC
     _attr_media_image_remotely_accessible = False
     _attr_name = None
+    # The address of a picture is no history
+    _unrecorded_attributes = frozenset({"box_picture"})
     _attr_supported_features = (
         MediaPlayerEntityFeature.PLAY
         | MediaPlayerEntityFeature.PAUSE
@@ -96,6 +98,22 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
     @property
     def _playback(self) -> Playback | None:
         return self.box_state.playback if self.box_state else None
+
+    @property
+    def _tonie(self) -> Tonie | None:
+        """The figure on the box: the one the box reports, until then the one the cloud names."""
+        box_state = self.box_state
+        return self.coordinator.tonie(box_state.tonie_id) if box_state else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return what a dashboard shows beside the player: the box's picture, the chapters."""
+        box_state = self.box_state
+        tonie = self._tonie
+        return {
+            "box_picture": self.coordinator.box_picture(box_state.box) if box_state else None,
+            "chapters": len(tonie.chapters) if tonie else None,
+        }
 
     @property
     def state(self) -> MediaPlayerState | None:
@@ -124,7 +142,7 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
     def media_title(self) -> str | None:
         """Return the chapter that plays, or the figure if its chapters are unknown."""
         playback = self._playback
-        tonie = self.coordinator.tonie(playback.tonie_id) if playback else None
+        tonie = self._tonie
         if tonie is None:
             return None
         if (
@@ -138,22 +156,19 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
     @property
     def media_album_name(self) -> str | None:
         """Return the figure."""
-        playback = self._playback
-        tonie = self.coordinator.tonie(playback.tonie_id) if playback else None
+        tonie = self._tonie
         return tonie.name if tonie else None
 
     @property
     def media_artist(self) -> str | None:
         """Return the series of the figure."""
-        playback = self._playback
-        tonie = self.coordinator.tonie(playback.tonie_id) if playback else None
+        tonie = self._tonie
         return tonie.series if tonie else None
 
     @property
     def media_image_url(self) -> str | None:
         """Return the picture of the figure; Home Assistant serves it through its own proxy."""
-        playback = self._playback
-        tonie = self.coordinator.tonie(playback.tonie_id) if playback else None
+        tonie = self._tonie
         return tonie.image_url if tonie else None
 
     @property
@@ -291,8 +306,7 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         media_content_id: str | None = None,
     ) -> BrowseMedia:
         """List the chapters of the figure on the box; each can be played from its start."""
-        playback = self._playback
-        tonie = self.coordinator.tonie(playback.tonie_id) if playback else None
+        tonie = self._tonie
         if tonie is None:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="nothing_plays")
         return BrowseMedia(

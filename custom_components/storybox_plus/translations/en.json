@@ -45,6 +45,20 @@
       "charging": {
         "name": "Charging"
       },
+      "headphones": {
+        "name": "Headphones",
+        "state_attributes": {
+          "kind": {
+            "name": "Kind"
+          },
+          "battery": {
+            "name": "Battery"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Night mode"
+      },
       "live_channel": {
         "name": "Live channel"
       }
@@ -52,6 +66,25 @@
     "sensor": {
       "battery": {
         "name": "Battery"
+      },
+      "sleep_timer": {
+        "name": "Sleep timer"
+      },
+      "next_alarm": {
+        "name": "Next alarm",
+        "state_attributes": {
+          "due": {
+            "name": "Due"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Boxes",
+        "state_attributes": {
+          "boxes": {
+            "name": "Boxes"
+          }
+        }
       }
     },
     "event": {

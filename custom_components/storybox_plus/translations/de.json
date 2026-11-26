@@ -45,6 +45,20 @@
       "charging": {
         "name": "Lädt"
       },
+      "headphones": {
+        "name": "Kopfhörer",
+        "state_attributes": {
+          "kind": {
+            "name": "Art"
+          },
+          "battery": {
+            "name": "Akku"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Nachtmodus"
+      },
       "live_channel": {
         "name": "Live-Kanal"
       }
@@ -52,6 +66,25 @@
     "sensor": {
       "battery": {
         "name": "Akku"
+      },
+      "sleep_timer": {
+        "name": "Schlaf-Timer"
+      },
+      "next_alarm": {
+        "name": "Nächster Wecker",
+        "state_attributes": {
+          "due": {
+            "name": "Fällig"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Boxen",
+        "state_attributes": {
+          "boxes": {
+            "name": "Boxen"
+          }
+        }
       }
     },
     "event": {
