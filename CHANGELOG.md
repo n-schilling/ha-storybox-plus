@@ -15,8 +15,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Breaking:** the dashboard card is now `custom:storybox-plus-card`; it was `custom:storybox-plus-box-card`. A dashboard that has the card shows an error in its place until the type is changed in the card's YAML.
+- The dashboard card is written for whoever lives with the box: headphones read "Headphones, battery 80 %" (on the page too), a box that is switched off says so in Home Assistant's word and its dot is no longer red, and the chip of the light ring's night mode is off until `show_night_mode` switches it on.
 - The dashboard card reads the entities of its box and nothing else; the WebSocket command `storybox_plus/box/card` it asked before is gone. It follows the entities at once instead of asking every 30 seconds. With that, the volume shows in percent only and its buttons are the media player's steps, the battery does not show while the box is switched off, a sleep timer shows only with its end, and the figure's picture comes through Home Assistant.
-- The dashboard card is kept in the dashboard resources (created on setup, pointed to the new version after an update, removed with the last account; resources kept in YAML are left alone) beside being loaded on every page. Its editor is Home Assistant's form. Times on the card and the page follow the 12 or 24 hours of the user's profile.
+- The dashboard card is kept in the dashboard resources (created on setup, pointed to the new version after an update, removed with the last account; resources kept in YAML are left alone) beside being loaded on every page. Its editor is Home Assistant's form with the card's defaults filled in, and writes only what differs from them. Times on the card and the page follow the 12 or 24 hours of the user's profile.
 - The media player names the figure on a box from the cloud until the box itself reports what it plays, after a restart of Home Assistant for example.
 
 ## [1.0.1] - 2026-11-23

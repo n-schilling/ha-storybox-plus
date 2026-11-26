@@ -281,10 +281,10 @@ At the end of the header: when the open page's data came ("As of 14:53:23", left
 
 ### Dashboard card
 
-The integration brings a dashboard card, **Storybox Plus · Toniebox** in the card picker (`custom:storybox-plus-box-card`). It is for every user, not only administrators: it shows what plays on the Tonieboxes 2, whether they are online, the battery, the volume, headphones, a running sleep timer, the next alarm and the night mode at work, and it has the buttons of a media player. It leaves out what only administrators see: the settings, the bedtimes and the charge history. It loads with the integration and is kept in the dashboard resources; there is nothing to add by hand.
+The integration brings a dashboard card, **Storybox Plus · Toniebox** in the card picker (`custom:storybox-plus-card`). It is for every user, not only administrators: it shows what plays on the Tonieboxes 2, whether a box is on, its battery, the volume, headphones, a running sleep timer and the next alarm, and it has the buttons of a media player. It is written for whoever lives with the box, not for whoever set it up. It leaves out what only administrators see: the settings, the bedtimes and the charge history. It loads with the integration and is kept in the dashboard resources; there is nothing to add by hand.
 
 ```yaml
-type: custom:storybox-plus-box-card
+type: custom:storybox-plus-card
 ```
 
 Without any configuration it shows every Toniebox 2, one below the other. `entity` (the media player of a box) shows that one box.
@@ -306,7 +306,7 @@ The large form lays itself out by its width: from 600 px what plays stands besid
 
 <img src="docs/screenshots/card-wide.png" alt="The dashboard card at 748 by 262 pixels: name, online dot and battery in the head; on the left the figure that plays with its progress, on the right volume, headphones, the next alarm and the buttons" width="600">
 
-Every part can be switched on or off, in the card's editor or in YAML; all of them show unless turned off:
+Every part can be switched on or off, in the card's editor or in YAML. All of them show unless turned off, but the night mode: it is for whoever set it up and shows once switched on.
 
 | Option | |
 |---|---|
@@ -320,7 +320,7 @@ Every part can be switched on or off, in the card's editor or in YAML; all of th
 | `show_headphones` | the headphones while connected |
 | `show_sleep_timer` | a running sleep timer |
 | `show_next_alarm` | the next alarm of a bedtime |
-| `show_night_mode` | the chip of the light ring's night mode at work |
+| `show_night_mode` | the chip of the light ring's night mode at work; off unless set to `true` |
 | `show_controls` | the buttons |
 
 The card reads entities and nothing else: the list of the boxes from the attribute of `sensor.<account>_boxes`, the media player of each box and, by the integration's own keys, the sensors of the same device, so a renamed entity changes nothing and a disabled sensor leaves its part out. States and times read as Home Assistant writes them for the user's profile.

@@ -143,7 +143,9 @@ def test_card_has_a_field_and_a_text_for_every_option() -> None:
     parts = re.findall(r'"(\w+)"', listed.group(1))
     assert len(parts) == 9
     # The parts come from the one list: their options, their defaults, their fields
-    assert "PARTS.map((part) => [`show_${part}`, true])" in card
+    assert "PARTS.map((part) => [`show_${part}`, !OFF.includes(part)])" in card
+    # What only whoever set the box up reads is off until switched on
+    assert 'const OFF = ["night_mode"];' in card
     assert "name: `show_${part}`" in card
     options = set(re.findall(r"\bc\.(\w+)", card))
     assert options >= {"entity", "title", "size"}

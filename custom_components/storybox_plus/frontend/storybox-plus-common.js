@@ -194,7 +194,7 @@ export const TEXTS = {
     f_name: "Name", f_days: "Days of the wake-up", f_sleep_time: "Bedtime", f_wakeup_time: "Wake-up",
     f_enabled: "Active", f_alarm_enabled: "Alarm at the wake-up", f_alarm_volume: "Alarm volume", f_alarm_morning_light: "Morning light",
     deleteSchedule: "Delete",
-    headphones: "Headphones", headphonesBattery: "Headphones {p} %",
+    headphones: "Headphones", headphonesBattery: "Headphones, battery {p} %",
     repeatOff: "Repeat: off", repeatAll: "Repeat: the whole figure", repeatOne: "Repeat: this chapter",
     ctlTracks: "Chapters", tracksTitle: "Chapters",
     ctlPrev: "Previous chapter", ctlNext: "Next chapter", ctlPlay: "Play", ctlPause: "Pause", ctlLouder: "Louder", ctlQuieter: "Quieter",
@@ -397,7 +397,7 @@ export const TEXTS = {
     f_name: "Name", f_days: "Tage des Weckens", f_sleep_time: "Schlafenszeit", f_wakeup_time: "Wecken",
     f_enabled: "Aktiv", f_alarm_enabled: "Wecker beim Wecken", f_alarm_volume: "Lautstärke des Weckers", f_alarm_morning_light: "Morgenlicht",
     deleteSchedule: "Löschen",
-    headphones: "Kopfhörer", headphonesBattery: "Kopfhörer {p} %",
+    headphones: "Kopfhörer", headphonesBattery: "Kopfhörer, Akku {p} %",
     repeatOff: "Wiederholen: aus", repeatAll: "Wiederholen: ganze Figur", repeatOne: "Wiederholen: dieses Kapitel",
     ctlTracks: "Kapitel", tracksTitle: "Kapitel",
     ctlPrev: "Vorheriges Kapitel", ctlNext: "Nächstes Kapitel", ctlPlay: "Abspielen", ctlPause: "Pausieren", ctlLouder: "Lauter", ctlQuieter: "Leiser",
@@ -743,7 +743,8 @@ export const BoxView = (Base) => class extends Base {
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
       if (live) {
         // In parts the dashboard card can lay out side by side when it is wide
-        const now = show("playback") ? `<div class="now">${this._playback(b.playback)}</div>` : "";
+        // The dashboard card says in Home Assistant's word that a box is switched off
+        const now = show("playback") ? `<div class="now">${this._playback(b.playback, b.online === false && b.word ? b.word : undefined)}</div>` : "";
         // The chapter list opens above the page; the dashboard card has none
         const ctl = show("controls") ? this._controls(b, !card) : "";
         body = `<div class="box-body">${body}${now}${ctl ? `<div class="ctl">${ctl}</div>` : ""}</div>`;
@@ -822,9 +823,9 @@ export const BoxView = (Base) => class extends Base {
         `${this._fmt(b.battery)} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;
     }
 
-    _playback(p) {
+    _playback(p, nothing = this._t.nothing) {
       const t = this._t;
-      if (!p) return `<div class="play">${this._pic(null)}<div class="text"><span class="headline muted">${esc(t.nothing)}</span></div></div>`;
+      if (!p) return `<div class="play">${this._pic(null)}<div class="text"><span class="headline muted">${esc(nothing)}</span></div></div>`;
       // The dashboard card brings the state in Home Assistant's own word
       const [state, kind, ic] = p.playing ? [p.state_text || t.playing, "ok", "play"] : p.paused ? [p.state_text || t.paused, "warn", "pause"] : [t.placed, "", ""];
       let chapter = "";

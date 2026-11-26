@@ -12,7 +12,8 @@ const {
   STYLE, BoxView, TEXTS, esc,
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
-const CARD = "storybox-plus-box-card";
+const CARD = "storybox-plus-card";
+const EDITOR = `${CARD}-editor`;
 const DOMAIN = "storybox_plus";
 // Every action the buttons may call, each on the box's media player
 const ACTIONS = [
@@ -28,8 +29,9 @@ const SIZES = ["large", "medium", "small"];
 const PARTS = ["controls", "night_mode", "next_alarm", "sleep_timer", "headphones", "volume", "picture", "battery", "playback"];
 // The parts only the large card has
 const DETAILS = ["controls", "night_mode", "next_alarm", "sleep_timer", "headphones", "volume"];
-// Everything informs, so everything is on
-const DEFAULTS = { size: "auto", ...Object.fromEntries(PARTS.map((part) => [`show_${part}`, true])) };
+// What informs a resident is on; the night mode of the light ring is for whoever set it up
+const OFF = ["night_mode"];
+const DEFAULTS = { size: "auto", ...Object.fromEntries(PARTS.map((part) => [`show_${part}`, !OFF.includes(part)])) };
 
 const known = (state) => (state && state.state !== "unavailable" && state.state !== "unknown" ? state : null);
 const number = (value) => (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
@@ -46,6 +48,8 @@ const CARD_STYLE = `
   .content.fill { height: 100%; }
   .heading { padding: 12px 16px 0; font-size: var(--ha-font-size-l, 16px); font-weight: var(--ha-font-weight-medium, 500); }
   .box + .box { border-top: 1px solid var(--divider-color); }
+  /* A box that is switched off is nothing to worry about */
+  .dot.err { background: var(--secondary-text-color); opacity: 0.6; }
   .card-header { padding: 12px 16px 8px; font-size: var(--ha-font-size-xl, 20px); line-height: 28px; font-weight: var(--ha-font-weight-normal, 400); }
   .box-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "facts" "now" "ctl"; }
   .box-body > .facts { grid-area: facts; }
@@ -94,6 +98,12 @@ if (!customElements.get(CARD)) {
   class StoryboxPlusBoxCard extends BoxView(HTMLElement) {
     static getStubConfig() {
       return {};
+    }
+
+    // Home Assistant's form shows a part that is not in the configuration as off; the
+    // editor element shows what the card does: the defaults with the configuration on top
+    static getConfigElement() {
+      return document.createElement(EDITOR);
     }
 
     // A field for every option, the parts in one expandable group
@@ -448,7 +458,47 @@ if (!customElements.get(CARD)) {
     }
   }
 
+  // Home Assistant's form over the card's schema, with the defaults filled in. Only
+  // what differs from a default is written to the configuration
+  class StoryboxPlusBoxCardEditor extends HTMLElement {
+    setConfig(config) {
+      this._config = { ...config };
+      this._render();
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      language = hass?.locale?.language || hass?.language || language;
+      this._render();
+    }
+
+    _render() {
+      if (!this._hass || !this._config) return;
+      if (!this._form) {
+        this._form = document.createElement("ha-form");
+        this._form.addEventListener("value-changed", (e) => {
+          e.stopPropagation();
+          const value = { ...e.detail.value };
+          for (const [name, usual] of Object.entries(DEFAULTS)) if (value[name] === usual) delete value[name];
+          for (const name of ["entity", "title"]) if (!value[name]) delete value[name];
+          this._config = value;
+          this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: value }, bubbles: true, composed: true }));
+        });
+        this.appendChild(this._form);
+      }
+      if (this._language !== language) {
+        this._language = language;
+        const form = StoryboxPlusBoxCard.getConfigForm();
+        this._form.schema = form.schema;
+        this._form.computeLabel = form.computeLabel;
+      }
+      this._form.hass = this._hass;
+      this._form.data = { ...DEFAULTS, ...this._config };
+    }
+  }
+
   customElements.define(CARD, StoryboxPlusBoxCard);
+  customElements.define(EDITOR, StoryboxPlusBoxCardEditor);
   window.customCards = window.customCards || [];
   if (!window.customCards.some((card) => card.type === CARD)) {
     const t = texts(document.querySelector("home-assistant")?.hass?.language);

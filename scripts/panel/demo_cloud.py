@@ -16,6 +16,7 @@ import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import os
+from pathlib import Path
 import time
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -575,7 +576,36 @@ def install() -> None:
                 ),
             ):
                 self._on_event(PushEvent(KIDS_MAC, topic, data))
-            await asyncio.Event().wait()
+            # The room the box stands in: the page check writes into this file what
+            # somebody does there (takes the figure off, puts it back, switches the box
+            # off), and the box reports it as a real one would
+            world = Path(os.environ["STORYBOX_DEMO_WORLD"])
+            seen = ""
+            while True:
+                await asyncio.sleep(0.3)
+                said = await asyncio.to_thread(lambda: world.read_text() if world.exists() else "")
+                if said == seen:
+                    continue
+                seen = said
+                if said == "off":
+                    self._on_event(PushEvent(KIDS_MAC, TOPIC_ONLINE, False))
+                    continue
+                if said == "removed":
+                    playback = Playback(tonie_id=None)
+                elif said == "placed":
+                    self._on_event(PushEvent(KIDS_MAC, TOPIC_ONLINE, True))
+                    playback = Playback(
+                        tonie_id="fig-fox",
+                        chapter=2,
+                        paused=False,
+                        duration=501,
+                        position=187,
+                        content_version=1,
+                        received_at=datetime.now(UTC),
+                    )
+                else:
+                    continue
+                self._on_event(PushEvent(KIDS_MAC, TOPIC_PLAYBACK, playback))
 
         async def async_command(self, mac: str, command: str, payload: dict[str, Any]) -> None:
             # The box answers a volume late, with its percent (about 10 % a level)

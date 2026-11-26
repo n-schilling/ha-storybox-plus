@@ -229,6 +229,8 @@ class Instance:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
         self.config = directory / "config"
+        # What happens in the room of the made-up box (see demo_cloud.DemoPush)
+        self.world = directory / "world"
         self.port = _free_port()
         self.base = f"http://127.0.0.1:{self.port}"
         self.process: subprocess.Popen[bytes] | None = None
@@ -270,7 +272,11 @@ class Instance:
             ],
             stdout=log,
             stderr=subprocess.STDOUT,
-            env={**os.environ, "STORYBOX_DEMO_BASE": self.base},
+            env={
+                **os.environ,
+                "STORYBOX_DEMO_BASE": self.base,
+                "STORYBOX_DEMO_WORLD": str(self.world),
+            },
         )
 
     async def start(self, session: aiohttp.ClientSession) -> Api:
@@ -1357,7 +1363,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _goto(page, instance, "boxes/overview", ".batt-btn")
         kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
         card = await kids.inner_text()
-        expect("Headphones 80 %" in card, "headphones missing on the card")
+        expect("Headphones, battery 80 %" in card, "headphones missing on the card")
         controls = kids.locator(".controls")
         for act in ("previous", "pause", "next", "volume:8", "volume:10"):
             expect(await controls.locator(f"[data-act$=':{act}']").count() == 1, f"button {act}")
@@ -1461,7 +1467,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             for e in registry["result"]
             if e["platform"] == "storybox_plus" and e["entity_id"].startswith("media_player.")
         )
-        plain = {"type": "custom:storybox-plus-box-card"}
+        plain = {"type": "custom:storybox-plus-card"}
         slim_config = {
             **plain,
             "entity": player,
@@ -1514,10 +1520,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         expect(len(ours) == 1 and ours[0]["type"] == "module", f"resources: {resources['result']}")
         user = await _open(browser, instance, USER, path="/storybox-test/kids")
         try:
-            card = user.locator("storybox-plus-box-card ha-card").first
+            card = user.locator("storybox-plus-card ha-card").first
             await card.locator(".card-header").wait_for(timeout=90000)
             text = await card.inner_text()
-            for part in ("Kids room", "The Clever Fox", "Headphones 80 %", "Next alarm"):
+            for part in ("Kids room", "The Clever Fox", "Headphones, battery 80 %", "Next alarm"):
                 expect(part in text, f"{part!r} missing on the card: {text}")
             # Home Assistant's own word for the state
             expect("Playing" in text or "Paused" in text, f"no state on the card: {text}")
@@ -1554,7 +1560,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await card.locator("[data-act$=':pause'], [data-act$=':play']").first.click()
             await user.wait_for_timeout(600)
             expect(await card.locator("ha-alert[alert-type=error]").count() == 0, "a button failed")
-            slim = user.locator("storybox-plus-box-card ha-card").nth(1)
+            slim = user.locator("storybox-plus-card ha-card").nth(1)
             await slim.locator(".card-header").wait_for()
             slim_text = await slim.inner_text()
             expect("Next alarm" not in slim_text and "The Clever Fox" in slim_text, slim_text)
@@ -1563,22 +1569,22 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             # A failed call reads the line only, without Home Assistant's message
             line = await user.evaluate(
                 """() => {
-                  const card = document.createElement("storybox-plus-box-card");
+                  const card = document.createElement("storybox-plus-card");
                   const box = document.createElement("div");
-                  box.innerHTML = card._errHtml(card._error({ code: "cloud_error", message: "boom" }));
+                  box.innerHTML = card._errHtml(card._error({ code: "alarm_due", message: "boom" }));
                   return box.textContent;
                 }"""
             )
-            expect(line == "The Tonie cloud did not answer or refused it.", line)
+            expect(line == "An alarm of a bedtime is set; a sleep timer would cancel it.", line)
             # The card picker knows the card once, it needs no configuration, and its
             # editor has a text for every field
             offered = await user.evaluate(
                 """() => {
-                  const element = customElements.get("storybox-plus-box-card");
+                  const element = customElements.get("storybox-plus-card");
                   const form = element.getConfigForm();
                   const names = (schema) => schema.flatMap((f) => f.schema ? names(f.schema) : [f.name]);
                   return {
-                    picker: (window.customCards || []).filter((c) => c.type === "storybox-plus-box-card").length,
+                    picker: (window.customCards || []).filter((c) => c.type === "storybox-plus-card").length,
                     stub: element.getStubConfig(),
                     fields: names(form.schema),
                     labels: names(form.schema).map((name) => form.computeLabel({ name })),
@@ -1592,13 +1598,46 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 not set(offered["fields"]) & set(offered["labels"]),
                 f"an editor field without its text: {offered['labels']}",
             )
+            # The editor shows what the card does (a part not in the configuration is
+            # on, the night mode off) and writes only what differs from that
+            edited = await user.evaluate(
+                """async () => {
+                  const editor = customElements.get("storybox-plus-card").getConfigElement();
+                  editor.hass = document.querySelector("home-assistant").hass;
+                  editor.setConfig({ type: "custom:storybox-plus-card" });
+                  const form = editor.querySelector("ha-form");
+                  const shown = { ...form.data };
+                  let config = null;
+                  editor.addEventListener("config-changed", (e) => { config = e.detail.config; });
+                  form.dispatchEvent(new CustomEvent("value-changed", {
+                    detail: { value: { ...shown, show_battery: false, show_night_mode: true, title: "" } },
+                  }));
+                  return { shown, config, fields: form.schema.length };
+                }"""
+            )
+            expect(
+                edited["shown"]["show_playback"] is True
+                and edited["shown"]["show_controls"] is True
+                and edited["shown"]["show_night_mode"] is False
+                and edited["shown"]["size"] == "auto",
+                f"the editor does not show the defaults: {edited['shown']}",
+            )
+            expect(
+                edited["config"]
+                == {
+                    "type": "custom:storybox-plus-card",
+                    "show_battery": False,
+                    "show_night_mode": True,
+                },
+                f"the editor wrote {edited['config']}",
+            )
             # A title names the one box; a box that is none of ours says so
             odd = await user.evaluate(
                 """async (player) => {
                   const hass = document.querySelector("home-assistant").hass;
                   const make = async (config) => {
-                    const card = document.createElement("storybox-plus-box-card");
-                    card.setConfig({ type: "custom:storybox-plus-box-card", ...config });
+                    const card = document.createElement("storybox-plus-card");
+                    card.setConfig({ type: "custom:storybox-plus-card", ...config });
                     document.body.appendChild(card);
                     card.hass = hass;
                     await new Promise((r) => setTimeout(r, 300));
@@ -1621,8 +1660,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                       box.id = "card-size";
                       box.style.cssText = `position:fixed;left:0;top:0;width:${w}px;` +
                         (h ? `height:${h}px;` : "") + "z-index:99";
-                      const card = document.createElement("storybox-plus-box-card");
-                      card.setConfig({ type: "custom:storybox-plus-box-card", entity: player });
+                      const card = document.createElement("storybox-plus-card");
+                      card.setConfig({ type: "custom:storybox-plus-card", entity: player });
                       box.appendChild(card);
                       document.body.appendChild(box);
                       card.hass = document.querySelector("home-assistant").hass;
@@ -1652,7 +1691,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 await card.screenshot(path=str(shots / "card.png"))
             # What does not fit is left out: one row, three rows, six rows; no rows; half as wide
             await user.goto(f"{instance.base}/storybox-test/sizes")
-            cards = user.locator("storybox-plus-box-card")
+            cards = user.locator("storybox-plus-card")
             await cards.nth(2).locator(".card-header").wait_for(timeout=30000)
             await cards.nth(4).locator(".compact").wait_for()
             await user.wait_for_timeout(500)
@@ -1696,6 +1735,48 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                     forms[index]["cut"] is False, f"a second line that is cut off: {forms[index]}"
                 )
                 expect("The Clever Fox" in forms[index]["text"], f"the small card: {forms[index]}")
+
+            # What the card is there for, brought about for real: somebody takes the
+            # figure off the box, the box reports it, and every size says so and still
+            # fits; then the figure is put back
+            async def says(words: str) -> list[dict[str, Any]]:
+                found: list[dict[str, Any]] = []
+
+                async def all_say() -> bool:
+                    found[:] = await cards.evaluate_all(
+                        """els => els.map((el) => {
+                          const root = el.shadowRoot;
+                          const card = root.querySelector("ha-card");
+                          const content = root.querySelector(".content");
+                          const line = root.querySelector(".compact .sub, .play .headline");
+                          return {
+                            text: line ? line.textContent : "",
+                            fits: content.getBoundingClientRect().bottom <= card.getBoundingClientRect().bottom + 1,
+                          };
+                        })"""
+                    )
+                    return len(found) == 5 and all(words in f["text"] for f in found)
+
+                await _until(all_say, f"{words!r} on the card in every size")
+                return found
+
+            instance.world.write_text("removed")
+            gone = await says("Nothing on the box")
+            expect(all(f["fits"] for f in gone), f"cut off without a figure: {gone}")
+            instance.world.write_text("placed")
+            back = await says("The Clever Fox")
+            expect(all(f["fits"] for f in back), f"cut off with the figure back: {back}")
+            # Somebody switches the box off: Home Assistant's word for it in every size,
+            # and no button left; then on again
+            instance.world.write_text("off")
+            off = await says("Off")
+            expect(all(f["fits"] for f in off), f"cut off while the box is off: {off}")
+            buttons = await cards.evaluate_all(
+                "els => els.map((el) => el.shadowRoot.querySelectorAll('[data-act]').length)"
+            )
+            expect(not any(buttons), f"buttons on a box that is off: {buttons}")
+            instance.world.write_text("placed")
+            await says("The Clever Fox")
             if shots is not None:
                 # High enough for the whole section, so Home Assistant's header covers nothing
                 await user.set_viewport_size({"width": 1200, "height": 2200})
