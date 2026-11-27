@@ -534,5 +534,6 @@ export default {
   "cloudIssue": "Melden op GitHub",
   "cloudIssueHelp": "Opent een nieuw issue met de lijst hierboven. Het noemt verzoeken, velden en versies, niets uit je account.",
   "cloudSt_changed": "gewijzigd",
-  "cloudSt_failed": "mislukt"
+  "cloudSt_failed": "mislukt",
+  "openFigure": "Figuur openen"
 };

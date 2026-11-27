@@ -534,5 +534,6 @@ export default {
   "cloudIssue": "Segnala su GitHub",
   "cloudIssueHelp": "Apre una nuova segnalazione con l'elenco qui sopra. Nomina richieste, campi e versioni, nulla del tuo account.",
   "cloudSt_changed": "cambiato",
-  "cloudSt_failed": "non riuscito"
+  "cloudSt_failed": "non riuscito",
+  "openFigure": "Apri il personaggio"
 };

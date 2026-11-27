@@ -534,5 +534,6 @@ export default {
   "cloudIssue": "Signaler sur GitHub",
   "cloudIssueHelp": "Ouvre un nouveau ticket avec la liste ci-dessus. Il nomme des requêtes, des champs et des versions, rien de votre compte.",
   "cloudSt_changed": "modifié",
-  "cloudSt_failed": "échoué"
+  "cloudSt_failed": "échoué",
+  "openFigure": "Ouvrir la figurine"
 };

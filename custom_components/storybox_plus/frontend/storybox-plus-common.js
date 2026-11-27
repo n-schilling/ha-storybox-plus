@@ -302,6 +302,7 @@ export const TEXTS = {
     cloudIssueHelp: "Opens a new issue with the list above. It names requests, fields and versions, nothing of your account.",
     cloudSt_changed: "changed",
     cloudSt_failed: "failed",
+    openFigure: "Open the figure",
   },
   de: {
     cardName: "Toniebox", cardDescription: "Was auf den Tonieboxen 2 läuft, mit ihren Knöpfen.", cardEntity: "Toniebox 2 (keine: alle)",
@@ -550,6 +551,7 @@ export const TEXTS = {
     cloudIssueHelp: "Öffnet ein neues Issue mit der Liste oben. Es nennt Abfragen, Felder und Versionen, nichts aus deinem Konto.",
     cloudSt_changed: "geändert",
     cloudSt_failed: "fehlgeschlagen",
+    openFigure: "Figur öffnen",
   },
 };
 
@@ -694,6 +696,10 @@ ha-icon-button.fav-all.on { color: var(--primary-color); }
 .pic.small ha-svg-icon { --mdc-icon-size: 20px; }
 .text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .headline { line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fig-open { cursor: pointer; border-radius: 8px; }
+.fig-open:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.headline.fig-open:hover { text-decoration: underline; }
+.pic-open { display: inline-flex; flex: none; }
 .supporting { font-size: var(--ha-font-size-xs, 12px); line-height: 16px; color: var(--secondary-text-color); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .state { display: inline-flex; align-items: center; gap: 4px; }
@@ -874,7 +880,10 @@ export const BoxView = (Base) => class extends Base {
         // The dashboard card says in Home Assistant's word that a box is switched off
         // The star of the chapter that plays marks it, on the page and on the dashboard card
         const now = show("playback")
-          ? `<div class="now">${this._playback(b.playback, b.online === false && b.word ? b.word : undefined, b.online === true ? `star:${b.id}` : "")}</div>` : "";
+          ? `<div class="now">${this._playback(b.playback, b.online === false && b.word ? b.word : undefined, b.online === true ? `star:${b.id}` : "",
+            // On the page the figure's picture and name lead to the figure; the dashboard card has no such page
+            // nor has a figure the account does not know
+            card || !b.playback?.tonie_name ? "" : b.playback.tonie_id || "")}</div>` : "";
         // Repeat and "everything today" are the page's
         const ctl = show("controls") ? this._controls(b, !card) : "";
         body = `<div class="box-body">${body}${now}${ctl ? `<div class="ctl">${ctl}</div>` : ""}</div>`;
@@ -1012,7 +1021,8 @@ export const BoxView = (Base) => class extends Base {
     }
 
     // star: the action of the star beside the chapter that plays; without it a favourite shows its star only
-    _playback(p, nothing = this._t.nothing, star = "") {
+    // figure: the ID of the figure its picture and name open, on the page
+    _playback(p, nothing = this._t.nothing, star = "", figure = "") {
       const t = this._t;
       if (!p) return `<div class="play">${this._pic(null)}<div class="text"><span class="headline muted">${esc(nothing)}</span></div></div>`;
       // The dashboard card brings the state in Home Assistant's own word
@@ -1032,7 +1042,10 @@ export const BoxView = (Base) => class extends Base {
           : fav ? `<span class="now-star on" role="img" aria-label="${esc(t.favIs)}" title="${esc(t.favIs)}">${icon("star")}</span>` : "";
       // How the favourites steer the figure right now (the page knows it)
       const steering = p.favourites?.suspended ? t.favNowAll : p.favourites?.mode ? t[`favNow_${p.favourites.mode}`] : "";
-      let html = `<div class="play">${this._pic(p.image_url)}<div class="text"><span class="headline">${esc(p.tonie_name || t.unknownFigure)}</span>` +
+      // Picture and name are one way each to the figure's own page: for the mouse and the keyboard
+      const open = figure ? ` role="button" tabindex="0" data-act="openfig" data-key="${esc(figure)}" title="${esc(t.openFigure)}"` : "";
+      const pic = figure ? `<span class="fig-open pic-open"${open} aria-label="${esc(t.openFigure)}">${this._pic(p.image_url)}</span>` : this._pic(p.image_url);
+      let html = `<div class="play">${pic}<div class="text"><span class="headline${figure ? " fig-open" : ""}"${open}>${esc(p.tonie_name || t.unknownFigure)}</span>` +
         `${chapter ? `<span class="supporting">${chapter}</span>` : ""}` +
         `<span class="supporting state ${kind}">${ic ? icon(ic) : ""}${esc(state)}${steering ? ` · ${esc(steering)}` : ""}</span></div>${starHtml}</div>`;
       // The bar is filled by _tick(): while playing, the position moves on locally

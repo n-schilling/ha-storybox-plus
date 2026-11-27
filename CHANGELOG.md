@@ -20,6 +20,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- On the page, the picture and the name of the figure that plays on a box open the figure's own page.
 - Tested with the cloud's release v2026.11.27: the check of the interface compared 16 of its 20 requests and messages on a real account and found them as expected; the other four (bedtimes, notifications, broadcasts, discs) had nothing to compare there.
 - A Toniebox 2 that has taken new settings says so through the push channel; the page's note that the box waits for them goes at once instead of with the next poll.
 - The volume of a figure explains, on the page and in the README, that its 13 levels are shares of the box's maximum volume: level 13 is that maximum, so a figure never plays louder than the maximum allows.

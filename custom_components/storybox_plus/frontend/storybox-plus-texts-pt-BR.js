@@ -534,5 +534,6 @@ export default {
   "cloudIssue": "Relatar no GitHub",
   "cloudIssueHelp": "Abre uma nova issue com a lista acima. Ela cita consultas, campos e versões, nada da sua conta.",
   "cloudSt_changed": "alterado",
-  "cloudSt_failed": "falhou"
+  "cloudSt_failed": "falhou",
+  "openFigure": "Abrir a figura"
 };

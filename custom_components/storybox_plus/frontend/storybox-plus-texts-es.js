@@ -534,5 +534,6 @@ export default {
   "cloudIssue": "Informar en GitHub",
   "cloudIssueHelp": "Abre una incidencia nueva con la lista de arriba. Nombra consultas, campos y versiones, nada de tu cuenta.",
   "cloudSt_changed": "cambiado",
-  "cloudSt_failed": "fallido"
+  "cloudSt_failed": "fallido",
+  "openFigure": "Abrir la figura"
 };

@@ -1537,6 +1537,22 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         # the figure, and a button lets it play everything until it is taken off
         now_star = kids.locator("ha-icon-button.now-star")
         expect(await now_star.get_attribute("aria-pressed") == "true", "the playing chapter's star")
+        # The figure's picture and its name lead to the figure's own page, by mouse and keyboard
+        expect(
+            await kids.locator(".play [data-act='openfig']").count() == 2, "no way to the figure"
+        )
+        await kids.locator(".play .headline.fig-open").click()
+        await page.wait_for_url("**/figures/list?key=fig-fox")
+        await _until(lambda: _named(page, "The Clever Fox"), "the figure's page from the player")
+        await _goto(page, instance, "boxes/overview", ".batt-btn")
+        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
+        controls = kids.locator(".controls")
+        await kids.locator(".play .pic-open").focus()
+        await page.keyboard.press("Enter")
+        await page.wait_for_url("**/figures/list?key=fig-fox")
+        await _goto(page, instance, "boxes/overview", ".batt-btn")
+        kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
+        controls = kids.locator(".controls")
         expect("Only favourites" in await kids.inner_text(), "the mode at work is not shown")
         everything = kids.locator("ha-icon-button.fav-all")
         await everything.click()
