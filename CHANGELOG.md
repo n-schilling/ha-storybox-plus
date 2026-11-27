@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-27
+
+### Fixed
+
+- A figure placed on a Toniebox 2 that was switched off did not begin with its favourites: the box woke with the figure and Home Assistant took it as playing already. A box that was offline for two minutes or more and wakes with a figure on it now counts as placed.
+
 ## [1.2.0] - 2026-11-27
 
 ### Added

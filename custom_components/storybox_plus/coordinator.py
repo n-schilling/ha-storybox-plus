@@ -87,6 +87,9 @@ from .volumes import FigureVolumes
 
 _LOGGER = logging.getLogger(__name__)
 
+# A box that is still offline this long after it said so went to sleep
+ASLEEP_AFTER = timedelta(seconds=30)
+
 type PlacementListener = Callable[[str | None, str | None], None]
 type NoticeListener = Callable[[CloudNotice], None]
 
@@ -273,6 +276,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._alarm_sent: dict[str, datetime] = {}
         self._alarm_tries: dict[str, tuple[datetime | None, int]] = {}
         self._alarm_timers: dict[str, CALLBACK_TYPE] = {}
+        # Per box: the look whether it stayed offline, for the favourites
+        self._asleep_timers: dict[str, CALLBACK_TYPE] = {}
         # Per box: the playback report before the last, for the repeat (kept in the preferences)
         self._repeat_last: dict[str, Playback] = {}
         # Per Toniebox 1 the entity that tells whether it is in the network, as watched now
@@ -281,6 +286,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         # The first poll has put its boxes together: from then on there is data
         self._polled = False
         entry.async_on_unload(self._cancel_alarm_timers)
+        entry.async_on_unload(self._cancel_asleep_timers)
         entry.async_on_unload(self._cancel_night_timers)
         entry.async_on_unload(self._unwatch_presence)
 
@@ -349,7 +355,12 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self.push.set_boxes(b.box.mac for b in state.boxes.values() if b.box.live and b.box.mac)
         self._remove_stale_devices(state)
         self._drop_stale_repeats(state)
-        self.favourites.keep(set(state.boxes), set(state.tonies), dt_util.utcnow().timestamp())
+        now = dt_util.utcnow().timestamp()
+        self.favourites.keep(set(state.boxes), set(state.tonies), now)
+        for box_state in state.boxes.values():
+            # A Toniebox 2 that is switched off: the figure it wakes with counts as placed
+            if box_state.box.live and box_state.online is False and not box_state.playing:
+                self.runs(box_state.box.id).away(box_state.box.id, now)
         self._watch_presence(state)
         if self.analytics is not None:
             self.analytics.tick()
@@ -790,6 +801,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             box_state.online = event.data if isinstance(event.data, bool) else None
             if box_state.online is False:
                 self._stop_playing(box_state)
+                self._note_asleep_later(box_state.box.id)
             if box_state.online is True and was_online is not True:
                 box_state.online_since = box_state.last_push
                 self._alarm_tries.pop(box_state.box.id, None)
@@ -1353,6 +1365,31 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if (cancel := self._alarm_timers.pop(box_id, None)) is not None:
             cancel()
         self._alarm_timers[box_id] = async_call_later(self.hass, delay, _check)
+
+    def _note_asleep_later(self, box_id: str) -> None:
+        """Tell the favourites that a box sleeps, once it stayed offline for a moment.
+
+        A box that wakes reports "offline" once more among its first
+        messages; only one that is still offline after a while went to sleep.
+        """
+        went = dt_util.utcnow().timestamp()
+
+        @callback
+        def _look(_now: datetime) -> None:
+            self._asleep_timers.pop(box_id, None)
+            box_state = self.data.boxes.get(box_id) if self.data is not None else None
+            if box_state is not None and box_state.online is False:
+                self.runs(box_id).away(box_id, went)
+
+        if (cancel := self._asleep_timers.pop(box_id, None)) is not None:
+            cancel()
+        self._asleep_timers[box_id] = async_call_later(self.hass, ASLEEP_AFTER, _look)
+
+    @callback
+    def _cancel_asleep_timers(self) -> None:
+        for cancel in self._asleep_timers.values():
+            cancel()
+        self._asleep_timers.clear()
 
     @callback
     def _cancel_alarm_timers(self) -> None:

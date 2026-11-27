@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from freezegun.api import FrozenDateTimeFactory
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant.typing import WebSocketGenerator
 
 from homeassistant.core import HomeAssistant
@@ -1399,5 +1399,64 @@ async def test_a_command_of_home_assistant_that_fails_is_taken_back(
     channel.command_error = None
     # Nothing is chosen: the chapter behind the favourite is left at once
     channel.playback(chapter=2)
+    await _settle(hass)
+    assert channel.commands == [_jump(5)]
+
+
+async def test_a_box_that_wakes_with_a_figure(hass: HomeAssistant) -> None:
+    """A sleeping box wakes when a figure is placed: after its sleep the order begins."""
+    box = Box(hass, Plan("first", (2,), 5), placed=False)
+    # Nothing known of the box but that it is switched off
+    box.favourites.away("box", box.now.timestamp())
+    box.favourites.away("box", box.now.timestamp() + 5)
+    assert box.report(0, paused=None, after=600) is None
+    assert box.report(0) == ("jump", 2)
+    assert box.play(2, 3) == [None, ("jump", 0)]
+    # It falls asleep and wakes a moment later: the figure goes on
+    box.favourites.away("box", box.now.timestamp())
+    assert box.report(0, after=60) is None
+    assert box.report(1) is None
+    # After a longer sleep it begins anew
+    box.favourites.away("box", box.now.timestamp())
+    assert box.report(1, after=3600) == ("jump", 2)
+
+
+async def test_the_box_is_switched_on_with_its_figure(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Offline for a while, then awake with the figure on it: the favourites come first."""
+    coordinator = setup_entry.runtime_data.coordinator
+    tonie = coordinator.data.tonies[TONIE_ID]
+    await setup_entry.runtime_data.favourites.async_set(tonie, [5], None)
+    channel = push.last
+    channel.connect()
+    channel.playback(chapter=3)
+    await _settle(hass)
+    # Found playing: nothing jumps
+    assert channel.commands == []
+    # The box says it is offline once more while it is awake: no sleep
+    channel.online(False)
+    channel.playback(chapter=3, position=60.0)
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass)
+    await _settle(hass)
+    freezer.tick(timedelta(minutes=10))
+    channel.playback(chapter=4, position=0.0)
+    await _settle(hass)
+    assert channel.commands == []
+    # It goes to sleep and stays so
+    channel.online(False)
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass)
+    await _settle(hass)
+    freezer.tick(timedelta(hours=2))
+    # Woken by the figure: what it reports first does not play yet, "offline" comes once more
+    channel.playback(chapter=4, paused=None)
+    channel.online(False)
+    channel.playback(chapter=4)
     await _settle(hass)
     assert channel.commands == [_jump(5)]

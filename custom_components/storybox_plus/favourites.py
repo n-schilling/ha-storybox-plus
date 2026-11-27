@@ -19,8 +19,9 @@ travels through the cloud. Without the cloud or Home Assistant the box
 plays everything in its own order.
 
 The order belongs to the figure on the box and begins when the figure is
-placed. The same figure taken off for less than two minutes goes on where
-it was. A chapter chosen by hand is played: the buttons of the box and of
+placed, or when the box wakes with it: a sleeping box wakes when a figure
+is placed. The same figure taken off for less than two minutes, or a box
+switched off for as short, goes on where it was. A chapter chosen by hand is played: the buttons of the box and of
 Home Assistant move along the order, a chapter picked anywhere else is left
 alone and the order goes on from it. When a hand presses play on a box that
 was paused after the last chapter of the order, the box is no longer
@@ -517,6 +518,22 @@ class FavouriteChapters:
             # Only what is kept counts: most reports change nothing of it
             self._save_soon()
         return action
+
+    def away(self, box_id: str, when: float) -> None:
+        """Note that a box is switched off: what wakes it counts as placing the figure.
+
+        A sleeping box wakes when a figure is placed on it, so the figure it
+        reports after a sleep of two minutes or more begins its order. A box
+        nothing is known of is noted as empty for the same reason.
+        """
+        run = self._runs.get(box_id)
+        if run is None:
+            self._runs[box_id] = Run("", left=when)
+        elif run.left is None:
+            run.left = when
+        else:
+            return
+        self._save_soon()
 
     def sync(self, box_id: str, tonie_id: str | None, plan: Plan | None) -> None:
         """Give the figure on a box the plan it is steered by now.
