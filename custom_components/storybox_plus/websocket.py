@@ -119,6 +119,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_set_favourites)
     async_register_command(hass, websocket_star)
     async_register_command(hass, websocket_box_favourites)
+    async_register_command(hass, websocket_cloud_check)
     async_register_command(hass, websocket_update_figure)
     async_register_command(hass, websocket_figure_volume)
     async_register_command(hass, websocket_figure_lock)
@@ -492,6 +493,8 @@ def _entry_extras(entry: StoryboxConfigEntry) -> dict[str, Any]:
             "release": coordinator.backend_release,
             "tested": TESTED_BACKEND_RELEASE,
             "matches": coordinator.backend_tested,
+            # What the last check of the interface found, and against which release
+            "check": entry.runtime_data.preferences.cloud_check,
         },
     }
 
@@ -1449,6 +1452,30 @@ async def websocket_preferences(
     if preferences.analytics != counting:
         # Counting starts or ends with the entry: it is set up anew
         hass.config_entries.async_schedule_reload(entry.entry_id)
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/cloud/check",
+        probatio.Required("entry_id"): str,
+    }
+)
+@async_response
+async def websocket_cloud_check(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Compare what the cloud answers with what the integration relies on; reads only."""
+    entry = next((e for e in _loaded_entries(hass) if e.entry_id == msg["entry_id"]), None)
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_entry", "The account is not loaded")
+        return
+    try:
+        report = await entry.runtime_data.coordinator.async_check_cloud()
+    except CloudError as err:
+        connection.send_error(msg["id"], "cloud_error", str(err))
+        return
+    connection.send_result(msg["id"], report)
 
 
 @require_admin

@@ -30,6 +30,9 @@ Three preferences, each per account:
   ("all" or "one") with that figure, so it goes on after a restart.
 - favourites_mode ("first" by default): how the favourite chapters of a figure
   play on a Toniebox 2, unless the figure has a mode of its own (see favourites).
+- cloud_check (none by default): what the last check of the cloud's interface
+  found, with the release it ran against; no setting, kept so the page shows it
+  after a restart.
 - presence_lag (20 minutes by default): per Toniebox 1 how long it stays in
   the network after its last use, by the entity; taken off its active time.
 
@@ -77,6 +80,8 @@ class Preferences:
         self.voice_language: str | None = None
         self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
         self.favourites_mode: Mode = DEFAULT_MODE
+        # What the last check of the cloud's interface found (see cloud/contract.py)
+        self.cloud_check: dict[str, Any] | None = None
         # box_id -> entity_id
         self.presence: dict[str, str] = {}
         # box_id -> (mode, the figure it was set for)
@@ -115,6 +120,9 @@ class Preferences:
             self.fetch_max_mb = mb
         if raw.get("favourites_mode") in MODES:
             self.favourites_mode = raw["favourites_mode"]
+        check = raw.get("cloud_check")
+        if isinstance(check, dict) and isinstance(check.get("results"), list):
+            self.cloud_check = check
         presence = raw.get("presence")
         if isinstance(presence, dict):
             self.presence = {
@@ -211,6 +219,11 @@ class Preferences:
             raise ValueError(entity_id)
         await self.async_save()
 
+    def set_cloud_check(self, report: dict[str, Any]) -> None:
+        """Keep what the last check of the cloud's interface found; written after a short delay."""
+        self.cloud_check = report
+        self._store.async_delay_save(self._data, 2)
+
     def set_repeat(self, box_id: str, mode: str | None, tonie_id: str | None = None) -> None:
         """Keep or drop the repeat of the figure on a box; written after a short delay."""
         if mode is None or tonie_id is None:
@@ -271,6 +284,7 @@ class Preferences:
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,
             "favourites_mode": self.favourites_mode,
+            "cloud_check": self.cloud_check,
             "presence": self.presence,
             "presence_lag": self._presence_lag,
             "repeat": {

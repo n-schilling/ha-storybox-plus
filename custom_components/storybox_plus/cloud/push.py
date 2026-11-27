@@ -294,8 +294,9 @@ class PushClient:
                 return None
         if not isinstance(data, dict):
             data = {}
-        if data:
-            # For the check of the interface: the keys of the last message per topic
+        if data and (subtopic != TOPIC_PLAYBACK or data.get("tonie")):
+            # For the check of the interface: the keys of the last message per topic.
+            # A box whose figure was taken off names no more than that
             self.seen_keys[subtopic] = frozenset(data)
         if subtopic == TOPIC_BATTERY:
             return PushEvent(mac, subtopic, parse_battery(data))

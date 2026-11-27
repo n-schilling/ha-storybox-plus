@@ -1367,6 +1367,21 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         text = await page.locator(f"{PANEL} #sheet").inner_text()
         expect("Backend version" in text and "tested" in text and "tested with" not in text, text)
         expect("How favourites play" in text, text)
+        # The check of the cloud's interface: run by the integration, its result on the page.
+        # The made-up cloud answers no real requests, so nothing can be compared
+        entry_id = (await _entry(api, instance))["entry_id"]
+        checked = await api.ws(
+            instance.token, {"type": "storybox_plus/cloud/check", "entry_id": entry_id}
+        )
+        expect(checked["success"] and checked["result"]["ok"] is True, str(checked))
+        expect(
+            {r["status"] for r in checked["result"]["results"]} <= {"ok", "unseen", "empty"},
+            str(checked),
+        )
+        await _goto(page, instance, "setup/preferences", "ha-settings-row")
+        text = await page.locator(f"{PANEL} #sheet").inner_text()
+        expect("The cloud answers as expected" in text, f"no result of the check: {text}")
+        expect("could not be compared" in text, f"what was not compared is not named: {text}")
         if shots is not None:
             await page.set_viewport_size({"width": 1200, "height": 1000})
             await page.wait_for_timeout(400)

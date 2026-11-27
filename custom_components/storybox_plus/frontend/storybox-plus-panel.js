@@ -55,6 +55,8 @@ if (!customElements.get("storybox-plus-panel")) {
   ];
   // The settings of an account on the page Preferences
   const PREF_KEYS = ["analytics", "auto_lock", "mark_read"];
+  // Where what the check of the cloud's interface found is reported
+  const ISSUES_URL = "https://github.com/n-schilling/ha-storybox-plus/issues";
   // How the favourites of a figure play on a Toniebox 2
   const FAV_MODES = ["first", "random", "only", "bedtime", "off"];
   // How long listening sums are kept (days, 0: all) and the bounds of the file size from the app (MB)
@@ -153,6 +155,9 @@ if (!customElements.get("storybox-plus-panel")) {
     .ch-tools { display: inline-flex; flex: none; margin-right: -8px; }
     .chapters li.playable { cursor: pointer; }
     .chapters li.playable:hover, .chapters li.playable:focus-visible { background: var(--secondary-background-color); outline: none; }
+    .cloud-diff { margin: 8px 0 0; padding-left: 20px; }
+    .cloud-diff li { margin: 2px 0; overflow-wrap: anywhere; }
+    .cloud-diff code { font-family: var(--ha-font-family-code, monospace); }
     .fav-fig { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
     .top.fav-share { margin-top: 12px; }
     .top ha-icon-button { flex: none; margin: -4px -8px -4px 0; }
@@ -856,6 +861,12 @@ if (!customElements.get("storybox-plus-panel")) {
         }
         case "favplay":
           this._playChapter(key, Number(el.dataset.i), el.dataset.fig);
+          return;
+        case "cloudcheck":
+          this._checkCloud(arg);
+          return;
+        case "cloudissue":
+          this._reportCloud(arg);
           return;
         case "voucher":
           this._redeemVoucher(arg);
@@ -2727,9 +2738,86 @@ if (!customElements.get("storybox-plus-panel")) {
         if (!c.version) cloud = this._alertHelp("info", t.cloudUnknown, t.cloudHelp);
         else if (c.matches) cloud = this._alertHelp("success", `${fill(t.cloudVersion, { v: c.version })} · ${t.cloudTested}`, t.cloudHelp);
         else cloud = this._alertHelp("warning", `${fill(t.cloudVersion, { v: c.version })} · ${fill(t.cloudUntested, { t: c.tested })}`, fill(t.cloudDiffers, { v: c.release, t: c.tested }));
-        html += this._section(named(t.prefCloud), cloud);
+        html += this._section(named(t.prefCloud), cloud + this._cloudCheck(e), { help: t.cloudCheckHelp });
       }
       return html;
+    }
+
+    // What the last check of the cloud's interface found, and the button that runs it:
+    // offered while the cloud runs a release this version was not tested with, or
+    // while the last check found something
+    _cloudCheck(e) {
+      const t = this._t;
+      const c = e.cloud || {};
+      const k = c.check;
+      const differs = (k?.results || []).filter((r) => r.status === "changed" || r.status === "failed");
+      let html = "";
+      if (k) {
+        const none = k.results.filter((r) => r.status === "empty" || r.status === "unseen").length;
+        const at = time(k.at);
+        const values = {
+          v: k.release || "?",
+          d: Number.isFinite(at) ? new Date(at).toLocaleString(this._lang, { dateStyle: "medium", timeStyle: "short", ...timeOptions(this._hass) }) : "",
+        };
+        if (differs.length) {
+          html += `<ha-alert alert-type="warning">${esc(fill(t.cloudCheckBad, { ...values, n: this._fmt(differs.length) }))}` +
+            `<ul class="cloud-diff">${differs.map((r) => `<li><code>${esc(r.name)}</code> ${esc(t[`cloudSt_${r.status}`])}` +
+              `${r.detail.length ? `: ${esc(r.detail.join("; "))}` : ""}</li>`).join("")}</ul></ha-alert>`;
+        } else {
+          html += `<ha-alert alert-type="success">${esc(fill(t.cloudCheckOk, { ...values, n: this._fmt(k.results.length - none) }))}</ha-alert>`;
+        }
+        if (none) html += `<div class="muted small">${esc(fill(t.cloudCheckSkipped, { n: this._fmt(none) }))}</div>`;
+        if (c.release && k.release !== c.release) html += `<div class="muted small">${esc(fill(t.cloudCheckOther, { v: k.release || "?" }))}</div>`;
+      }
+      const offer = (c.version && !c.matches) || differs.length;
+      if (!offer) return html;
+      const busy = this._cloudBusy === e.entry_id;
+      return html + `<div class="bar-row">${this._btn(`cloudcheck:${e.entry_id}`, t.cloudCheck, "refresh", { look: differs.length ? "plain" : "filled", disabled: busy })}` +
+        `${differs.length ? this._btn(`cloudissue:${e.entry_id}`, t.cloudIssue, "upload") + this._help(t.cloudIssueHelp) : ""}</div>`;
+    }
+
+    // Reads only; the integration answers with what it found
+    async _checkCloud(entryId) {
+      if (!this._hass || this._cloudBusy) return;
+      this._cloudBusy = entryId;
+      this._note = null;
+      this._render();
+      try {
+        const report = await this._hass.callWS({ type: "storybox_plus/cloud/check", entry_id: entryId });
+        const entry = this._loadedEntries().find((e) => e.entry_id === entryId);
+        if (entry) entry.cloud = { ...entry.cloud, check: report };
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      this._cloudBusy = null;
+      this._render();
+    }
+
+    // A new issue on GitHub with what the check found: requests by their shape, field
+    // names, kinds and versions, nothing of the account. In English, as the issues are
+    _reportCloud(entryId) {
+      const c = this._loadedEntries().find((e) => e.entry_id === entryId)?.cloud;
+      const k = c?.check;
+      if (!k) return;
+      const differs = k.results.filter((r) => r.status === "changed" || r.status === "failed");
+      const what = [
+        "The check of the cloud interface (Setup → Preferences → Cloud) found requests that answer differently than expected.",
+        "",
+        `Cloud release: ${k.release || "unknown"} (tested with ${k.tested || "unknown"})`,
+        `Checked: ${k.at}`,
+        "",
+        ...differs.map((r) => `- \`${r.name}\` ${r.status}${r.detail.length ? `: ${r.detail.join("; ")}` : ""}`),
+      ].join("\n");
+      const query = new URLSearchParams({
+        template: "bug_report.yml",
+        title: `Cloud interface changed (${k.release || "unknown release"})`,
+        what,
+        version: this._overview?.about?.version || "",
+        ha_version: this._hass?.config?.version || "",
+        // The form asks for a device; this report is about none
+        display: "none (cloud interface check)",
+      });
+      window.open(`${ISSUES_URL}/new?${query}`, "_blank", "noopener,noreferrer");
     }
   }
 

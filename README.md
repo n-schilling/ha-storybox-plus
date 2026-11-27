@@ -169,6 +169,8 @@ The cloud keeps notifications for the account that only the app shows: a chapter
 
 The cloud's API is not documented for third parties and may change. Storybox Plus reads the version of the cloud's backend once an hour (it is public, no sign-in) and names it under Setup → Preferences. The cloud names its version as release and commit (`v2026.11.10/602b7aff2`); only the release counts. This version was tested with release **v2026.11.10**; when the cloud runs another release, the page says so, and the diagnostics carry it. Another release is no error: the cloud is updated often, mostly without changes to what the integration uses.
 
+Whether it still fits is checked: when the cloud reports a release this version was not tested with, the integration reads once everything it reads from the cloud and compares the answers with the fields it relies on (`cloud/contract.py` lists them per request). The result stands under Setup → Preferences beside the version, and the button **Test the cloud interface** there runs the check again. Requests that answer differently are listed, and **Report on GitHub** opens an issue with that list. The check only reads; its result names requests by their shape, fields, kinds and versions, nothing of the account. What a box sends live is compared too, as far as messages came by since Home Assistant started.
+
 ### Favourite chapters
 
 Every chapter of a figure can get a star: on the figure's page, in the list of chapters of a box (on the page and on the dashboard card), on the page **Favourites**, in the listening summary, and beside the chapter that plays, on the page and on the dashboard card. The star of the chapter that plays is also the action `storybox_plus.set_favourite`, which every user may call.
@@ -549,6 +551,7 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | `storybox_plus/voucher/redeem` | `entry_id`, `code`; answers with how many Tunes it brought and the Tunes |
 | `storybox_plus/figure/redeem_token` | `tonie_id` (a creative figure), `token`; answers with the figure |
 | `storybox_plus/figure/lock` | `tonie_id` (a bought figure or disc), `locked` |
+| `storybox_plus/cloud/check` | `entry_id`; reads everything the integration reads and answers with what differs from the fields it relies on (per request `ok`, `changed`, `failed`, `empty`, `unseen`) |
 | `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `speech_engine` (a `tts` entity; null: Piper), `voice` with `voice_language` (null: the engine's default), `fetch_max_mb` (10–2000), `favourites_mode` (`first`, `random`, `only`, `bedtime`, `off`); switching `analytics` sets the account up anew |
 | `storybox_plus/log` | optional `limit`; the log level, the days kept and the latest lines, newest first (without a limit, all lines kept) |
 | `storybox_plus/log/set` | any of `level` (`debug`, `info`, `warning`, `error`), `days` (0–90) |

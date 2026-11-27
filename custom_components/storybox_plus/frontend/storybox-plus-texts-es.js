@@ -524,5 +524,15 @@ export default {
   "cloudUntested": "probada con {t}",
   "cloudUnknown": "Todavía no se conoce la versión de la nube.",
   "cloudHelp": "Storybox Plus lee la versión del backend de la nube una vez por hora; solo cuenta la versión publicada, no el commit que hay detrás.",
-  "cloudDiffers": "La nube usa la versión {v}; Storybox Plus se probó con {t}. Si algo no funciona, puede que la interfaz de la nube haya cambiado."
+  "cloudDiffers": "La nube usa la versión {v}; Storybox Plus se probó con {t}. Si algo no funciona, puede que la interfaz de la nube haya cambiado.",
+  "cloudCheck": "Probar la interfaz de la nube",
+  "cloudCheckHelp": "Lee todo lo que la integración lee de la nube y compara las respuestas con los campos que necesita. No se cambia nada en la nube. La prueba se ejecuta sola una vez cuando la nube anuncia una versión con la que esta versión no se probó.",
+  "cloudCheckOk": "La nube responde como se esperaba: {n} consultas comparadas (versión {v}, {d}).",
+  "cloudCheckBad": "{n} consultas responden distinto de lo esperado (versión {v}, {d}):",
+  "cloudCheckSkipped": "{n} no se pudieron comparar: nada en la cuenta las usa, o ninguna caja ha enviado aún un mensaje.",
+  "cloudCheckOther": "Este resultado es de la versión {v}; la nube usa ahora otra.",
+  "cloudIssue": "Informar en GitHub",
+  "cloudIssueHelp": "Abre una incidencia nueva con la lista de arriba. Nombra consultas, campos y versiones, nada de tu cuenta.",
+  "cloudSt_changed": "cambiado",
+  "cloudSt_failed": "fallido"
 };

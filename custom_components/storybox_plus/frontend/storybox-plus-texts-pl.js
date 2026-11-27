@@ -524,5 +524,15 @@ export default {
   "cloudUntested": "przetestowano z {t}",
   "cloudUnknown": "Wersja chmury nie jest jeszcze znana.",
   "cloudHelp": "Storybox Plus odczytuje wersję backendu chmury raz na godzinę; liczy się tylko wydanie, nie commit, który za nim stoi.",
-  "cloudDiffers": "Chmura działa na wydaniu {v}; Storybox Plus był testowany z {t}. Jeśli coś nie działa, interfejs chmury mógł się zmienić."
+  "cloudDiffers": "Chmura działa na wydaniu {v}; Storybox Plus był testowany z {t}. Jeśli coś nie działa, interfejs chmury mógł się zmienić.",
+  "cloudCheck": "Przetestuj interfejs chmury",
+  "cloudCheckHelp": "Odczytuje wszystko, co integracja odczytuje z chmury, i porównuje odpowiedzi z polami, na których polega. W chmurze nic nie jest zmieniane. Test uruchamia się raz samoczynnie, gdy chmura zgłosi wydanie, z którym ta wersja nie była testowana.",
+  "cloudCheckOk": "Chmura odpowiada zgodnie z oczekiwaniami: porównano {n} zapytań (wydanie {v}, {d}).",
+  "cloudCheckBad": "{n} zapytań odpowiada inaczej, niż oczekiwano (wydanie {v}, {d}):",
+  "cloudCheckSkipped": "{n} nie dało się porównać: nic na koncie ich nie używa albo żadne pudełko nie wysłało jeszcze wiadomości.",
+  "cloudCheckOther": "Ten wynik pochodzi z wydania {v}; chmura działa teraz na innym.",
+  "cloudIssue": "Zgłoś na GitHubie",
+  "cloudIssueHelp": "Otwiera nowe zgłoszenie z listą powyżej. Wymienia zapytania, pola i wersje, nic z twojego konta.",
+  "cloudSt_changed": "zmienione",
+  "cloudSt_failed": "nieudane"
 };

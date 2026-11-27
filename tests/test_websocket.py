@@ -101,6 +101,7 @@ async def test_overview(
                 "release": "v2026.11.10",
                 "tested": "v2026.11.10",
                 "matches": True,
+                "check": None,
             },
         }
     ]

@@ -58,6 +58,7 @@ from .cloud import (
     TonieKind,
     Tune,
     Volume,
+    contract,
 )
 from .cloud.models import (
     CLASSIC_SETTINGS,
@@ -277,6 +278,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self._alarm_sent: dict[str, datetime] = {}
         self._alarm_tries: dict[str, tuple[datetime | None, int]] = {}
         self._alarm_timers: dict[str, CALLBACK_TYPE] = {}
+        # One check of the cloud's interface at a time
+        self._cloud_check_lock = asyncio.Lock()
         # Per box: the look whether it stayed offline, for the favourites
         self._asleep_timers: dict[str, CALLBACK_TYPE] = {}
         # Per box: the playback report before the last, for the repeat (kept in the preferences)
@@ -500,6 +503,13 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             _LOGGER.debug(
                 "The cloud runs %s; tested with %s", self.backend_version, TESTED_BACKEND_RELEASE
             )
+            last = self.preferences.cloud_check
+            if last is None or last.get("release") != self.backend_release:
+                # A release this version was not tested with: look once whether the
+                # interface still answers as expected
+                self.config_entry.async_create_background_task(
+                    self.hass, self._async_check_cloud_quietly(), f"{DOMAIN} cloud check"
+                )
         try:
             self.box_pictures = await self.client.async_box_pictures()
         except CloudError as err:
@@ -517,6 +527,52 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 if household_id in self.members:
                     members[household_id] = self.members[household_id]
         self.members = members
+
+    async def async_check_cloud(self) -> dict[str, Any]:
+        """Compare what the cloud answers with what the integration relies on.
+
+        Reads only. The report names requests by their shape, field names,
+        kinds and HTTP statuses, never a value of the account, so it can go
+        into a public issue as it is. It is kept for the page.
+        """
+        async with self._cloud_check_lock:
+            figures = [
+                (b.box.id, b.tonie_id, (b.playback.content_version if b.playback else None) or 0)
+                for b in (self.data.boxes.values() if self.data is not None else ())
+                if b.box.live and b.tonie_id is not None
+            ]
+            seen: dict[str, frozenset[str]] = getattr(self.push, "seen_keys", {})
+            results = await contract.async_check(self.client, figures, seen)
+            try:
+                self.backend_version = await self.client.async_backend_version()
+            except CloudError as err:
+                _LOGGER.debug("Version of the cloud not read: %s", err)
+            report: dict[str, Any] = {
+                "release": self.backend_release,
+                "tested": TESTED_BACKEND_RELEASE,
+                "at": dt_util.utcnow().isoformat(),
+                "ok": contract.passed(results),
+                "results": [result.as_dict() for result in results],
+            }
+            self.preferences.set_cloud_check(report)
+            differing = [r.name for r in results if r.status in ("changed", "failed")]
+            if differing:
+                _LOGGER.warning(
+                    "The cloud (%s) answers differently than expected: %s",
+                    self.backend_release,
+                    ", ".join(differing),
+                )
+            else:
+                _LOGGER.info("The cloud (%s) answers as expected", self.backend_release)
+            self.async_update_listeners()
+            return report
+
+    async def _async_check_cloud_quietly(self) -> None:
+        """Run the check of the interface by itself; whatever goes wrong is only logged."""
+        try:
+            await self.async_check_cloud()
+        except CloudError as err:
+            _LOGGER.debug("The cloud's interface was not checked: %s", err)
 
     @property
     def backend_release(self) -> str | None:

@@ -524,5 +524,15 @@ export default {
   "cloudUntested": "getest met {t}",
   "cloudUnknown": "De versie van de cloud is nog niet bekend.",
   "cloudHelp": "Storybox Plus leest elk uur de versie van de backend van de cloud; alleen de release telt, niet de commit erachter.",
-  "cloudDiffers": "De cloud draait release {v}; Storybox Plus is getest met {t}. Werkt iets niet, dan is de interface van de cloud misschien veranderd."
+  "cloudDiffers": "De cloud draait release {v}; Storybox Plus is getest met {t}. Werkt iets niet, dan is de interface van de cloud misschien veranderd.",
+  "cloudCheck": "Cloudinterface testen",
+  "cloudCheckHelp": "Leest alles wat de integratie uit de cloud leest en vergelijkt de antwoorden met de velden waarop ze vertrouwt. In de cloud wordt niets gewijzigd. De test loopt één keer vanzelf wanneer de cloud een release meldt waarmee deze versie niet is getest.",
+  "cloudCheckOk": "De cloud antwoordt zoals verwacht: {n} verzoeken vergeleken (release {v}, {d}).",
+  "cloudCheckBad": "{n} verzoeken antwoorden anders dan verwacht (release {v}, {d}):",
+  "cloudCheckSkipped": "{n} konden niet worden vergeleken: niets in het account gebruikt ze, of er kwam nog geen bericht van een box.",
+  "cloudCheckOther": "Dit resultaat is van release {v}; de cloud draait nu een andere.",
+  "cloudIssue": "Melden op GitHub",
+  "cloudIssueHelp": "Opent een nieuw issue met de lijst hierboven. Het noemt verzoeken, velden en versies, niets uit je account.",
+  "cloudSt_changed": "gewijzigd",
+  "cloudSt_failed": "mislukt"
 };
