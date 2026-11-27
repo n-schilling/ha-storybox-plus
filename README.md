@@ -23,11 +23,11 @@ This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "
 
 The boxes with their live state; the Toniebox 2 with its bedtimes, its battery and the charge history, made up for these pictures:
 
-<img src="docs/screenshots/boxes.png" alt="The area Boxes with the areas as tabs in the header, the stamp, refresh and the integration button: a Toniebox 2 playing chapter 3 of 8 of a figure, with volume, headphones, the next alarm and its battery, and buttons for chapters, the chapter list, repeat and volume; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
+<img src="docs/screenshots/boxes.png" alt="The area Boxes with the areas as tabs in the header, the stamp, refresh and the integration button: a Toniebox 2 with its volume and battery in the head, headphones and the next alarm below, playing chapter 3 of 8 of a figure, and buttons for chapters, the chapter list, repeat and volume; beside it a Toniebox 1 as a small card with its settings in a line, last seen two hours ago" width="700">
 
 The dashboard card of a Toniebox 2, here seen by a user without administrator rights:
 
-<img src="docs/screenshots/card.png" alt="The dashboard card of a Toniebox 2: name, online dot and battery in the head, volume, headphones and the next alarm, the figure that plays with its chapter and progress, and the buttons" width="450">
+<img src="docs/screenshots/card.png" alt="The dashboard card of a Toniebox 2: name, online dot, volume and battery in the head, headphones and the next alarm below, the figure that plays with its chapter and progress, and the buttons" width="450">
 
 A bought figure opened as its own page, with its favourite chapters:
 

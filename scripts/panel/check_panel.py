@@ -994,6 +994,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await page.locator(f"{PANEL} ha-icon-button.star.on").nth(3).wait_for()
         if shots is not None:
             await page.set_viewport_size({"width": 1200, "height": 900})
+            # The star just pressed keeps neither the pointer's nor the focus's highlight
+            await page.mouse.move(0, 0)
+            await page.evaluate("() => document.activeElement?.blur()")
+            await page.locator(PANEL).evaluate("(el) => el.shadowRoot.activeElement?.blur()")
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "figures.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
@@ -1891,6 +1895,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await user.locator("storybox-plus-card").first.evaluate(
                 """(card) => {
                   delete card._read;
+                  card._ctlError = null;
                   card._key = null;
                   card._render();
                 }"""

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The pictures in the README and under `docs/` show the head with volume and battery and the sleep timer's dialog; their descriptions and the texts on the sleep timer say so. The page check takes the pictures without a highlight left on a button.
+
 ## [1.4.1] - 2026-11-28
 
 ### Changed
