@@ -281,7 +281,7 @@ async def test_a_chapter_is_chosen_from_the_list(
     overview = (await client.receive_json())["result"]
     chapters = next(b for b in overview["boxes"] if b["id"] == BOX_ID)["playback"]["chapter_list"]
     assert len(chapters) > 1
-    assert set(chapters[0]) == {"title", "seconds"}
+    assert set(chapters[0]) == {"title", "seconds", "favourite"}
 
     last = len(chapters) - 1
     assert (await _call(client, _command("chapter", last)))["success"]

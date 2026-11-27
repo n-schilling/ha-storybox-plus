@@ -40,6 +40,7 @@ export const MDI = {
   remove: "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z",
   sort: "M19 17H22L18 21L14 17H17V3H19M11 13V15L7.67 19H11V21H5V19L8.33 15H5V13M9 3H7C5.9 3 5 3.9 5 5V11H7V9H9V11H11V5C11 3.9 10.11 3 9 3M9 7H7V5H9Z",
   shuffle: "M14.83,13.41L13.42,14.82L16.55,17.95L14.5,20H20V14.5L17.96,16.54L14.83,13.41M14.5,4L16.54,6.04L4,18.59L5.41,20L17.96,7.46L20,9.5V4M10.59,9.17L5.41,4L4,5.41L9.17,10.58L10.59,9.17Z",
+  playAll: "M19,9H2V11H19V9M19,5H2V7H19V5M2,15H15V13H2V15M17,13V19L22,16L17,13Z",
   star: "M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z",
   starOff: "M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z",
   text: "M18.5,4L19.66,8.35L18.7,8.61C18.25,7.74 17.79,6.87 17.26,6.43C16.73,6 16.11,6 15.5,6H13V16.5C13,17 13,17.5 13.33,17.75C13.67,18 14.33,18 15,18V19H9V18C9.67,18 10.33,18 10.67,17.75C11,17.5 11,17 11,16.5V6H8.5C7.89,6 7.27,6 6.74,6.43C6.21,6.87 5.75,7.74 5.3,8.61L4.34,8.35L5.5,4H18.5Z",
@@ -83,7 +84,9 @@ export const TEXTS = {
     e_connection: "Home Assistant cannot be reached right now.",
     e_cloud_error: "The Tonie cloud did not answer or refused it.",
     e_invalid_command: "The box needs a value for this.",
-    e_not_bought: "Only bought figures have favourites.",
+    e_no_favourites: "The figure on the box has no favourites.",
+    e_tune_plays: "A Tune lies on the figure; its chapters take no stars.",
+    e_other_figure: "Another figure is on the box now.",
     e_unloaded: "Storybox Plus was reloaded meanwhile. Please try again.",
     e_unknown_command: "Storybox Plus is not ready yet. Please try again in a moment.",
     e_unknown_household: "This household is gone meanwhile. Refresh and try again.",
@@ -149,9 +152,27 @@ export const TEXTS = {
     lockSwitch: "Locked to the household", lockHint: "A locked figure cannot be claimed into another household, for example when it is lent to a friend.",
     figVolume: "Volume of this figure", figVolumeBox: "As set on the box", figVolumeChip: "volume {v} / 13",
     figVolumeHint: "On a Toniebox 2 the figure plays at this level; taken off or replaced, the box gets its level from before back.",
-    favChip: "{n} favourites", favToggle: "Favourite chapter", favSwitch: "Steer the Toniebox 2 by the favourites",
-    favHint: "A star marks a favourite chapter; the first star switches steering by the favourites on.",
-    favSwitchHint: "The Toniebox 2 skips every other chapter and pauses after the last favourite; play pressed then lets the figure play on until it is taken off.",
+    favChip: "{n} favourites", favChip1: "1 favourite", favOn: "Mark as a favourite", favOff: "Favourite: take the star off",
+    favIs: "Favourite",
+    favHint: "A star marks a favourite chapter. How the favourites play on a Toniebox 2 is set for the account under Setup → Preferences, and for this figure alone under Settings.",
+    favMode: "How its favourites play",
+    favModeHint: "On a Toniebox 2, once the figure has a star. Favourites first: placed on the box, the figure starts with its favourites and plays the other chapters after them. Random favourite first: the same, with another favourite at the front each time. Only the favourites: every other chapter is skipped and the box pauses after the last favourite. Only the favourites at bedtime: favourites first by day, only the favourites within a bedtime of the box. The beginning of a chapter that is skipped can be heard for a moment; without the internet or Home Assistant the box plays as it always does.",
+    favMode_account: "As for the account ({m})", favMode_off: "As the box plays, stars are kept", favMode_first: "Favourites first",
+    favMode_random: "Random favourite first", favMode_only: "Only the favourites", favMode_bedtime: "Only the favourites at bedtime",
+    favNow_first: "Favourites first", favNow_random: "Favourites first", favNow_only: "Only favourites", favNowAll: "Everything today",
+    favAll: "Everything today", favAllOn: "Play every chapter until the figure is taken off",
+    favAllOff: "Every chapter plays until the figure is taken off. Follow the favourites again",
+    prefFavourites: "Favourites", prefFavMode: "How favourites play",
+    prefFavModeHint: "On a Toniebox 2, for every figure with a star that has no setting of its own. Favourites first: placed on the box, a figure starts with its favourites and plays the other chapters after them. Random favourite first: the same, with another favourite at the front each time. Only the favourites: every other chapter is skipped and the box pauses after the last favourite. Only the favourites at bedtime: favourites first by day, only the favourites within a bedtime of the box. The same figure placed again within two minutes plays on where it was.",
+    pgFavourites: "Favourites", favListNone: "No chapter has a star yet. Open a figure and mark its best chapters, or tap the star of the chapter that plays.",
+    favListHelp: "Every chapter with a star. A chapter of a figure that stands on a Toniebox 2 plays with a tap.",
+    favPlay: "Play on {box}", favOnBox: "on {box}",
+    statFav: "Favourites", statFavShare: "of the listening time went to favourite chapters",
+    statFavHelp: "Counted by the stars as they are now, over the time whose chapter is known. Chapters of creative figures are counted by their position, so arranging them anew mixes their times.",
+    statFavNone: "No chapter has a star yet.",
+    statHidden: "Heard a lot, no star yet", statHiddenHelp: "The chapters without a star that were heard longest: favourites nobody marked yet. The star marks them.",
+    statUnheard: "Stars hardly heard", statUnheardHelp: "Favourites that were heard for less than a minute over these days, of figures that were listened to. The star takes them off the favourites.",
+    statPlays: "about {n}×",
     tune: "Tune", tuneOn: "Tune on it: {t}", tuneRemove: "Take the Tune off", tunePick: "Bought Tune", tuneAssign: "Lay on",
     tuneLeft: "{n} more times", tuneHintCreative: "The figure's chapters stay; they play again once the Tune is taken off.",
     tuneHint: "The figure plays the Tune instead of its own story until it is taken off.",
@@ -286,7 +307,9 @@ export const TEXTS = {
     e_connection: "Home Assistant ist gerade nicht erreichbar.",
     e_cloud_error: "Die Tonie-Cloud hat nicht geantwortet oder abgelehnt.",
     e_invalid_command: "Die Box braucht dafür einen Wert.",
-    e_not_bought: "Lieblingskapitel haben nur gekaufte Figuren.",
+    e_no_favourites: "Die Figur auf der Box hat keine Favoriten.",
+    e_tune_plays: "Auf der Figur liegt ein Tune; dessen Kapitel bekommen keine Sterne.",
+    e_other_figure: "Auf der Box steht inzwischen eine andere Figur.",
     e_unloaded: "Storybox Plus wurde zwischendurch neu geladen. Bitte erneut versuchen.",
     e_unknown_command: "Storybox Plus ist noch nicht bereit. Bitte gleich erneut versuchen.",
     e_unknown_household: "Diesen Haushalt gibt es inzwischen nicht mehr. Aktualisieren und erneut versuchen.",
@@ -352,9 +375,27 @@ export const TEXTS = {
     lockSwitch: "Für den Haushalt gesperrt", lockHint: "Eine gesperrte Figur kann nicht in einen anderen Haushalt übernommen werden, etwa wenn sie verliehen wird.",
     figVolume: "Lautstärke dieser Figur", figVolumeBox: "Wie an der Box eingestellt", figVolumeChip: "Lautstärke {v} / 13",
     figVolumeHint: "Auf einer Toniebox 2 spielt die Figur mit dieser Stufe; abgenommen oder ersetzt, bekommt die Box ihre Stufe von vorher zurück.",
-    favChip: "{n} Lieblingskapitel", favToggle: "Lieblingskapitel", favSwitch: "Toniebox 2 nach den Lieblingskapiteln steuern",
-    favHint: "Ein Stern markiert ein Lieblingskapitel; der erste Stern schaltet das Steuern nach den Lieblingskapiteln ein.",
-    favSwitchHint: "Die Toniebox 2 überspringt alle anderen Kapitel und hält nach dem letzten Lieblingskapitel an; wird dann Play gedrückt, spielt die Figur weiter, bis sie abgenommen wird.",
+    favChip: "{n} Favoriten", favChip1: "1 Favorit", favOn: "Als Favorit markieren", favOff: "Favorit: Stern wegnehmen",
+    favIs: "Favorit",
+    favHint: "Ein Stern markiert ein Kapitel als Favorit. Wie die Favoriten auf einer Toniebox 2 spielen, steht fürs Konto unter Einrichtung → Einstellungen und für diese Figur allein unter Einstellungen.",
+    favMode: "So spielen ihre Favoriten",
+    favModeHint: "Auf einer Toniebox 2, sobald die Figur einen Stern hat. Favoriten zuerst: Aufgesetzt beginnt die Figur mit ihren Favoriten und spielt danach die übrigen Kapitel. Zufälliger Favorit zuerst: dasselbe, jedes Mal mit einem anderen Favoriten vorn. Nur Favoriten: Alle anderen Kapitel werden übersprungen, nach dem letzten Favoriten hält die Box an. Nur Favoriten zur Schlafenszeit: tagsüber Favoriten zuerst, innerhalb einer Schlafenszeit der Box nur die Favoriten. Der Anfang eines übersprungenen Kapitels kann kurz zu hören sein; ohne Internet oder Home Assistant spielt die Box wie immer.",
+    favMode_account: "Wie im Konto ({m})", favMode_off: "Wie die Box spielt, Sterne bleiben", favMode_first: "Favoriten zuerst",
+    favMode_random: "Zufälliger Favorit zuerst", favMode_only: "Nur Favoriten", favMode_bedtime: "Nur Favoriten zur Schlafenszeit",
+    favNow_first: "Favoriten zuerst", favNow_random: "Favoriten zuerst", favNow_only: "Nur Favoriten", favNowAll: "Heute alles",
+    favAll: "Heute alles", favAllOn: "Alle Kapitel spielen, bis die Figur abgenommen wird",
+    favAllOff: "Alle Kapitel spielen, bis die Figur abgenommen wird. Wieder nach den Favoriten spielen",
+    prefFavourites: "Favoriten", prefFavMode: "So spielen Favoriten",
+    prefFavModeHint: "Auf einer Toniebox 2, für jede Figur mit Stern, die keine eigene Einstellung hat. Favoriten zuerst: Aufgesetzt beginnt eine Figur mit ihren Favoriten und spielt danach die übrigen Kapitel. Zufälliger Favorit zuerst: dasselbe, jedes Mal mit einem anderen Favoriten vorn. Nur Favoriten: Alle anderen Kapitel werden übersprungen, nach dem letzten Favoriten hält die Box an. Nur Favoriten zur Schlafenszeit: tagsüber Favoriten zuerst, innerhalb einer Schlafenszeit der Box nur die Favoriten. Dieselbe Figur, innerhalb von zwei Minuten wieder aufgesetzt, spielt dort weiter, wo sie war.",
+    pgFavourites: "Favoriten", favListNone: "Noch hat kein Kapitel einen Stern. Öffne eine Figur und markiere ihre besten Kapitel, oder tippe auf den Stern des Kapitels, das gerade läuft.",
+    favListHelp: "Alle Kapitel mit Stern. Ein Kapitel einer Figur, die auf einer Toniebox 2 steht, spielt mit einem Tipp.",
+    favPlay: "Auf {box} spielen", favOnBox: "auf {box}",
+    statFav: "Favoriten", statFavShare: "der Hörzeit entfielen auf Favoriten",
+    statFavHelp: "Gezählt nach den Sternen, wie sie jetzt sind, über die Zeit, deren Kapitel bekannt ist. Kapitel von Kreativ-Tonies werden nach ihrer Position gezählt; neu angeordnet mischen sich ihre Zeiten.",
+    statFavNone: "Noch hat kein Kapitel einen Stern.",
+    statHidden: "Viel gehört, noch ohne Stern", statHiddenHelp: "Die Kapitel ohne Stern, die am längsten gehört wurden: Favoriten, die noch niemand markiert hat. Der Stern markiert sie.",
+    statUnheard: "Sterne, kaum gehört", statUnheardHelp: "Favoriten, die in diesen Tagen weniger als eine Minute gehört wurden, von Figuren, die gehört wurden. Der Stern nimmt sie aus den Favoriten.",
+    statPlays: "etwa {n}×",
     tune: "Tune", tuneOn: "Tune darauf: {t}", tuneRemove: "Tune abnehmen", tunePick: "Gekaufter Tune", tuneAssign: "Auflegen",
     tuneLeft: "noch {n}-mal", tuneHintCreative: "Die Kapitel der Figur bleiben erhalten und spielen wieder, sobald der Tune abgenommen wird.",
     tuneHint: "Die Figur spielt den Tune statt ihrer eigenen Geschichte, bis er abgenommen wird.",
@@ -562,6 +603,11 @@ ha-button.batt-btn { --ha-button-font-size: var(--ha-font-size-m, 14px); }
 .batt i { position: absolute; left: 1px; right: 1px; bottom: 1px; background: var(--success-color); border-radius: 1px; }
 .batt.low i { background: var(--error-color); }
 .play { display: flex; align-items: center; gap: 12px; }
+.now-star { flex: none; color: var(--secondary-text-color); }
+span.now-star { display: inline-flex; padding: 8px; }
+.now-star.on, ha-icon-button.star.on { color: var(--state-active-color, var(--amber-color, #ffc107)); }
+ha-icon-button.fav-all.on { color: var(--primary-color); }
+.tracks ha-icon-button { flex: none; margin: -8px 0; --ha-icon-button-size: 36px; --mdc-icon-button-size: 36px; color: var(--secondary-text-color); }
 .pic { position: relative; flex: none; width: 56px; height: 56px; border-radius: 8px; overflow: hidden;
   background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); color: var(--secondary-text-color); }
 .pic ha-svg-icon { position: absolute; left: 50%; top: 50%; --mdc-icon-size: 28px; transform: translate(-50%, -50%); opacity: 0.6; }
@@ -744,8 +790,10 @@ export const BoxView = (Base) => class extends Base {
       if (live) {
         // In parts the dashboard card can lay out side by side when it is wide
         // The dashboard card says in Home Assistant's word that a box is switched off
-        const now = show("playback") ? `<div class="now">${this._playback(b.playback, b.online === false && b.word ? b.word : undefined)}</div>` : "";
-        // The chapter list opens above the page; the dashboard card has none
+        // The star of the chapter that plays marks it, on the page and on the dashboard card
+        const now = show("playback")
+          ? `<div class="now">${this._playback(b.playback, b.online === false && b.word ? b.word : undefined, b.online === true ? `star:${b.id}` : "")}</div>` : "";
+        // Repeat and "everything today" are the page's
         const ctl = show("controls") ? this._controls(b, !card) : "";
         body = `<div class="box-body">${body}${now}${ctl ? `<div class="ctl">${ctl}</div>` : ""}</div>`;
       } else body += `<div class="muted">${esc(t.classicNote)}</div>`;
@@ -756,7 +804,7 @@ export const BoxView = (Base) => class extends Base {
     }
 
     // Play, pause, chapters, volume and the sleep timer of a Toniebox 2 that is online
-    _controls(b, tracks = false) {
+    _controls(b, page = false) {
       const t = this._t;
       if (b.online !== true) return "";
       const p = b.playback;
@@ -773,8 +821,8 @@ export const BoxView = (Base) => class extends Base {
         btn("previous", "prev", t.ctlPrev, !placed) +
         (p?.playing ? btn("pause", "pause", t.ctlPause, !placed) : btn("play", "play", t.ctlPlay, !placed)) +
         btn("next", "next", t.ctlNext, !placed) +
-        (tracks && p?.chapter_list?.length > 1 ? iconButton("tracks", t.ctlTracks, `data-act="tracks:${esc(b.id)}"`) : "") +
-        (tracks ? this._repeatButton(b, placed, busy) : "") +
+        (p?.chapter_list?.length > 1 ? iconButton("tracks", t.ctlTracks, `data-act="tracks:${esc(b.id)}"`) : "") +
+        (page ? this._repeatButton(b, placed, busy) + this._everythingButton(b, busy) : "") +
         `<span class="ctl-gap"></span>` +
         // Without a level (the dashboard card) the buttons are the media player's steps
         (step
@@ -803,6 +851,64 @@ export const BoxView = (Base) => class extends Base {
       return iconButton(ic, label, `class="repeat${b.repeat ? " on" : ""}" aria-pressed="${b.repeat ? "true" : "false"}" data-act="repeat:${esc(b.id)}:${next}"${!placed || busy ? " disabled" : ""}`);
     }
 
+    // The chapters of what is on a box, in Home Assistant's dialog inside `host`: a chapter
+    // chosen there plays, its star marks it. The dialog stays while its list is drawn
+    // anew; this._tracks names the box whose list is open. busy: a command is on its
+    // way, nothing more is taken; error: what the last star or chapter ran into
+    _renderTracks(host, b, { busy = false, error = null } = {}) {
+      if (!host) return;
+      const t = this._t;
+      const p = b?.playback;
+      // The title says how the favourites steer the figure, while they do (the page knows it)
+      const steering = p?.favourites?.suspended ? t.favNowAll : p?.favourites?.mode ? t[`favNow_${p.favourites.mode}`] : "";
+      let dialog = host.firstElementChild;
+      // Gone with the figure, the box or the page it was opened on
+      if (!p?.chapter_list?.length || b.online !== true) {
+        this._tracks = null;
+        if (dialog) dialog.open = false;
+        return;
+      }
+      if (!dialog) {
+        dialog = document.createElement("ha-dialog");
+        this._overlayHtml = null;
+        dialog.addEventListener("closed", () => {
+          this._tracks = null;
+          dialog.remove();
+        });
+        host.append(dialog);
+      }
+      dialog.headerTitle = t.tracksTitle;
+      dialog.headerSubtitle = `${p.tonie_name || t.unknownFigure} · ${b.name || b.id}${steering ? ` · ${steering}` : ""}`;
+      const off = busy ? " disabled" : "";
+      const html = (error ? this._errHtml(error) : "") + `<ol class="tracks">${p.chapter_list.map((c, i) => {
+        const now = i === p.chapter;
+        const title = c.title || `${t.chapter} ${i + 1}`;
+        return `<li role="button" tabindex="0" data-act="jump:${esc(b.id)}:${i}"${now ? ' class="current" aria-current="true"' : ""}${busy ? ' aria-disabled="true" disabled' : ""}>` +
+          `<span class="rank">${i + 1}</span><span class="name">${esc(title)}</span>` +
+          `${Number.isFinite(c.seconds) ? `<span class="len">${esc(mmss(c.seconds))}</span>` : ""}` +
+          // The star marks the chapter; the list stays open. No star while which chapters
+          // have one is not known (a Tune lies on the figure)
+          (typeof c.favourite === "boolean" ? iconButton(c.favourite ? "star" : "starOff", `${c.favourite ? t.favOff : t.favOn}: ${title}`,
+            `class="star${c.favourite ? " on" : ""}" data-act="starch:${esc(b.id)}:${i}" aria-pressed="${c.favourite}"${off}`) : "") + `</li>`;
+      }).join("")}</ol>`;
+      if (html !== this._overlayHtml) {
+        this._overlayHtml = html;
+        dialog.innerHTML = html;
+      }
+      dialog.open = true;
+    }
+
+    // While the favourites steer the figure on the box: a button that lets it play
+    // everything until it is taken off, and back
+    _everythingButton(b, busy) {
+      const t = this._t;
+      const fav = b.playback?.favourites;
+      if (!fav || (!fav.mode && !fav.suspended)) return "";
+      const on = !!fav.suspended;
+      return iconButton("playAll", `${t.favAll}: ${on ? t.favAllOff : t.favAllOn}`,
+        `class="fav-all${on ? " on" : ""}" aria-pressed="${on}" data-act="favall:${esc(b.id)}:${on ? 0 : 1}"${busy ? " disabled" : ""}`);
+    }
+
     // The timer counts as set unless its state says otherwise; a timer that ends
     // with an alarm is the bedtime's, shown there
     _sleep(timer) {
@@ -823,7 +929,8 @@ export const BoxView = (Base) => class extends Base {
         `${this._fmt(b.battery)} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;
     }
 
-    _playback(p, nothing = this._t.nothing) {
+    // star: the action of the star beside the chapter that plays; without it a favourite shows its star only
+    _playback(p, nothing = this._t.nothing, star = "") {
       const t = this._t;
       if (!p) return `<div class="play">${this._pic(null)}<div class="text"><span class="headline muted">${esc(nothing)}</span></div></div>`;
       // The dashboard card brings the state in Home Assistant's own word
@@ -833,9 +940,19 @@ export const BoxView = (Base) => class extends Base {
         chapter = `${esc(t.chapter)} ${p.chapter + 1}${Number.isFinite(p.chapters) ? ` / ${p.chapters}` : ""}` +
           (p.chapter_title ? ` · ${esc(p.chapter_title)}` : "");
       } else if (Number.isFinite(p.chapters)) chapter = esc(fill(p.chapters === 1 ? t.chapter1 : t.chaptersN, { n: this._fmt(p.chapters) }));
+      // Whether the chapter that plays is a favourite: the dashboard card reads it from the
+      // media player, the page from the chapter list
+      const fav = p.chapter == null ? null
+        : typeof p.favourite === "boolean" ? p.favourite
+          : typeof p.chapter_list?.[p.chapter]?.favourite === "boolean" ? p.chapter_list[p.chapter].favourite : null;
+      const starHtml = fav === null ? ""
+        : star ? iconButton(fav ? "star" : "starOff", fav ? t.favOff : t.favOn, `class="star now-star${fav ? " on" : ""}" data-act="${esc(star)}" data-i="${p.chapter}" aria-pressed="${fav}"`)
+          : fav ? `<span class="now-star on" role="img" aria-label="${esc(t.favIs)}" title="${esc(t.favIs)}">${icon("star")}</span>` : "";
+      // How the favourites steer the figure right now (the page knows it)
+      const steering = p.favourites?.suspended ? t.favNowAll : p.favourites?.mode ? t[`favNow_${p.favourites.mode}`] : "";
       let html = `<div class="play">${this._pic(p.image_url)}<div class="text"><span class="headline">${esc(p.tonie_name || t.unknownFigure)}</span>` +
         `${chapter ? `<span class="supporting">${chapter}</span>` : ""}` +
-        `<span class="supporting state ${kind}">${ic ? icon(ic) : ""}${esc(state)}</span></div></div>`;
+        `<span class="supporting state ${kind}">${ic ? icon(ic) : ""}${esc(state)}${steering ? ` · ${esc(steering)}` : ""}</span></div>${starHtml}</div>`;
       // The bar is filled by _tick(): while playing, the position moves on locally
       if (Number.isFinite(p.duration) && p.duration > 0) {
         const at = time(p.received_at);

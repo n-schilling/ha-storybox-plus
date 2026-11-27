@@ -1,8 +1,9 @@
 // Storybox Plus: the dashboard card of the Tonieboxes 2. It shows every user what
 // is going on: what plays, online or not, the battery, volume, headphones, the
-// sleep timer, the next alarm, the night mode. It reads the entities of the boxes
-// and nothing else; its buttons call actions every user may call on a box's media
-// player anyway. Neither settings nor the charge history: those are on the page.
+// sleep timer, the next alarm, the night mode, and whether the chapter that plays
+// is a favourite. It reads the entities of the boxes and nothing else; its buttons
+// the star and the list of chapters call actions every user may call on a box's
+// media player anyway. Neither settings nor the charge history: those are on the page.
 //
 // Without a box in its configuration it shows every Toniebox 2, from the list the
 // summary entity of each account carries. It is as high as what it shows; given
@@ -19,6 +20,7 @@ const DOMAIN = "storybox_plus";
 const ACTIONS = [
   "media_player.media_play", "media_player.media_pause", "media_player.media_next_track", "media_player.media_previous_track",
   "media_player.volume_up", "media_player.volume_down", "storybox_plus.set_sleep_timer", "storybox_plus.clear_sleep_timer",
+  "storybox_plus.set_favourite", "media_player.play_media",
 ];
 // The entities of a box the card reads beside its media player, by the integration's own keys
 const KEYS = ["connectivity", "battery", "charging", "headphones", "night_mode", "sleep_timer", "next_alarm"];
@@ -195,7 +197,8 @@ if (!customElements.get(CARD)) {
         this.shadowRoot.addEventListener("click", (e) => this._clicked(e));
         // A row that opens something reacts to Enter and Space as well
         this.shadowRoot.addEventListener("keydown", (e) => {
-          if ((e.key === "Enter" || e.key === " ") && e.composedPath()[0]?.hasAttribute?.("data-entity")) {
+          const el = e.composedPath()[0];
+          if ((e.key === "Enter" || e.key === " ") && (el?.hasAttribute?.("data-entity") || el?.matches?.("li[role=button][data-act]"))) {
             e.preventDefault();
             this._clicked(e);
           }
@@ -231,6 +234,21 @@ if (!customElements.get(CARD)) {
         if (button.hasAttribute("disabled")) return;
         const [kind, player, command, value] = button.getAttribute("data-act").split(":");
         if (kind === "ctl") this._command(player, command, value);
+        // The star of the chapter that plays, or of one in the list: the chapter it was
+        // drawn for (its index from 0) and the state it does not show yet
+        const wanted = button.getAttribute("aria-pressed") !== "true";
+        if (kind === "star") this._command(player, "star", { chapter: Number(button.dataset.i), favourite: wanted });
+        if (kind === "starch") this._command(player, "star", { chapter: Number(command), favourite: wanted });
+        // The list of chapters opens above the dashboard; a chapter chosen there plays and closes it
+        if (kind === "tracks") {
+          this._tracks = player;
+          this._renderOverlay();
+        }
+        if (kind === "jump") {
+          this._tracks = null;
+          this._renderOverlay();
+          this._command(player, "chapter", command);
+        }
         return;
       }
       // A tap on a small row opens Home Assistant's own dialog of the box: reading, no action
@@ -311,6 +329,10 @@ if (!customElements.get(CARD)) {
           chapter: track === null ? null : track - 1,
           chapter_title: a.media_title && a.media_title !== figure ? a.media_title : null,
           chapters: number(a.chapters),
+          // Every chapter by name, length and star, for the list
+          chapter_list: Array.isArray(a.chapter_list) ? a.chapter_list : [],
+          // Whether the chapter that plays is a favourite; null while no chapter is known
+          favourite: typeof a.favourite === "boolean" ? a.favourite : null,
           playing,
           paused,
           state_text: word,
@@ -333,6 +355,10 @@ if (!customElements.get(CARD)) {
         volume_down: ["media_player.volume_down", {}],
         sleep: ["storybox_plus.set_sleep_timer", { minutes: Number(value) }],
         sleep_clear: ["storybox_plus.clear_sleep_timer", {}],
+        // The chapter counted from 1, and whether it gets the star or loses it
+        star: ["storybox_plus.set_favourite", { chapter: Number(value?.chapter) + 1, favourite: !!value?.favourite }],
+        // The media ID names the figure, so a chapter of a figure taken off meanwhile is refused
+        chapter: ["media_player.play_media", { media_content_type: "track", media_content_id: `chapter:${this._hass.states[player]?.attributes.tonie_id}:${Number(value)}` }],
       };
       const [action, data] = calls[command] || [];
       if (!ACTIONS.includes(action)) return;
@@ -349,8 +375,19 @@ if (!customElements.get(CARD)) {
       this._render();
     }
 
+    // The list of chapters of the box whose button was pressed, in Home Assistant's dialog
+    _renderOverlay() {
+      const host = this.shadowRoot.getElementById("overlay");
+      if (!host || (!this._tracks && !host.firstElementChild)) return;
+      this._renderTracks(host, this._tracks && this._hass?.states[this._tracks] ? this._read(this._tracks) : null, {
+        busy: this._ctlBusy === this._tracks,
+        error: this._ctlError?.id === this._tracks ? this._error(this._ctlError.err) : null,
+      });
+    }
+
     _render() {
       if (!this._hass || !this.isConnected) return;
+      this._renderOverlay();
       const players = this._players();
       const boxes = (players || []).map((player) => this._read(player));
       const fixed = this._layout === "grid";
@@ -363,7 +400,7 @@ if (!customElements.get(CARD)) {
       if (!card) {
         // The frame stays: a new ha-card shows its content only once it has drawn
         // itself, so what is measured right after creating it would be nothing
-        root.innerHTML = `<style>${STYLE}${CARD_STYLE}</style><ha-card><div class="content"></div></ha-card>`;
+        root.innerHTML = `<style>${STYLE}${CARD_STYLE}</style><ha-card><div class="content"></div></ha-card><div id="overlay"></div>`;
         card = root.querySelector("ha-card");
         this._watch();
         card.updateComplete?.then(() => {
@@ -446,7 +483,7 @@ if (!customElements.get(CARD)) {
       const figure = p ? p.tonie_name || t.unknownFigure : "";
       const lines = [];
       if (b.online === false) lines.push(b.word);
-      else if (p?.playing) lines.push(...(p.chapter_title ? [`${figure} · ${p.chapter_title}`] : []), figure, b.word);
+      else if (p?.playing) lines.push(...(p.chapter_title ? [`${figure} · ${p.favourite ? "★ " : ""}${p.chapter_title}`] : []), figure, b.word);
       else if (p?.paused) lines.push(`${figure} · ${b.word}`, figure, b.word);
       else if (p) lines.push(figure);
       else lines.push(c.show_playback ? t.nothing : b.word);

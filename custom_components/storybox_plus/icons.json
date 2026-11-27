@@ -37,6 +37,12 @@
     },
     "clear_sleep_timer": {
       "service": "mdi:sleep-off"
+    },
+    "set_favourite": {
+      "service": "mdi:star"
+    },
+    "play_favourite": {
+      "service": "mdi:star-circle"
     }
   }
 }

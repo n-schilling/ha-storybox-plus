@@ -29,6 +29,7 @@ from .conftest import (
     CLASSIC_BOX_ID,
     CREATIVE_ID,
     CREATIVE_NAME,
+    DISC_ID,
     DISC_NAME,
     HOUSEHOLD_ID,
     HOUSEHOLD_NAME,
@@ -92,6 +93,7 @@ async def test_overview(
                 "voice": None,
                 "voice_language": None,
                 "fetch_max_mb": 200,
+                "favourites_mode": "first",
             },
             "speech_auto": None,
             "cloud": {
@@ -141,9 +143,10 @@ async def test_overview(
         "chapter_title": "Kapitel 2",
         "chapters": 2,
         "chapter_list": [
-            {"title": "Kapitel 1", "seconds": None},
-            {"title": "Kapitel 2", "seconds": None},
+            {"title": "Kapitel 1", "seconds": None, "favourite": False},
+            {"title": "Kapitel 2", "seconds": None, "favourite": False},
         ],
+        "favourites": {"chapters": [], "mode": None, "paused_mode": None, "suspended": False},
         "playing": True,
         "paused": False,
         "ended": False,
@@ -183,9 +186,10 @@ async def test_overview_before_any_push(
         "chapter_title": None,
         "chapters": 2,
         "chapter_list": [
-            {"title": "Kapitel 1", "seconds": None},
-            {"title": "Kapitel 2", "seconds": None},
+            {"title": "Kapitel 1", "seconds": None, "favourite": False},
+            {"title": "Kapitel 2", "seconds": None, "favourite": False},
         ],
+        "favourites": {"chapters": [], "mode": None, "paused_mode": None, "suspended": False},
         "playing": False,
         "paused": None,
         "ended": None,
@@ -350,6 +354,26 @@ async def test_analytics(
             "seconds": 30,
         },
     ]
+    # One star, on the chapter that was heard: all the counted time of the figure is a favourite's
+    assert result["result"].pop("favourites") == {
+        "count": 0,
+        "seconds": 0,
+        "counted_seconds": 150,
+        "share": None,
+        "per_tonie": [],
+        "hidden": [
+            {
+                "tonie_id": TONIE_ID,
+                "name": TONIE_NAME,
+                "image_url": f"https://img.example.com/{TONIE_ID}.png",
+                "chapter": 1,
+                "title": "Kapitel 2",
+                "seconds": 120,
+                "plays": None,
+            }
+        ],
+        "unheard": [],
+    }
     assert result["result"] == {
         "enabled": True,
         "days": None,
@@ -376,7 +400,27 @@ async def test_analytics(
         "active_per_box": [],
     }
 
+    tonie = setup_entry.runtime_data.coordinator.data.tonies[TONIE_ID]
+    await setup_entry.runtime_data.favourites.async_set(tonie, [0, 1], None)
+    # A star on a figure nobody listened to: it is no star hardly heard
+    disc = setup_entry.runtime_data.coordinator.data.tonies[DISC_ID]
+    await setup_entry.runtime_data.favourites.async_set(disc, [0], None)
     result = await _ask(client, {"type": f"{DOMAIN}/analytics", "days": 1, "limit": 1})
+    stars = result["result"]["favourites"]
+    assert (stars["count"], stars["seconds"], stars["share"]) == (3, 120, 0.8)
+    assert stars["per_tonie"] == [
+        {
+            "tonie_id": TONIE_ID,
+            "name": TONIE_NAME,
+            "image_url": f"https://img.example.com/{TONIE_ID}.png",
+            "seconds": 120,
+            "favourite_seconds": 120,
+            "share": 1.0,
+        }
+    ]
+    # The figure nobody knows has no chapter to mark; the star nobody heard is listed
+    assert stars["hidden"] == []
+    assert [(c["chapter"], c["seconds"]) for c in stars["unheard"]] == [(0, 0)]
     assert result["result"]["days"] == 1
     assert [t["tonie_id"] for t in result["result"]["top"]] == [TONIE_ID]
     assert result["result"]["total_seconds"] == 150
@@ -405,6 +449,7 @@ async def test_analytics_switched_off(
         "top": [],
         "top_placed": [],
         "top_chapters": [],
+        "favourites": None,
         "heatmap": [[0] * 24 for _ in range(7)],
         "heatmap_boxes": [],
         "previous_total_seconds": None,

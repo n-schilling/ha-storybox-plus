@@ -174,7 +174,7 @@ def test_page_is_built_from_home_assistants_elements() -> None:
         "ha-dialog",
         'slot="fab"',
     ):
-        assert element in panel, element
+        assert element in panel + shared, element
     for gone in (
         "ha-top-app-bar-fixed",
         "ha-menu-button",

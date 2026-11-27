@@ -6,6 +6,33 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Favourites play by a mode, set for the account under Setup → Preferences and, where a figure should differ, in the figure's settings: favourites first (placed on a Toniebox 2, the figure starts with its favourites and plays the other chapters after them), a random favourite first, only the favourites, only the favourites within a bedtime of the box, or as the box plays.
+- Creative figures take favourites too. Their stars are kept by chapter, so they stay with their chapters when these are arranged anew or shuffled.
+- A star beside the chapter that plays, on the page and on the dashboard card, sets or takes off the favourite at once; the list of chapters of a box has a star per chapter. The media player has the attribute `favourite` and the actions `storybox_plus.set_favourite` and `storybox_plus.play_favourite` (the next favourite of the figure on the box), which every user may call.
+- The dashboard card has the button for the list of chapters, as the page has: the chapters of the figure on the box open in a dialog, a chapter chosen there plays from its start and a star marks it. The media player carries the list for it in the attributes `tonie_id` and `chapter_list` (not recorded).
+- The page **Favourites** under Figures lists every chapter with a star; one whose figure stands on a Toniebox 2 plays with a tap.
+- The button **Everything today** on a box's card lets the figure play every chapter until it is taken off, and ends that again.
+- The listening summary shows the favourites: their share of the listening time, also per figure, the chapters heard most that have no star yet, and the stars that were hardly heard, each with its star to set or take off.
+
+### Changed
+
+- **Breaking:** the switch "Steer the Toniebox 2 by the favourites" of a figure is gone. A figure whose switch was on now has the mode "Only the favourites", one whose switch was off "As the box plays"; every other figure follows the account's mode, which starts as "Favourites first". The WebSocket command `storybox_plus/favourites/set` takes `mode` instead of `active`.
+- The order of the favourites begins when the figure is placed. The same figure taken off for less than two minutes plays on where it was.
+- With only the favourites playing, a figure placed behind its last favourite begins with the first one instead of pausing at once.
+- Repeat of the whole figure, while favourites steer it, plays their order to its end and begins it again.
+
+### Fixed
+
+- A chapter chosen in Home Assistant (the list of chapters on the page, the media browser, the next and previous buttons) was left again at once when it was no favourite. It plays now; next and previous lead to the chapters the order wants.
+- A chapter first reported while the box was paused or still loading was never left afterwards, although it was no favourite.
+- A command of the favourites that did not reach the box was not sent again: the chapter played to its end. It is sent again with the next report of the box, three times in a row at most.
+- While a Tune lies on a figure, the box is no longer steered by the favourites of the figure's own chapters.
+- Two accounts of one household both steered the box they share; now the account that speaks for the box does, with the stars kept in one place.
+- A chapter chosen in Home Assistant before the box itself reported what it plays was refused as "another figure"; the figure the cloud names counts until then.
+- After a restart of Home Assistant the favourites steered a figure again that had been set free by pressing play; what a box plays of its figure is kept now.
+
 ## [1.1.1] - 2026-11-26
 
 ### Fixed

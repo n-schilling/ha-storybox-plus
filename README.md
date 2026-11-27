@@ -11,7 +11,7 @@ What it is for, for example:
 - bedtimes with an alarm that rings on the chosen days: Home Assistant sets it on the box every evening, which the app does only once;
 - the bedtime scene pauses the box in the children's room;
 - a notification when the battery of the box runs low, or a dashboard card with what plays;
-- favourite chapters: the box skips the chapters nobody wants to hear;
+- favourite chapters: a figure starts with the chapters everybody loves, or plays only those;
 - chapters of a creative figure uploaded, rearranged and removed from Home Assistant, also from a video link;
 - the settings of a box, such as its name, maximum volume, light ring and tapping, changed on the page;
 - a night mode for the light ring: dimmed from evening to morning, back to its normal brightness afterwards;
@@ -168,25 +168,49 @@ The cloud's API is not documented for third parties and may change. Storybox Plu
 
 ### Favourite chapters
 
-Bought figures and discs take favourite chapters: a star on each chapter, and a switch per figure. While the switch is on and the figure plays on a Toniebox 2, the integration steers the box:
+Every chapter of a figure can get a star: on the figure's page, in the list of chapters of a box (on the page and on the dashboard card), on the page **Favourites**, in the listening summary, and beside the chapter that plays, on the page and on the dashboard card. The star of the chapter that plays is also the action `storybox_plus.set_favourite`, which every user may call.
+
+How the favourites play on a Toniebox 2 is a mode. It is set for the account (Setup → Preferences) and, where a figure should differ, in that figure's settings:
+
+| Mode | What the box does |
+|---|---|
+| Favourites first (the default) | Placed on the box, the figure starts with its favourites, one after the other, and plays the other chapters after them; no chapter plays twice. |
+| Random favourite first | The same, with another favourite at the front each time the figure is placed. |
+| Only the favourites | Every other chapter is skipped; after the last favourite the box pauses. |
+| Only the favourites at bedtime | Favourites first by day; from the sleep time to the wake-up of an enabled bedtime of the box, only the favourites. |
+| As the box plays | The stars are kept, the box is left alone. |
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Playing
-    Playing --> Playing: a favourite begins
-    Playing --> Jump: another chapter begins
-    Jump --> Playing: to the next favourite,<br/>after a jump back at the box to the previous one
-    Playing --> Paused: a chapter after the last favourite begins
+    [*] --> Order: figure placed,<br/>the order begins
+    Order --> Order: the chapter the order wants begins
+    Order --> Jump: another chapter begins
+    Jump --> Order: to the next chapter of the order,<br/>after a step back to the one before
+    Order --> Paused: the order is over<br/>and another chapter begins
     Paused --> Free: play pressed at the box
+    Order --> Free: "Everything today" on the page
     Free --> Free: every chapter plays
+    Free --> Order: "Everything today" switched off
     Free --> [*]: figure taken off
 ```
 
-The box itself knows no selection; the integration sends it on through the cloud, so the start of a skipped chapter can be heard for a moment, and without the cloud or Home Assistant the box plays everything. Pressing play at the box after the pause behind the last favourite means the child wants to go on: the favourites stop steering that box for the figure, and every chapter plays, until the figure is taken off. Placed again, it is steered by its favourites again. The lists live in the integration's own store.
+The box itself knows no selection; the integration follows what it reports and sends it on through the cloud. So the start of a chapter that is left can be heard for a moment, and without the cloud or Home Assistant the box plays everything in its own order. What follows from that:
+
+- The order begins when the figure is placed. A figure Home Assistant finds playing on a box it knows nothing of yet (the first use, right after the update) plays on where it is. The same figure taken off for less than two minutes (knocked over, lifted) plays on where it was. If its order was already over, it begins anew. An end of the figure that Home Assistant did not hear happen (after a restart) starts nothing. A box that falls asleep and wakes with the figure still on it goes on as well.
+- The buttons of the box and of Home Assistant (next, previous) move along the order. A chapter picked from a list (the page, the media browser, the app) plays, whatever the order says, and the order goes on from it.
+- Pressing play at the box after the pause behind the end of the order means the child wants to go on: every chapter plays until the figure is taken off. The button **Everything today** on the box's card does the same at any time, and ends it again.
+- A star set or taken off while the figure plays changes the order from the chapter that plays; nothing jumps.
+- A command that did not reach the box is sent again with its next report, three times in a row at most; then the chapter plays, and the chapter after it gets one more try.
+- While a Tune lies on a figure, the box plays the Tune: it is not steered, and what plays shows and takes no star.
+- Where several accounts of one household are set up, the first one keeps the stars and steers the box.
+- The stars of a figure that left the account are kept for a month, in case it comes back.
+- What each box plays of its figure is kept in the store with the stars, so a restart of Home Assistant changes nothing for a figure that plays.
+
+The stars of a bought figure are kept by position, those of a creative figure by chapter: arranged anew or shuffled, a star stays with its chapter, and a removed chapter loses it. `storybox_plus.play_favourite` plays the next favourite of the figure on a box, for a button on the wall.
 
 ### Repeat
 
-A Toniebox 2 repeats the figure on it as a whole, or one chapter of it: by the button on the box's card on the page (off, the whole figure, this chapter) or by the media player's own action `media_player.repeat_set` (`all`, `one`, `off`). The box itself knows no repeat; the integration sends it back through the cloud. With `all` the first chapter starts again once the figure has ended, or the first favourite chapter while favourites steer the figure. With `one` a chapter that ran out starts again as soon as the next one begins, so the beginning of the next chapter can be heard for a moment; a chapter skipped to by hand is left alone and is the one that repeats from then on. Without the cloud or Home Assistant the box plays on as it would.
+A Toniebox 2 repeats the figure on it as a whole, or one chapter of it: by the button on the box's card on the page (off, the whole figure, this chapter) or by the media player's own action `media_player.repeat_set` (`all`, `one`, `off`). The box itself knows no repeat; the integration sends it back through the cloud. With `all` the first chapter starts again once the figure has ended; while favourites steer the figure, their order is played to its end and then begins again. With `one` a chapter that ran out starts again as soon as the next one begins, so the beginning of the next chapter can be heard for a moment; a chapter skipped to by hand is left alone and is the one that repeats from then on. Without the cloud or Home Assistant the box plays on as it would.
 
 The repeat belongs to the figure on the box and ends when it is taken off. It is kept in the integration's store, so it goes on after a restart of Home Assistant while that figure is still on the box. An end of the figure that Home Assistant did not see happen is not caught up: the box would start to play long after it fell silent.
 
@@ -255,7 +279,7 @@ How long a charge lasts: every discharge from leaving the charger to the next ch
 
 - The password is used once for the sign-in; only the refresh token is stored, and the cloud rotates it with every refresh. A refused token asks for a new sign-in of the same account.
 - No e-mail address, WLAN name or MAC address appears in a state or attribute. Diagnostics contain no tokens, names, addresses or listening data; the log never contains tokens, the password or a request's body, and IDs in it are cut short.
-- Changes to the account (chapters, favourites) are offered only on the page, which is for administrators only; the WebSocket commands refuse everybody else. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
+- Changes to the account (chapters, settings, how favourites play) are offered only on the page, which is for administrators only; the WebSocket commands refuse everybody else. The one thing every user may change is the star of a chapter of the figure on a box, through the action of the media player. Uploaded files are deleted from Home Assistant as soon as they are in the cloud.
 - A link is fetched by the Media Fetcher app inside your Home Assistant, which the integration finds through the Supervisor's list of apps and reaches in the app network without a token; only audio is taken from it, and the file is deleted from the app once it is in the cloud. Whether a video may be copied onto a figure is between you, its owner and the platform's terms; the integration does not check that.
 
 ### Chapters from text
@@ -270,10 +294,10 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 
 **Storybox Plus** in the sidebar, for administrators, built from Home Assistant's own elements in the frame of its settings pages, in four areas; each area's pages are tabs below the header, and a box or a figure opens as a page of its own with a back arrow:
 
-- **Boxes** (`/storybox-plus/boxes/overview`): every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays, buttons to play, pause, skip chapters, open the list of chapters (a chapter chosen there plays from its start), repeat the figure or a chapter, change the volume and set or cancel a sleep timer of 30 or 60 minutes (left out while a bedtime's alarm is due), its battery's level and online or offline as a dot. A Toniebox 1 gets a small card: its settings in one line and when it was last seen. The cog of a box, or its battery's level, opens the box (`?key=<box>`) with its views **Settings** (with the firmware), **Night mode**, **Bedtimes** and **Battery** (with the charge history) (`&view=settings|night|bedtimes|battery`).
-- **Figures**: **Figures** (`/figures/list`), the library with search over names and chapters and a filter by kind; a figure opens (`?key=<figure>`) with its views **Chapters** (favourite stars for bought figures, the edit mode for creative ones), **Settings** (name, live mode, volume, lock, steering by favourites, shuffling on swap), **Tune** and, for a creative figure, **Add** (files, YouTube, text). **Tunes** (`/figures/tunes`): the bought Tunes, redeeming a voucher and content from a code.
-- **Listening**: **Summary** (the total with the comparison, the most played figures and chapters, the figures placed most often, the sums per box) and **Times** (a chart per day, per week over long spans, and when is listened to by weekday and hour), for 7, 30 or 365 days or since the setup.
-- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app), **Preferences** (counting the listening time and how long it is kept, locking new figures, marking notifications as read, the speech entity and voice for text chapters, the largest file taken from a link, the cloud's version) and **Log** (the log level, how many days the lines are kept, the latest lines and a download). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
+- **Boxes** (`/storybox-plus/boxes/overview`): every box with its live state; a Toniebox 2 with volume, headphones, sleep timer, the next alarm, what plays with the star of its chapter, buttons to play, pause, skip chapters, open the list of chapters (a chapter chosen there plays from its start, its star marks it), repeat the figure or a chapter, let it play everything today while favourites steer it, change the volume and set or cancel a sleep timer of 30 or 60 minutes (left out while a bedtime's alarm is due), its battery's level and online or offline as a dot. A Toniebox 1 gets a small card: its settings in one line and when it was last seen. The cog of a box, or its battery's level, opens the box (`?key=<box>`) with its views **Settings** (with the firmware), **Night mode**, **Bedtimes** and **Battery** (with the charge history) (`&view=settings|night|bedtimes|battery`).
+- **Figures**: **Figures** (`/figures/list`), the library with search over names and chapters and a filter by kind; a figure opens (`?key=<figure>`) with its views **Chapters** (favourite stars, the edit mode for creative figures), **Settings** (name, live mode, volume, lock, how its favourites play, shuffling on swap), **Tune** and, for a creative figure, **Add** (files, YouTube, text). **Favourites** (`/figures/favourites`): every chapter with a star, figure by figure; a chapter of a figure that stands on a Toniebox 2 plays with a tap. **Tunes** (`/figures/tunes`): the bought Tunes, redeeming a voucher and content from a code.
+- **Listening**: **Summary** (the total with the comparison, the most played figures and chapters, the figures placed most often, the favourites: their share of the listening time, the chapters heard most that have no star yet, the stars hardly heard, each with its star to set or take off; the sums per box) and **Times** (a chart per day, per week over long spans, and when is listened to by weekday and hour), for 7, 30 or 365 days or since the setup.
+- **Setup**: **Overview** (the steps with their state: account loaded, household named, preferences chosen, and the optional Media Fetcher app and Piper voice; Continue leads to the first open one; the version of the integration at the bottom), **Household** (its name and its members, shown only as the cloud shows them, managed in the app), **Preferences** (counting the listening time and how long it is kept, locking new figures, how favourites play, marking notifications as read, the speech entity and voice for text chapters, the largest file taken from a link, the cloud's version) and **Log** (the log level, how many days the lines are kept, the latest lines and a download). A new household name also becomes the entry's title and the account device's name, as long as the title was still the household's name.
 
 Settings are rows with their explanation behind an (i); one save button appears while something differs from what is saved. Errors read one line by their kind, Home Assistant's message behind the (i). Numbers follow the number format of the user's profile, and number fields take a point or a comma. Addresses of before (`#figures`, `#preferences`, …) lead to the page that took their place; opened without an address while no account is loaded, the page starts at the setup.
 
@@ -306,6 +330,8 @@ The large form lays itself out by its width: from 600 px what plays stands besid
 
 <img src="docs/screenshots/card-wide.png" alt="The dashboard card at 748 by 262 pixels: name, online dot and battery in the head; on the left the figure that plays with its progress, on the right volume, headphones, the next alarm and the buttons" width="600">
 
+<img src="docs/screenshots/card-chapters.png" alt="The list of chapters opened from the dashboard card, in a dialog above the dashboard: eight chapters with their lengths, the one that plays marked, a star beside each" width="600">
+
 Every part can be switched on or off, in the card's editor or in YAML. All of them show unless turned off, but the night mode: it is for whoever set it up and shows once switched on.
 
 | Option | |
@@ -325,7 +351,7 @@ Every part can be switched on or off, in the card's editor or in YAML. All of th
 
 The card reads entities and nothing else: the list of the boxes from the attribute of `sensor.<account>_boxes`, the media player of each box and, by the integration's own keys, the sensors of the same device, so a renamed entity changes nothing and a disabled sensor leaves its part out. States and times read as Home Assistant writes them for the user's profile.
 
-Its buttons are the one exception to reading, for what every user may operate on the media player anyway. They call `media_player.media_play`, `media_pause`, `media_next_track`, `media_previous_track`, `volume_up`, `volume_down`, and `storybox_plus.set_sleep_timer` (30 or 60 minutes) and `clear_sleep_timer`, each on the box's media player; a refused press reads one line. While the alarm of a bedtime is due, the sleep timer's buttons are left out.
+Its buttons are the one exception to reading, for what every user may operate on the media player anyway. They call `media_player.media_play`, `media_pause`, `media_next_track`, `media_previous_track`, `volume_up`, `volume_down`, `storybox_plus.set_sleep_timer` (30 or 60 minutes) and `clear_sleep_timer`; the star beside the chapter that plays calls `storybox_plus.set_favourite`; and the button for the list of chapters opens the chapters of the figure in a dialog above the dashboard, where a chapter chosen plays from its start (`media_player.play_media`) and a star marks it. Each is called on the box's media player; a refused press reads one line. While the alarm of a bedtime is due, the sleep timer's buttons are left out.
 
 ## Examples
 
@@ -390,7 +416,7 @@ actions:
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The box plays whatever figure stands on it; Home Assistant cannot choose a figure.
 - The listening times count from the setup on; the cloud offers no history.
-- Favourite chapters work only on a Toniebox 2 and only through the cloud.
+- Favourite chapters steer only a Toniebox 2 and only through the cloud; the start of a chapter that is left can be heard for a moment.
 - The alarm of a bedtime is set only while the box is online and Home Assistant runs; the box keeps one timer, so an alarm and a sleep timer exclude each other. The alarm tone is the one the app chose, or the app's first; the page does not choose tones.
 - Uploads go through Home Assistant's own file upload and take at most 100 MB per file. Which formats the cloud converts is its decision.
 - The cloud's API is not documented for third parties. If the manufacturer changes it, this integration needs an update.
@@ -426,7 +452,7 @@ IDs as created in English, for a box named "Kids room". Every unique ID starts w
 | `sensor.kids_room_next_alarm` | `<entry>_<box>_next_alarm` | Toniebox 2 that rings alarms | when the next alarm of the [bedtimes](#bedtimes-and-the-alarm) rings (a timestamp); unknown without one. The attribute `due` is true while the alarm is close enough for the box's timer to carry it: a sleep timer is refused then |
 | `sensor.<account>_boxes` | `<entry>_boxes` | the account's device | how many Tonieboxes 2 the account has; the attribute `boxes` lists them for dashboards, each with `name` (as in Home Assistant), `entity_id` (its media player) and `picture`. The attribute is not recorded |
 | `binary_sensor.<account>_live_channel` | `<entry>_live_channel` | the account's device, with a Toniebox 2 | the push channel is connected; live state and commands of every Toniebox 2 go through it |
-| `media_player.kids_room` | `<entry>_<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length, and the attributes `chapters` (how many the figure has) and `box_picture` (the address of the box's picture) |
+| `media_player.kids_room` | `<entry>_<box>` | Toniebox 2 | `playing`, `paused`, `idle` (no figure), `off` (switched off) with figure, chapter, picture, position and length, and the attributes `chapters` (how many the figure has), `favourite` (whether the chapter that plays is a favourite), `tonie_id` and `chapter_list` (the figure on the box and its chapters by name, length and star; not recorded) and `box_picture` (the address of the box's picture) |
 | `event.kids_room_figure` | `<entry>_<box>_figure` | Toniebox 2 | event types `placed`, `removed` with `tonie_id` and `tonie` (name) |
 | `event.<account>_cloud_notification` | `<entry>_notification` | the account's device | event type `notification` with `kind` (the cloud's type, `system` for a broadcast), `text`, `time`, `tonie_id`, `tonie`, `reason` (why a conversion failed) |
 
@@ -438,8 +464,10 @@ The media player takes play, pause, volume (13 levels), next and previous chapte
 |---|---|---|
 | `storybox_plus.set_sleep_timer` | `minutes` (1 to 1092) | the box falls asleep on its own after that time; a running timer is replaced |
 | `storybox_plus.clear_sleep_timer` | none | cancels the running timer |
+| `storybox_plus.set_favourite` | optional `chapter` (counted from 1; none: the one that plays), optional `favourite` (none: the star changes sides) | marks a chapter of the figure on the box as a favourite, or takes its star off |
+| `storybox_plus.play_favourite` | none | plays the next favourite of the figure on the box; after the last one, the first |
 
-Both target the media player of a Toniebox 2. While the alarm of a bedtime is due, they and turning the media player off are refused, because each would replace the alarm.
+All target the media player of a Toniebox 2. While the alarm of a bedtime is due, the two of the sleep timer and turning the media player off are refused, because each would replace the alarm.
 
 ### WebSocket commands
 
@@ -454,18 +482,20 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | `storybox_plus/chapters/add_text` | `tonie_id`, `text` (up to 5000 characters), optional `title` (else the first words); the account's voice speaks it |
 | `storybox_plus/chapters/add` | `tonie_id`, `file_id` (from `/api/file_upload`), optional `title` |
 | `storybox_plus/chapters/add_link` | `tonie_id`, `url`; a subscription that reports the stages |
-| `storybox_plus/favourites/set` | `tonie_id`, `chapters` (positions from 0), `active` |
+| `storybox_plus/favourites/set` | `tonie_id`, optional `chapters` (positions from 0; without them the stars stay and only the mode changes), `mode` (`first`, `random`, `only`, `bedtime`, `off`, or null for the account's mode) |
+| `storybox_plus/favourites/star` | `tonie_id`, `chapter` (position from 0), optional `favourite` (none: the star changes sides) |
+| `storybox_plus/box/favourites` | `box_id` (a Toniebox 2 with a figure on it), `suspended` (true: every chapter plays until the figure is taken off); answers with the box |
 | `storybox_plus/figure/refresh` | `tonie_id` |
 | `storybox_plus/figure/update` | `tonie_id` (a creative figure) and `name` and/or `live` |
 | `storybox_plus/figure/shuffle_on_swap` | `tonie_id` (a creative figure), `enabled` |
 | `storybox_plus/household/rename` | `household_id`, `name`; answers with the entry's title |
 | `storybox_plus/figure/tune` | `tonie_id`, `tune_id` (from the library's `tunes`, or null to take the Tune off); answers with the Tunes and the figure |
-| `storybox_plus/box/command` | `box_id` (a Toniebox 2), `command` (`play`, `pause`, `next`, `previous`, `chapter` with `value` as its index from 0, `volume` with `value` 0 to 13, `sleep` with `value` in minutes, `sleep_clear`) |
+| `storybox_plus/box/command` | `box_id` (a Toniebox 2), `command` (`play`, `pause`, `next`, `previous`, `chapter` with `value` as its index from 0 and optionally `tonie_id`, the figure it is meant for, `volume` with `value` 0 to 13, `sleep` with `value` in minutes, `sleep_clear`) |
 | `storybox_plus/box/repeat` | `box_id` (a Toniebox 2 with a figure on it), `mode` (`all`, `one` or null for off); answers with the box |
 | `storybox_plus/voucher/redeem` | `entry_id`, `code`; answers with how many Tunes it brought and the Tunes |
 | `storybox_plus/figure/redeem_token` | `tonie_id` (a creative figure), `token`; answers with the figure |
 | `storybox_plus/figure/lock` | `tonie_id` (a bought figure or disc), `locked` |
-| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `speech_engine` (a `tts` entity; null: Piper), `voice` with `voice_language` (null: the engine's default), `fetch_max_mb` (10–2000); switching `analytics` sets the account up anew |
+| `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `speech_engine` (a `tts` entity; null: Piper), `voice` with `voice_language` (null: the engine's default), `fetch_max_mb` (10–2000), `favourites_mode` (`first`, `random`, `only`, `bedtime`, `off`); switching `analytics` sets the account up anew |
 | `storybox_plus/log` | optional `limit`; the log level, the days kept and the latest lines, newest first (without a limit, all lines kept) |
 | `storybox_plus/log/set` | any of `level` (`debug`, `info`, `warning`, `error`), `days` (0–90) |
 | `storybox_plus/figure/volume` | `tonie_id`, `level` (1 to 13, or null for the box's own volume) |
@@ -476,7 +506,7 @@ For administrators only; the page uses them. Their answers serve the page and ar
 
 ### Stores
 
-`.storage/storybox_plus.<entry>.analytics` (daily sums per figure and box, per chapter, per hour), `.battery` (charges), `.chapters` (chapters learned from the boxes), `.favourites`, `.night` (night modes with the phase set last), `.volumes` (levels per figure and the levels to restore per box), `.notices` (the cloud's notifications passed on), `.settings` (the preferences and the figures looked at for locking) and `.shuffle` (the figures shuffled on swap and the last figure per box), version 1 each. Deleting the entry deletes them.
+`.storage/storybox_plus.<entry>.analytics` (daily sums per figure and box, per chapter, per hour), `.battery` (charges), `.chapters` (chapters learned from the boxes), `.favourites` (the stars and own mode per figure, and what each box plays of its figure), `.night` (night modes with the phase set last), `.volumes` (levels per figure and the levels to restore per box), `.notices` (the cloud's notifications passed on), `.settings` (the preferences and the figures looked at for locking) and `.shuffle` (the figures shuffled on swap and the last figure per box), version 1 each. Deleting the entry deletes them.
 
 ## Installation
 

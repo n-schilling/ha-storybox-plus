@@ -18,3 +18,28 @@ clear_sleep_timer:
     entity:
       integration: storybox_plus
       domain: media_player
+
+set_favourite:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player
+  fields:
+    chapter:
+      required: false
+      example: 3
+      selector:
+        number:
+          min: 1
+          max: 999
+          mode: box
+    favourite:
+      required: false
+      selector:
+        boolean:
+
+play_favourite:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player

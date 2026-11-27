@@ -53,7 +53,7 @@ from .coordinator import (
     setting_supported,
     tonie_owner,
 )
-from .favourites import Favourites
+from .favourites import MODES as FAVOURITE_MODES
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 from .log import LEVELS, MAX_DAYS, async_get_log
 from .night import NightMode
@@ -90,7 +90,6 @@ _CHAPTER_MESSAGES = {
     "fetcher_missing": "The Media Fetcher app is not installed or not running",
     "speech_missing": "No voice for texts is set up in Home Assistant",
     "invalid_url": "Only web links (http or https) can be fetched",
-    "not_bought": "Favourites are for bought figures; the chapters of creative figures are arranged instead",
     "not_lockable": "Only bought figures and discs are locked to a household",
     "unknown_tune": "The account has no such Tune",
     "unsuitable_tune": "The Tune does not fit this figure",
@@ -116,6 +115,8 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_add_text)
     async_register_command(hass, websocket_refresh_figure)
     async_register_command(hass, websocket_set_favourites)
+    async_register_command(hass, websocket_star)
+    async_register_command(hass, websocket_box_favourites)
     async_register_command(hass, websocket_update_figure)
     async_register_command(hass, websocket_figure_volume)
     async_register_command(hass, websocket_figure_lock)
@@ -155,7 +156,7 @@ def _on_box(data: CloudState, tonie_id: str) -> str | None:
 def _tonie_dict(
     tonie: Tonie,
     on_box: str | None,
-    favourites: Favourites | None = None,
+    favourites: dict[str, Any] | None = None,
     volume: int | None = None,
 ) -> dict[str, Any]:
     return {
@@ -178,7 +179,7 @@ def _tonie_dict(
         "transcoding_errors": list(tonie.transcoding_errors),
         "live": tonie.live,
         "on_box": on_box,
-        "favourites": favourites.as_dict() if favourites else None,
+        "favourites": favourites,
         "volume": volume,
     }
 
@@ -200,16 +201,50 @@ def _figure_answer(coordinator: StoryboxCoordinator, tonie: Tonie) -> dict[str, 
     """A changed creative figure as the page shows it, with its volume and shuffling."""
     return {
         **_tonie_dict(
-            tonie, _on_box(coordinator.data, tonie.id), None, coordinator.volumes.get(tonie.id)
+            tonie,
+            _on_box(coordinator.data, tonie.id),
+            coordinator.stars(tonie.id).describe(tonie),
+            coordinator.volumes.get(tonie.id),
         ),
         "shuffle_on_swap": coordinator.shuffles.enabled(tonie.id),
     }
 
 
-def _chapter_list(tonie: Tonie | None) -> list[dict[str, Any]]:
+def _chapter_list(
+    tonie: Tonie | None, favourites: tuple[int, ...] | None = ()
+) -> list[dict[str, Any]]:
+    """The chapters by name and length; favourites None: which have a star is not known."""
     return (
-        [{"title": c.title or None, "seconds": c.seconds} for c in tonie.chapters] if tonie else []
+        [
+            {
+                "title": c.title or None,
+                "seconds": c.seconds,
+                "favourite": None if favourites is None else i in favourites,
+            }
+            for i, c in enumerate(tonie.chapters)
+        ]
+        if tonie
+        else []
     )
+
+
+def _box_favourites(
+    coordinator: StoryboxCoordinator, box_state: BoxState, tonie: Tonie | None
+) -> dict[str, Any] | None:
+    """The favourites of the figure on a Toniebox 2 and how they play on it now."""
+    chapters = coordinator.playing_stars(tonie)
+    if tonie is None or chapters is None or not box_state.box.live:
+        return None
+    suspended = coordinator.runs(box_state.box.id).suspended(box_state.box.id, tonie.id)
+    plan = coordinator.favourite_plan(box_state, tonie.id)
+    return {
+        "chapters": list(chapters),
+        # The mode at work ("first", "random", "only"); None while nothing is steered
+        "mode": plan.mode if plan and not suspended else None,
+        # The mode that would be at work if the figure did not play everything
+        "paused_mode": plan.mode if plan and suspended else None,
+        "suspended": suspended,
+    }
 
 
 def _box_dict(
@@ -230,8 +265,9 @@ def _box_dict(
             "chapter": play.chapter,
             "chapter_title": chapter_title,
             "chapters": len(tonie.chapters) if tonie else None,
-            # For the page's chapter list: every chapter by name and length
-            "chapter_list": _chapter_list(tonie),
+            # For the page's chapter list: every chapter by name and length, and its star
+            "chapter_list": _chapter_list(tonie, coordinator.playing_stars(tonie)),
+            "favourites": _box_favourites(coordinator, box_state, tonie),
             "playing": play.playing,
             "paused": play.paused,
             "ended": play.ended,
@@ -248,7 +284,8 @@ def _box_dict(
             "chapter": None,
             "chapter_title": None,
             "chapters": len(tonie.chapters) if tonie else None,
-            "chapter_list": _chapter_list(tonie),
+            "chapter_list": _chapter_list(tonie, coordinator.playing_stars(tonie)),
+            "favourites": _box_favourites(coordinator, box_state, tonie),
             "playing": False,
             "paused": None,
             "ended": None,
@@ -500,7 +537,7 @@ async def websocket_library(
         shuffles = entry.runtime_data.shuffles
         tonies.extend(
             {
-                **_tonie_dict(t, _on_box(data, t.id), favourites.get(t.id), volumes.get(t.id)),
+                **_tonie_dict(t, _on_box(data, t.id), favourites.describe(t), volumes.get(t.id)),
                 "shuffle_on_swap": shuffles.enabled(t.id),
             }
             for t in data.tonies.values()
@@ -744,33 +781,65 @@ async def websocket_add_link(
     {
         probatio.Required("type"): f"{DOMAIN}/favourites/set",
         probatio.Required("tonie_id"): str,
-        probatio.Required("chapters"): [probatio.All(int, probatio.Range(min=0))],
-        probatio.Required("active"): bool,
+        # Without them the stars stay as they are and only the mode changes
+        probatio.Optional("chapters"): [probatio.All(int, probatio.Range(min=0))],
+        # None: the figure follows the mode of the account
+        probatio.Required("mode"): probatio.Any(None, probatio.In(list(FAVOURITE_MODES))),
     }
 )
 @async_response
 async def websocket_set_favourites(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Keep the favourite chapters of a bought figure (0-based) and whether they steer the box."""
+    """Keep the favourite chapters of a figure (from 0) and the mode they play by."""
     entry = _entry_for_tonie(hass, msg["tonie_id"])
     if entry is None:
         connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
         return
-    tonie = entry.runtime_data.coordinator.data.tonies[msg["tonie_id"]]
-    if tonie.kind is TonieKind.CREATIVE:
-        connection.send_error(msg["id"], "not_bought", _CHAPTER_MESSAGES["not_bought"])
-        return
-    if tonie.chapters and any(c >= len(tonie.chapters) for c in msg["chapters"]):
+    coordinator = entry.runtime_data.coordinator
+    tonie = coordinator.data.tonies[msg["tonie_id"]]
+    known = tonie.chapters or tonie.kind is TonieKind.CREATIVE
+    chapters: list[int] | None = msg.get("chapters")
+    if known and any(c >= len(tonie.chapters) for c in chapters or ()):
         connection.send_error(msg["id"], "unknown_chapter", _CHAPTER_MESSAGES["unknown_chapter"])
         return
-    favourites = await entry.runtime_data.favourites.async_set(
-        msg["tonie_id"], msg["chapters"], msg["active"]
-    )
-    connection.send_result(msg["id"], {"favourites": favourites.as_dict() if favourites else None})
+    stars = coordinator.stars(tonie.id)
+    if chapters is None:
+        await stars.async_set_mode(tonie, msg["mode"])
+    else:
+        await stars.async_set(tonie, chapters, msg["mode"])
+    coordinator.async_update_listeners()
+    connection.send_result(msg["id"], {"favourites": stars.describe(tonie)})
 
 
-# ---------------------------------------------------------------- bedtime
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/favourites/star",
+        probatio.Required("tonie_id"): str,
+        probatio.Required("chapter"): probatio.All(int, probatio.Range(min=0)),
+        # Without it the star changes sides
+        probatio.Optional("favourite"): bool,
+    }
+)
+@async_response
+async def websocket_star(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Mark one chapter of a figure (from 0) as a favourite, or take its star off."""
+    entry = _entry_for_tonie(hass, msg["tonie_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_figure", _CHAPTER_MESSAGES["unknown_figure"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    try:
+        await coordinator.async_star(msg["tonie_id"], msg["chapter"], msg.get("favourite"))
+    except ChapterError as err:
+        connection.send_error(msg["id"], err.code, _chapter_message(err))
+        return
+    tonie = coordinator.data.tonies[msg["tonie_id"]]
+    connection.send_result(msg["id"], {"favourites": coordinator.stars(tonie.id).describe(tonie)})
+
 
 _BOX_MESSAGES = {
     "unknown_box": "The box is not in any account",
@@ -783,6 +852,8 @@ _BOX_MESSAGES = {
     "nothing_plays": "No figure is on the box",
     "unknown_chapter": "The figure has no such chapter",
     "invalid_command": "The command needs a value",
+    "other_figure": "Another figure is on the box now",
+    "tune_plays": "A Tune lies on the figure; the box plays the Tune",
 }
 
 
@@ -1206,6 +1277,32 @@ def websocket_box_repeat(
 @require_admin
 @websocket_command(
     {
+        probatio.Required("type"): f"{DOMAIN}/box/favourites",
+        probatio.Required("box_id"): str,
+        probatio.Required("suspended"): bool,
+    }
+)
+@callback
+def websocket_box_favourites(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Let the figure on a Toniebox 2 play everything until it is taken off, or steer it again."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    try:
+        box_state = coordinator.suspend_favourites(msg["box_id"], msg["suspended"])
+    except BoxError as err:
+        connection.send_error(msg["id"], err.code, _BOX_MESSAGES[err.code])
+        return
+    connection.send_result(msg["id"], _box_dict(entry, coordinator, box_state))
+
+
+@require_admin
+@websocket_command(
+    {
         probatio.Required("type"): f"{DOMAIN}/box/command",
         probatio.Required("box_id"): str,
         probatio.Required("command"): probatio.In(
@@ -1214,6 +1311,8 @@ def websocket_box_repeat(
         probatio.Optional("value"): probatio.All(
             int, probatio.Range(min=0, max=SLEEP_TIMER_MAX_MINUTES)
         ),
+        # With "chapter": the figure the chapter is meant for; another one on the box refuses it
+        probatio.Optional("tonie_id"): str,
     }
 )
 @async_response
@@ -1233,7 +1332,9 @@ async def websocket_box_command(
         connection.send_error(msg["id"], "invalid_command", _BOX_MESSAGES["invalid_command"])
         return
     try:
-        await entry.runtime_data.coordinator.async_box_command(msg["box_id"], msg["command"], value)
+        await entry.runtime_data.coordinator.async_box_command(
+            msg["box_id"], msg["command"], value, msg.get("tonie_id")
+        )
     except BoxError as err:
         connection.send_error(msg["id"], err.code, _BOX_MESSAGES[err.code])
     except CloudError as err:
@@ -1299,6 +1400,7 @@ async def websocket_rename_household(
         probatio.Optional("fetch_max_mb"): probatio.All(
             int, probatio.Range(min=FETCH_MAX_MB[0], max=FETCH_MAX_MB[1])
         ),
+        probatio.Optional("favourites_mode"): probatio.In(list(FAVOURITE_MODES)),
     }
 )
 @async_response
@@ -1318,6 +1420,9 @@ async def websocket_preferences(
     except ValueError:
         connection.send_error(msg["id"], "invalid_format", "A voice needs its language")
         return
+    if "favourites_mode" in changes:
+        # The boxes show the mode at work
+        entry.runtime_data.coordinator.async_update_listeners()
     if "analytics_days" in changes and entry.runtime_data.analytics is not None:
         entry.runtime_data.analytics.set_keep_days(preferences.analytics_days)
     _LOGGER.info("Preferences of %s changed: %s", entry.title, ", ".join(sorted(changes)))
@@ -1412,6 +1517,10 @@ async def websocket_refresh_figure(
     )
 
 
+# A favourite heard for less than this many seconds over the days counts as hardly heard
+UNHEARD_SECONDS = 60
+
+
 def _chapter_title(tonie: Tonie | None, index: int) -> str | None:
     if tonie is None or not 0 <= index < len(tonie.chapters):
         return None
@@ -1492,7 +1601,84 @@ def websocket_analytics(
         if days and previous is not None:
             before = analytics.total_before(days)
             previous = None if before is None else previous + before
-    top_chapters = sorted(per_chapter.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    ranked = sorted(per_chapter.items(), key=lambda item: (-item[1], item[0]))
+    top_chapters = ranked[:limit]
+    # The favourites over the same days: by the stars as they are now
+    starred: set[tuple[str, int]] = set()
+    for entry in _loaded_entries(hass):
+        coordinator = entry.runtime_data.coordinator
+        for tonie in coordinator.data.tonies.values():
+            # The stars of a figure are kept by one account, also where several have it
+            stars = coordinator.stars(tonie.id).indexes(tonie)
+            starred.update((tonie.id, index) for index in stars)
+
+    def chapter_row(tonie_id: str, index: int, seconds: int) -> dict[str, Any]:
+        tonie = names.get(tonie_id)
+        length = tonie.chapters[index].seconds if tonie and index < len(tonie.chapters) else None
+        return {
+            "tonie_id": tonie_id,
+            "name": tonie.name if tonie else None,
+            "image_url": tonie.image_url if tonie else None,
+            "chapter": index,
+            "title": _chapter_title(tonie, index),
+            "seconds": seconds,
+            # How often the chapter ran through, where its length is known
+            "plays": round(seconds / length, 1) if length else None,
+        }
+
+    def exists(tonie_id: str, index: int) -> bool:
+        tonie = names.get(tonie_id)
+        return tonie is not None and (not tonie.chapters or index < len(tonie.chapters))
+
+    counted = sum(per_chapter.values())
+    on_favourites = sum(s for key, s in per_chapter.items() if key in starred)
+    with_stars = {tonie_id for tonie_id, _ in starred}
+    share_per_tonie: dict[str, list[int]] = {}
+    for (tonie_id, index), seconds in per_chapter.items():
+        if tonie_id in with_stars:
+            sums = share_per_tonie.setdefault(tonie_id, [0, 0])
+            sums[0] += seconds
+            sums[1] += seconds if (tonie_id, index) in starred else 0
+    unheard = sorted(
+        (
+            (per_chapter.get(key, 0), key)
+            for key in starred
+            # A figure nobody listened to in these days says nothing about its stars
+            if key[0] in share_per_tonie and per_chapter.get(key, 0) < UNHEARD_SECONDS
+        ),
+        key=lambda item: (item[0], item[1]),
+    )
+    favourite_stats = {
+        "count": len(starred),
+        "seconds": on_favourites,
+        # Of the listening time whose chapter is known
+        "counted_seconds": counted,
+        "share": round(on_favourites / counted, 3) if counted and starred else None,
+        "per_tonie": [
+            {
+                "tonie_id": tonie_id,
+                "name": names[tonie_id].name if tonie_id in names else None,
+                "image_url": names[tonie_id].image_url if tonie_id in names else None,
+                "seconds": sums[0],
+                "favourite_seconds": sums[1],
+                "share": round(sums[1] / sums[0], 3) if sums[0] else None,
+            }
+            for tonie_id, sums in sorted(
+                share_per_tonie.items(), key=lambda item: (-item[1][0], item[0])
+            )[:limit]
+        ],
+        # The chapters heard most that have no star: favourites nobody marked yet
+        "hidden": [
+            chapter_row(tonie_id, index, seconds)
+            for (tonie_id, index), seconds in [
+                item for item in ranked if item[0] not in starred and exists(*item[0])
+            ][:limit]
+        ],
+        # Stars on chapters that were hardly heard, of figures that were listened to in these days
+        "unheard": [
+            chapter_row(tonie_id, index, seconds) for seconds, (tonie_id, index) in unheard[:limit]
+        ],
+    }
     connection.send_result(
         msg["id"],
         {
@@ -1531,6 +1717,7 @@ def websocket_analytics(
                 }
                 for (tonie_id, index), seconds in top_chapters
             ],
+            "favourites": favourite_stats if enabled else None,
             # Monday first, 24 hours each; all boxes, and each box on its own
             "heatmap": heatmap,
             "heatmap_boxes": heatmap_boxes,

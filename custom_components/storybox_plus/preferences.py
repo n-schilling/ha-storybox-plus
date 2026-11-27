@@ -28,6 +28,8 @@ Three preferences, each per account:
   was awake (see analytics, active time).
 - repeat (none by default): per Toniebox 2 the repeat set for the figure on it
   ("all" or "one") with that figure, so it goes on after a restart.
+- favourites_mode ("first" by default): how the favourite chapters of a figure
+  play on a Toniebox 2, unless the figure has a mode of its own (see favourites).
 - presence_lag (20 minutes by default): per Toniebox 1 how long it stays in
   the network after its last use, by the entity; taken off its active time.
 
@@ -42,6 +44,7 @@ from typing import Any
 from homeassistant.helpers.storage import Store
 
 from .cloud import Tonie, TonieKind
+from .favourites import DEFAULT_MODE, MODES, Mode
 
 DEFAULT_ANALYTICS = True
 DEFAULT_AUTO_LOCK = True
@@ -73,6 +76,7 @@ class Preferences:
         self.voice: str | None = None
         self.voice_language: str | None = None
         self.fetch_max_mb = DEFAULT_FETCH_MAX_MB
+        self.favourites_mode: Mode = DEFAULT_MODE
         # box_id -> entity_id
         self.presence: dict[str, str] = {}
         # box_id -> (mode, the figure it was set for)
@@ -109,6 +113,8 @@ class Preferences:
             and FETCH_MAX_MB[0] <= mb <= FETCH_MAX_MB[1]
         ):
             self.fetch_max_mb = mb
+        if raw.get("favourites_mode") in MODES:
+            self.favourites_mode = raw["favourites_mode"]
         presence = raw.get("presence")
         if isinstance(presence, dict):
             self.presence = {
@@ -150,6 +156,7 @@ class Preferences:
             "voice": self.voice,
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,
+            "favourites_mode": self.favourites_mode,
         }
 
     @property
@@ -174,6 +181,10 @@ class Preferences:
             if not FETCH_MAX_MB[0] <= mb <= FETCH_MAX_MB[1]:
                 raise ValueError(mb)
             self.fetch_max_mb = mb
+        if (mode := changes.get("favourites_mode")) is not None:
+            if mode not in MODES:
+                raise ValueError(mode)
+            self.favourites_mode = mode
         if "speech_engine" in changes:
             engine = changes["speech_engine"] or None
             if engine is not None and not engine.startswith("tts."):
@@ -259,6 +270,7 @@ class Preferences:
             "voice": self.voice,
             "voice_language": self.voice_language,
             "fetch_max_mb": self.fetch_max_mb,
+            "favourites_mode": self.favourites_mode,
             "presence": self.presence,
             "presence_lag": self._presence_lag,
             "repeat": {

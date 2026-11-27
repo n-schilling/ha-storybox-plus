@@ -98,7 +98,7 @@ async def test_card_resource_left_alone(hass: HomeAssistant) -> None:
 
 
 # The actions the card's buttons may call: only what every user may operate on a
-# box's media player anyway (media control and its sleep timer)
+# box's media player anyway (media control, its sleep timer, the star of a chapter, a chapter from the list)
 ACTIONS = {
     "media_player.media_play",
     "media_player.media_pause",
@@ -108,6 +108,8 @@ ACTIONS = {
     "media_player.volume_down",
     "storybox_plus.set_sleep_timer",
     "storybox_plus.clear_sleep_timer",
+    "storybox_plus.set_favourite",
+    "media_player.play_media",
 }
 
 

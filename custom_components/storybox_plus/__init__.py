@@ -224,6 +224,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) ->
     await entry.runtime_data.notices.async_save()
     await entry.runtime_data.preferences.async_save()
     await entry.runtime_data.shuffles.async_save()
+    await entry.runtime_data.favourites.async_save()
     if not any(e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e is not entry):
         async_unregister_panel(hass)
         if (log := hass.data.pop(DATA_LOG, None)) is not None:

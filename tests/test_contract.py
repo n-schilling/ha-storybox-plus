@@ -87,9 +87,16 @@ async def test_attributes(
     player = hass.states.get(PLAYER)
     assert player is not None
     assert player.state == "playing"
-    assert {"chapters", "box_picture", "media_album_name", "media_title", "media_track"} <= set(
-        player.attributes
-    )
+    assert {
+        "chapters",
+        "chapter_list",
+        "box_picture",
+        "favourite",
+        "tonie_id",
+        "media_album_name",
+        "media_title",
+        "media_track",
+    } <= set(player.attributes)
     assert player.attributes["media_album_name"] == TONIE_NAME
 
     headphones = hass.states.get("binary_sensor.kinderzimmer_headphones")
@@ -142,7 +149,12 @@ async def test_actions_and_websocket_commands(
     hass: HomeAssistant, setup_entry: MockConfigEntry
 ) -> None:
     """The actions, and the commands of the page by name. The dashboard card uses none."""
-    assert set(hass.services.async_services()[DOMAIN]) == {"set_sleep_timer", "clear_sleep_timer"}
+    assert set(hass.services.async_services()[DOMAIN]) == {
+        "set_sleep_timer",
+        "clear_sleep_timer",
+        "set_favourite",
+        "play_favourite",
+    }
     commands = {name for name in hass.data[WS_DOMAIN] if name.startswith(f"{DOMAIN}/")}
     assert commands == {
         f"{DOMAIN}/overview",
@@ -153,6 +165,8 @@ async def test_actions_and_websocket_commands(
         f"{DOMAIN}/chapters/add_text",
         f"{DOMAIN}/chapters/add_link",
         f"{DOMAIN}/favourites/set",
+        f"{DOMAIN}/favourites/star",
+        f"{DOMAIN}/box/favourites",
         f"{DOMAIN}/figure/refresh",
         f"{DOMAIN}/figure/update",
         f"{DOMAIN}/figure/shuffle_on_swap",
@@ -183,7 +197,7 @@ async def test_stores(
     """The stores an account writes when it is unloaded: their names, version and fields.
 
     The stores written only once there is something to keep (the learned
-    chapters, the favourites, the night modes) have their own tests.
+    chapters, the night modes) have their own tests.
     """
     push.last.connect()
     push.last.online(True)
@@ -205,6 +219,7 @@ async def test_stores(
     assert stores == {
         "analytics": (1, {"active", "chapters", "days", "hours", "placements"}),
         "battery": (1, {"cycles", "open"}),
+        "favourites": (1, {"firsts", "gone", "runs", "tonies"}),
         "notices": (1, {"seen"}),
         "settings": (
             1,
@@ -212,6 +227,7 @@ async def test_stores(
                 "analytics",
                 "analytics_days",
                 "auto_lock",
+                "favourites_mode",
                 "fetch_max_mb",
                 "known",
                 "mark_read",

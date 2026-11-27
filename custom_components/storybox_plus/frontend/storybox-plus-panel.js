@@ -32,7 +32,7 @@ if (!customElements.get("storybox-plus-panel")) {
   // The four areas and their pages: area, icon, text, pages (page, text)
   const AREAS = [
     ["boxes", "boxes", "tabBoxes", [["overview", "pgBoxes"]]],
-    ["figures", "figuresArea", "tabFigures", [["list", "pgFigures"], ["tunes", "pgTunes"]]],
+    ["figures", "figuresArea", "tabFigures", [["list", "pgFigures"], ["favourites", "pgFavourites"], ["tunes", "pgTunes"]]],
     ["listening", "listening", "tabListening", [["summary", "pgSummary"], ["times", "pgTimes"]]],
     ["setup", "setup", "tabSetup", [["overview", "pgSetup"], ["household", "pgHousehold"], ["preferences", "pgPreferences"], ["log", "pgLog"]]],
   ];
@@ -53,6 +53,8 @@ if (!customElements.get("storybox-plus-panel")) {
   ];
   // The settings of an account on the page Preferences
   const PREF_KEYS = ["analytics", "auto_lock", "mark_read"];
+  // How the favourites of a figure play on a Toniebox 2
+  const FAV_MODES = ["first", "random", "only", "bedtime", "off"];
   // How long listening sums are kept (days, 0: all) and the bounds of the file size from the app (MB)
   const ANALYTICS_DAYS = ["365", "730", "1825", "0"];
   const FETCH_MB = [10, 2000];
@@ -144,7 +146,11 @@ if (!customElements.get("storybox-plus-panel")) {
     .chapters .no { flex: none; min-width: 24px; text-align: right; }
     .ch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ch-tools { display: inline-flex; flex: none; margin-right: -8px; }
-    ha-icon-button.star.on { color: var(--state-active-color, var(--amber-color, #ffc107)); }
+    .chapters li.playable { cursor: pointer; }
+    .chapters li.playable:hover, .chapters li.playable:focus-visible { background: var(--secondary-background-color); outline: none; }
+    .fav-fig { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .top.fav-share { margin-top: 12px; }
+    .top ha-icon-button { flex: none; margin: -4px -8px -4px 0; }
     ha-icon-button.danger:hover { color: var(--error-color); }
     .head-fig { display: flex; align-items: center; gap: 16px; }
     .head-fig .pic { width: 72px; height: 72px; }
@@ -512,15 +518,13 @@ if (!customElements.get("storybox-plus-panel")) {
       if (kind === "fig") {
         const f = this._figure(id);
         if (!f) return null;
-        const values = { volume: f.volume ? String(f.volume) : "box" };
+        // "account": the figure plays its favourites as the account says
+        const values = { volume: f.volume ? String(f.volume) : "box", favourites_mode: f.favourites?.mode || "account" };
         if (f.kind === "creative") {
           values.name = f.name;
           values.live = !!f.live;
           if (f.chapters.length > 1) values.shuffle_on_swap = !!f.shuffle_on_swap;
-        } else {
-          values.locked = !!f.locked;
-          if (f.favourites) values.favourites = !!f.favourites.active;
-        }
+        } else values.locked = !!f.locked;
         return values;
       }
       if (kind === "home") {
@@ -536,6 +540,7 @@ if (!customElements.get("storybox-plus-panel")) {
           speech_engine: p.speech_engine || null,
           voice: p.voice ? `${p.voice_language}|${p.voice}` : DEFAULT_VOICE,
           fetch_max_mb: p.fetch_max_mb ?? 200,
+          favourites_mode: p.favourites_mode || "first",
         };
       }
       if (kind === "log") return this._log ? { level: this._log.level, days: this._log.days } : null;
@@ -645,8 +650,10 @@ if (!customElements.get("storybox-plus-panel")) {
         if ("shuffle_on_swap" in ch) {
           fig().shuffle_on_swap = (await ws({ type: "storybox_plus/figure/shuffle_on_swap", tonie_id: id, enabled: !!ch.shuffle_on_swap })).shuffle_on_swap;
         }
-        if ("favourites" in ch && fig().favourites) {
-          fig().favourites = (await ws({ type: "storybox_plus/favourites/set", tonie_id: id, chapters: fig().favourites.chapters, active: !!ch.favourites })).favourites;
+        if ("favourites_mode" in ch) {
+          // The mode alone: the stars stay as the integration has them, whoever set them meanwhile
+          fig().favourites = (await ws({ type: "storybox_plus/favourites/set", tonie_id: id,
+            mode: ch.favourites_mode === "account" ? null : ch.favourites_mode })).favourites;
         }
       } else if (kind === "home") {
         const name = String(ch.name || "").trim() || invalid();
@@ -677,6 +684,7 @@ if (!customElements.get("storybox-plus-panel")) {
           msg.fetch_max_mb = num(ch.fetch_max_mb);
           if (msg.fetch_max_mb < FETCH_MB[0] || msg.fetch_max_mb > FETCH_MB[1]) invalid();
         }
+        if ("favourites_mode" in ch) msg.favourites_mode = ch.favourites_mode;
         if ("speech_engine" in ch) msg.speech_engine = ch.speech_engine || null;
         if ("voice" in ch) {
           const [language, voice] = ch.voice === DEFAULT_VOICE ? [] : String(ch.voice || "").split("|");
@@ -815,6 +823,29 @@ if (!customElements.get("storybox-plus-panel")) {
           this._command(boxId, "chapter", index);
           return;
         }
+        case "star": {
+          // The star beside the chapter that plays on a box: the chapter it was drawn for
+          // and the state it does not show yet, so a chapter that changed meanwhile is not hit
+          const p = this._boxById(arg)?.playback;
+          if (p?.tonie_id && el.dataset.i !== undefined) this._star(p.tonie_id, Number(el.dataset.i), el.getAttribute("aria-pressed") !== "true");
+          return;
+        }
+        case "starch": {
+          // The star of one chapter: of a figure in a list, or of what is on a box (starch:<box>:<index>)
+          const wanted = el.getAttribute("aria-pressed") !== "true";
+          if (key) return void this._star(key, Number(el.dataset.i), wanted);
+          const [boxId, index] = arg.split(":");
+          this._star(this._boxById(boxId)?.playback?.tonie_id, Number(index), wanted);
+          return;
+        }
+        case "favall": {
+          const [boxId, on] = arg.split(":");
+          this._setEverything(boxId, on === "1");
+          return;
+        }
+        case "favplay":
+          this._playChapter(key, Number(el.dataset.i), el.dataset.fig);
+          return;
         case "voucher":
           this._redeemVoucher(arg);
           return;
@@ -1059,38 +1090,8 @@ if (!customElements.get("storybox-plus-panel")) {
     _renderOverlay() {
       const host = this.shadowRoot.getElementById("overlay");
       if (!host) return;
-      const t = this._t;
-      const b = this._tracks && this._area === "boxes" && !this._sub ? this._boxById(this._tracks) : null;
-      const p = b?.playback;
-      let dialog = host.firstElementChild;
-      // Gone with the figure, the box or the page it was opened on
-      if (!p?.chapter_list?.length || b.online !== true) {
-        this._tracks = null;
-        if (dialog) dialog.open = false;
-        return;
-      }
-      if (!dialog) {
-        dialog = document.createElement("ha-dialog");
-        this._overlayHtml = null;
-        dialog.addEventListener("closed", () => {
-          this._tracks = null;
-          dialog.remove();
-        });
-        host.append(dialog);
-      }
-      dialog.headerTitle = t.tracksTitle;
-      dialog.headerSubtitle = `${p.tonie_name || t.unknownFigure} · ${b.name || b.id}`;
-      const html = `<ol class="tracks">${p.chapter_list.map((c, i) => {
-        const now = i === p.chapter;
-        return `<li role="button" tabindex="0" data-act="jump:${esc(b.id)}:${i}"${now ? ' class="current" aria-current="true"' : ""}>` +
-          `<span class="rank">${i + 1}</span><span class="name">${esc(c.title || `${t.chapter} ${i + 1}`)}</span>` +
-          `${Number.isFinite(c.seconds) ? `<span class="len">${esc(mmss(c.seconds))}</span>` : ""}</li>`;
-      }).join("")}</ol>`;
-      if (html !== this._overlayHtml) {
-        this._overlayHtml = html;
-        dialog.innerHTML = html;
-      }
-      dialog.open = true;
+      this._renderTracks(host, this._tracks && this._area === "boxes" && !this._sub ? this._boxById(this._tracks) : null,
+        { busy: !!this._ctlBusy || !!this._starBusy, error: this._note });
     }
 
     _update() {
@@ -1150,6 +1151,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (sub === "fig") return html + this._figurePage();
       switch (`${this._area}/${this._page}`) {
         case "figures/list": return html + this._figuresPage();
+        case "figures/favourites": return html + this._favouritesPage();
         case "figures/tunes": return html + this._tunesPage();
         case "listening/summary": return html + this._listening(false);
         case "listening/times": return html + this._listening(true);
@@ -1637,7 +1639,8 @@ if (!customElements.get("storybox-plus-panel")) {
       const t = this._t;
       return (f.on_box ? this._chip(fill(t.onBox, { box: boxes.get(f.on_box) || f.on_box }), "on") : "") +
         (f.transcoding ? this._chip(t.transcoding, "warn") : "") +
-        (f.favourites?.active ? this._chip(fill(t.favChip, { n: this._fmt(f.favourites.chapters.length) }), "fav") : "") +
+        (f.favourites?.chapters?.length
+          ? this._chip(f.favourites.chapters.length === 1 ? t.favChip1 : fill(t.favChip, { n: this._fmt(f.favourites.chapters.length) }), "fav") : "") +
         (f.volume ? this._chip(fill(t.figVolumeChip, { v: this._fmt(f.volume) })) : "") +
         (this._tuneOn(f.id) ? this._chip(t.tune, "on") : "") +
         (f.live ? this._chip(t.liveChip) : "") +
@@ -1687,11 +1690,9 @@ if (!customElements.get("storybox-plus-panel")) {
     _chaptersView(f) {
       const t = this._t;
       let html = this._figureHead(f) + this._progressHtml(f);
-      if (f.kind !== "creative") {
-        // The chapters of a bought figure with their favourite stars
-        const fav = f.favourites;
-        return html + this._section(t.vChapters, this._chapterList(f.chapters, false, { id: f.id, set: new Set(fav?.chapters || []) }), { help: t.favHint });
-      }
+      // Every chapter with its favourite star
+      const fav = { id: f.id, set: new Set(f.favourites?.chapters || []) };
+      if (f.kind !== "creative") return html + this._section(t.vChapters, this._chapterList(f.chapters, false, fav), { help: t.favHint });
       if (f.transcoding_errors?.length) {
         const reasons = [...new Set(f.transcoding_errors)].map((r) => t[`reason_${r}`] || r).join(", ");
         html += this._alertHelp("error", fill(t.convErrors, { r: reasons }), t.convErrorsHelp);
@@ -1701,7 +1702,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!edit) {
         const busy = !!this._uploads[f.id] && !this._uploads[f.id].error;
         const actions = f.chapters.length ? this._btn(`edit:${f.id}`, t.edit, "pencil", { disabled: busy }) : "";
-        return html + this._section(t.vChapters, this._chapterList(f.chapters), { actions, help: t.chaptersHelp });
+        return html + this._section(t.vChapters, this._chapterList(f.chapters, false, fav), { actions, help: `${t.chaptersHelp} ${t.favHint}` });
       }
       const busy = edit.saving;
       let body = "";
@@ -1743,7 +1744,7 @@ if (!customElements.get("storybox-plus-panel")) {
             iconButton("down", `${t.moveDown}: ${title}`, `data-act="down:${i}"${i === last ? " disabled" : ""}`) +
             iconButton("remove", `${t.remove}: ${title}`, `class="danger" data-act="remove:${i}"`) + `</span>`
           : fav
-            ? iconButton(on ? "star" : "starOff", `${t.favToggle}: ${title}`, `class="star${on ? " on" : ""}" data-act="fav:${esc(fav.id)}:${i}" aria-pressed="${on}"`)
+            ? iconButton(on ? "star" : "starOff", `${on ? t.favOff : t.favOn}: ${title}`, `class="star${on ? " on" : ""}" data-act="starch" data-key="${esc(fav.id)}" data-i="${i}" aria-pressed="${on}"`)
             : "";
         return `<li><span class="no">${i + 1}</span><span class="ch-title">${esc(title)}</span>` +
           `${c.transcoding ? this._chip(t.transcoding, "warn") : ""}<span class="len">${esc(mmss(c.seconds))}</span>${tools}</li>`;
@@ -1751,7 +1752,7 @@ if (!customElements.get("storybox-plus-panel")) {
     }
 
     // What a figure has to set: a creative one its name, live mode and shuffling on
-    // swap, every one its volume; a bought one its lock and its favourites
+    // swap, every one its volume and how its favourites play; a bought one its lock
     _figureSettings(f) {
       const t = this._t;
       const scope = `fig:${f.id}`;
@@ -1762,7 +1763,11 @@ if (!customElements.get("storybox-plus-panel")) {
       if ("live" in values) rows.push(this._row(scope, "live", t.c_live, t.h_c_live, { boolean: {} }));
       rows.push(this._row(scope, "volume", t.figVolume, t.figVolumeHint, { select: { mode: "dropdown", options: levels } }));
       if ("locked" in values) rows.push(this._row(scope, "locked", t.lockSwitch, t.lockHint, { boolean: {} }));
-      if ("favourites" in values) rows.push(this._row(scope, "favourites", t.favSwitch, t.favSwitchHint, { boolean: {} }));
+      // The account's own mode is named in the first choice
+      const entries = this._loadedEntries();
+      const account = (entries.find((e) => (e.households || []).some((h) => h.id === f.household_id)) || entries[0])?.preferences?.favourites_mode || "first";
+      const modes = [{ value: "account", label: fill(t.favMode_account, { m: t[`favMode_${account}`] }) }, ...FAV_MODES.map((m) => ({ value: m, label: t[`favMode_${m}`] }))];
+      rows.push(this._row(scope, "favourites_mode", t.favMode, t.favModeHint, { select: { mode: "dropdown", options: modes } }));
       if ("shuffle_on_swap" in values) rows.push(this._row(scope, "shuffle_on_swap", t.shuffleSwap, t.shuffleSwapHint, { boolean: {} }));
       return this._section(t.vSettings, rows.join(""), { cls: "rows" });
     }
@@ -1947,17 +1952,6 @@ if (!customElements.get("storybox-plus-panel")) {
         case "speakadd":
           this._addFromText(arg);
           return;
-        case "fav": {
-          const [id, index] = arg.split(/:(\d+)$/);
-          const f = this._figure(id);
-          if (!f) return;
-          const set = new Set(f.favourites?.chapters || []);
-          const i = Number(index);
-          if (set.has(i)) set.delete(i); else set.add(i);
-          // The first star switches the favourites on; later stars keep the switch as it is
-          this._setFavourites(id, [...set], f.favourites ? f.favourites.active : true);
-          return;
-        }
         default:
           return;
       }
@@ -2075,17 +2069,94 @@ if (!customElements.get("storybox-plus-panel")) {
       this._render();
     }
 
-    // The favourites of a bought figure go to the integration at once; the answer is kept
-    async _setFavourites(id, chapters, active) {
-      const f = this._figure(id);
-      if (!f || !this._hass) return;
+    // A star goes to the integration at once; the answer is kept, and every list that
+    // shows the chapter follows: the figure, the box it stands on, the listening sums
+    async _star(id, index, favourite) {
+      if (!this._hass || !id || !Number.isInteger(index) || this._starBusy) return;
+      this._note = null;
+      // One star at a time: the lists show it as taken until the answer is there
+      this._starBusy = true;
+      this._update();
+      try {
+        const msg = { type: "storybox_plus/favourites/star", tonie_id: id, chapter: index };
+        if (typeof favourite === "boolean") msg.favourite = favourite;
+        const fav = (await this._hass.callWS(msg)).favourites;
+        const f = this._figure(id);
+        if (f) f.favourites = fav;
+        const set = new Set(fav?.chapters || []);
+        for (const b of this._overview?.boxes || []) {
+          const p = b.playback;
+          if (p?.tonie_id !== id) continue;
+          (p.chapter_list || []).forEach((c, i) => { c.favourite = set.has(i); });
+          if (p.favourites) p.favourites.chapters = [...set];
+        }
+        const same = (x) => x.tonie_id === id && x.chapter === index;
+        for (const s of Object.values(this._stats)) {
+          if (!s?.favourites) continue;
+          s.favourites.hidden = s.favourites.hidden.filter((x) => !same(x));
+          s.favourites.unheard = s.favourites.unheard.filter((x) => !same(x));
+        }
+        // How the box is steered and what the sums say changes with the star
+        if (this._area === "boxes") this._loadOverview();
+        if (this._area === "listening") this._loadStats(this._range);
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      this._starBusy = false;
+      this._render();
+    }
+
+    // The figure on a box plays everything until it is taken off, or follows its favourites again
+    async _setEverything(boxId, suspended) {
+      if (!this._hass || this._ctlBusy) return;
+      this._ctlError = null;
+      try {
+        this._replaceBox(await this._hass.callWS({ type: "storybox_plus/box/favourites", box_id: boxId, suspended }));
+      } catch (err) {
+        this._ctlError = { id: boxId, err };
+      }
+      this._update();
+    }
+
+    // A favourite from the list of all favourites plays on the box its figure stands on
+    // The figure goes with it: swapped on the box meanwhile, its chapter does not play another one's
+    async _playChapter(boxId, index, figureId) {
+      if (!this._hass || !boxId) return;
       this._note = null;
       try {
-        f.favourites = (await this._hass.callWS({ type: "storybox_plus/favourites/set", tonie_id: id, chapters, active })).favourites;
+        await this._hass.callWS({ type: "storybox_plus/box/command", box_id: boxId, command: "chapter", value: index, tonie_id: figureId });
+        await this._hass.callWS({ type: "storybox_plus/box/command", box_id: boxId, command: "play" });
       } catch (err) {
         this._note = this._error(err);
       }
       this._render();
+    }
+
+    // Every chapter with a star, figure by figure; one whose figure stands on a
+    // Toniebox 2 that is online plays with a tap
+    _favouritesPage() {
+      const t = this._t;
+      const state = this._libraryState();
+      if (state) return state;
+      const boxes = new Map((this._overview?.boxes || []).map((b) => [b.id, b]));
+      const figures = this._library.tonies.filter((f) => f.favourites?.chapters?.length);
+      if (!figures.length) return this._section("", `<div class="muted">${esc(t.favListNone)}</div>`);
+      return figures.map((f, at) => {
+        const box = boxes.get(f.on_box);
+        const live = box?.generation === "toniebox_2" && box.online === true;
+        const where = box ? fill(live ? t.favPlay : t.favOnBox, { box: box.name || box.id }) : "";
+        const rows = f.favourites.chapters.map((i) => {
+          const c = f.chapters[i] || {};
+          const title = c.title || `${t.chapter} ${i + 1}`;
+          const play = live ? ` role="button" tabindex="0" class="playable" data-act="favplay" data-key="${esc(box.id)}" data-fig="${esc(f.id)}" data-i="${i}" title="${esc(where)}"` : "";
+          return `<li${play}><span class="no">${i + 1}</span><span class="ch-title">${esc(title)}</span><span class="len">${esc(mmss(c.seconds))}</span>` +
+            iconButton("star", `${t.favOff}: ${title}`, `class="star on" data-act="starch" data-key="${esc(f.id)}" data-i="${i}" aria-pressed="true"`) + `</li>`;
+        }).join("");
+        const head = `<div class="fav-fig">${this._pic(f.image_url, " small")}<div class="text"><span class="supporting">` +
+          `${esc([f.series, where].filter(Boolean).join(" · "))}</span></div>` +
+          `<ha-button appearance="plain" size="s" data-act="openfig" data-key="${esc(f.id)}">${esc(t.vChapters)}</ha-button></div>`;
+        return this._section(f.name, `${head}<ol class="chapters">${rows}</ol>`, { help: at === 0 ? t.favListHelp : "" });
+      }).join("");
     }
 
     // While the cloud converts a creative figure, it is read again now and then
@@ -2235,6 +2306,28 @@ if (!customElements.get("storybox-plus-panel")) {
           `<li><span class="rank">${i + 1}</span>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.title || `${t.chapter} ${x.chapter + 1}`)}</span>` +
           `<span class="supporting">${esc(x.name || t.unknownFigure)} · ${esc(t.chapter)} ${x.chapter + 1}</span>` +
           `${bar(x.seconds, max)}</div><span class="len">${esc(hm(x.seconds))}</span></li>`).join("")}</ol>`);
+      }
+      // The favourites over these days: their share, and what the stars could learn from the listening
+      const fv = s.favourites;
+      if (fv) {
+        const row = (x, on) => `<li>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.title || `${t.chapter} ${x.chapter + 1}`)}</span>` +
+          `<span class="supporting">${esc(x.name || t.unknownFigure)} · ${esc(t.chapter)} ${x.chapter + 1}</span></div>` +
+          `<span class="len">${esc(hm(x.seconds))}${Number.isFinite(x.plays) && x.plays >= 1 ? `<br><span class="supporting">${esc(fill(t.statPlays, { n: this._fmt(Math.round(x.plays)) }))}</span>` : ""}</span>` +
+          iconButton(on ? "star" : "starOff", `${on ? t.favOff : t.favOn}: ${x.title || `${t.chapter} ${x.chapter + 1}`}`,
+            `class="star${on ? " on" : ""}" data-act="starch" data-key="${esc(x.tonie_id)}" data-i="${x.chapter}" aria-pressed="${on}"`) + `</li>`;
+        let body = !fv.count ? `<div class="muted">${esc(t.statFavNone)}</div>` : "";
+        if (fv.count && fv.share !== null) {
+          body += `<div class="total"><span class="big">${esc(this._fmt(Math.round(100 * fv.share)))}</span><span class="unit">%</span></div>` +
+            `<div class="muted">${esc(t.statFavShare)}</div>`;
+        }
+        if (fv.per_tonie.length) {
+          body += `<ol class="top fav-share">${fv.per_tonie.map((x) =>
+            `<li>${this._pic(x.image_url, " small")}<div class="text"><span class="headline">${esc(x.name || t.unknownFigure)}</span>` +
+            `${bar(x.share || 0, 1)}</div><span class="len">${esc(this._fmt(Math.round(100 * (x.share || 0))))} %</span></li>`).join("")}</ol>`;
+        }
+        html += this._section(t.statFav, body, { help: t.statFavHelp });
+        if (fv.hidden.length) html += this._section(t.statHidden, `<ol class="top">${fv.hidden.map((x) => row(x, false)).join("")}</ol>`, { help: t.statHiddenHelp });
+        if (fv.unheard.length) html += this._section(t.statUnheard, `<ol class="top">${fv.unheard.map((x) => row(x, true)).join("")}</ol>`, { help: t.statUnheardHelp });
       }
       if (s.per_box.length) {
         html += this._section(t.perBox, `<table class="kv">${s.per_box.map((b) =>
@@ -2531,6 +2624,8 @@ if (!customElements.get("storybox-plus-panel")) {
           this._row(scope, "analytics", t.prefAnalytics, t.prefAnalyticsHint, { boolean: {} }) +
           this._row(scope, "analytics_days", t.prefKeep, t.prefKeepHint, { select: { mode: "dropdown", options: keep } }), { cls: "rows" });
         html += this._section(named(t.prefFigures), this._row(scope, "auto_lock", t.prefAutoLock, t.prefAutoLockHint, { boolean: {} }), { cls: "rows" });
+        html += this._section(named(t.prefFavourites), this._row(scope, "favourites_mode", t.prefFavMode, t.prefFavModeHint,
+          { select: { mode: "dropdown", options: FAV_MODES.map((m) => ({ value: m, label: t[`favMode_${m}`] })) } }), { cls: "rows" });
         html += this._section(named(t.prefNotices), this._row(scope, "mark_read", t.prefMarkRead, t.prefMarkReadHint, { boolean: {} }), { cls: "rows" });
         html += this._section(named(t.prefChapters),
           this._voiceRows(scope, e) +

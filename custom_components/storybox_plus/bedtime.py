@@ -70,6 +70,40 @@ def next_alarm(schedules: tuple[BedtimeSchedule, ...], now: datetime) -> NextAla
     return found
 
 
+def asleep(schedules: tuple[BedtimeSchedule, ...] | None, now: datetime) -> bool:
+    """Return whether now lies within a bedtime: from the sleep time to the wake-up of an enabled schedule.
+
+    ``now`` carries the box's time zone. The days of a schedule are the days
+    of the wake-up, so a bedtime that begins in the evening belongs to the
+    day after.
+    """
+    for schedule in schedules or ():
+        if not schedule.enabled:
+            continue
+        sleep, wakeup = _clock(schedule.sleep_time), _clock(schedule.wakeup_time)
+        if sleep is None or wakeup is None or sleep == wakeup:
+            # Neither a time nor a span: an alarm alone is no bedtime
+            continue
+        clock = now.time().replace(tzinfo=None)
+        today = WEEKDAYS[now.weekday()] in schedule.days
+        tomorrow = WEEKDAYS[(now.weekday() + 1) % 7] in schedule.days
+        if sleep < wakeup:
+            if today and sleep <= clock < wakeup:
+                return True
+        elif (tomorrow and clock >= sleep) or (today and clock < wakeup):
+            return True
+    return False
+
+
+def _clock(value: str | None) -> time | None:
+    """Read "H:MM", "HH:MM" or "HH:MM:SS"; None for anything else."""
+    try:
+        hour, minute = (int(part) for part in (value or "").split(":")[:2])
+        return time(hour, minute)
+    except ValueError:
+        return None
+
+
 def due(schedules: tuple[BedtimeSchedule, ...] | None, now: datetime) -> NextAlarm | None:
     """Return the next alarm if it is close enough to be armed now."""
     if not schedules:

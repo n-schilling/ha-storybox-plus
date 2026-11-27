@@ -165,6 +165,12 @@
     },
     "other_figure": {
       "message": "Auf der Box steht inzwischen eine andere Figur."
+    },
+    "no_favourites": {
+      "message": "Die Figur auf der Box hat keine Favoriten."
+    },
+    "tune_plays": {
+      "message": "Auf der Figur liegt ein Tune; die Box spielt den Tune, dessen Kapitel keine Sterne bekommen."
     }
   },
   "services": {
@@ -181,6 +187,24 @@
     "clear_sleep_timer": {
       "name": "Schlaftimer abbrechen",
       "description": "Bricht den laufenden Schlaftimer der Box ab."
+    },
+    "set_favourite": {
+      "name": "Favorit setzen",
+      "description": "Markiert ein Kapitel der Figur auf der Box als Favorit oder nimmt den Stern weg.",
+      "fields": {
+        "chapter": {
+          "name": "Kapitel",
+          "description": "Das Kapitel, ab 1 gezählt. Ohne Angabe das Kapitel, das gerade läuft."
+        },
+        "favourite": {
+          "name": "Favorit",
+          "description": "An markiert das Kapitel, aus nimmt den Stern weg. Ohne Angabe wechselt der Stern."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Nächsten Favoriten spielen",
+      "description": "Spielt das nächste Favoriten-Kapitel der Figur auf der Box; nach dem letzten das erste."
     }
   }
 }

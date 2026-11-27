@@ -370,7 +370,7 @@ class Instance:
         stores = {
             "analytics": _analytics(today),
             "battery": _battery(today),
-            "favourites": {"tonies": {"fig-fox": {"active": True, "chapters": [0, 2, 4]}}},
+            "favourites": {"tonies": {"fig-fox": {"mode": "only", "chapters": [0, 2, 4]}}},
         }
         for name, data in stores.items():
             key = f"storybox_plus.{self.entry_id}.{name}"
@@ -599,6 +599,10 @@ async def _attr(locator: Any, name: str, value: str) -> bool:
 
 async def _gone(locator: Any) -> bool:
     return bool(await locator.count() == 0)
+
+
+async def _count_is(locator: Any, count: int) -> bool:
+    return bool(await locator.count() == count)
 
 
 async def _rows_have_help(page: Page) -> None:
@@ -942,7 +946,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
         async def set_star() -> bool:
             fav = (await _library(api, instance))["fig-fox"]["favourites"]
-            return bool(fav == {"active": True, "chapters": [0, 1, 2, 4]})
+            return bool(fav == {"mode": "only", "chapters": [0, 1, 2, 4]})
 
         await _until(set_star, "the new favourite in the integration")
         await page.locator(f"{PANEL} ha-icon-button.star.on").nth(3).wait_for()
@@ -951,14 +955,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "figures.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
-        # The switch of the favourites and the lock are settings of the figure
+        # How the favourites play and the lock are settings of the figure
         await page.locator(f"{PANEL} #views ha-tab-group-tab[panel=settings]").click()
         await page.wait_for_url("**view=settings")
         await page.locator(f"{PANEL} ha-settings-row").first.wait_for()
         await _rows_have_help(page)
-        await page.get_by_role("switch", name="Steer the Toniebox 2 by the favourites").evaluate(
-            "el => el.click()"
-        )
+        settings = await page.locator(f"{PANEL} #sheet").inner_text()
+        expect("How its favourites play" in settings, f"no mode of the favourites: {settings}")
         await page.get_by_role("switch", name="Locked to the household").evaluate(
             "el => el.click()"
         )
@@ -966,9 +969,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
         async def saved() -> bool:
             fox = (await _library(api, instance))["fig-fox"]
-            return bool(fox["favourites"]["active"] is False and fox["locked"] is False)
+            return bool(fox["favourites"]["mode"] == "only" and fox["locked"] is False)
 
-        await _until(saved, "the favourites off and the figure unlocked")
+        await _until(saved, "the figure unlocked, its favourites as they were")
         await page.get_by_role("switch", name="Locked to the household").evaluate(
             "el => el.click()"
         )
@@ -982,6 +985,29 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
     await checks.run(
         "a figure as a subpage: stars at once, its settings with the one save button", favourites
     )
+
+    async def favourites_page() -> None:
+        # Every chapter with a star on one page; a star taken off there is gone at once
+        await _goto(page, instance, "figures/favourites", ".fav-fig")
+        text = await page.locator(f"{PANEL} #sheet").inner_text()
+        expect("The Clever Fox" in text and "Play on Kids room" in text, text)
+        rows = page.locator(f"{PANEL} ol.chapters li")
+        expect(await rows.count() == 4, f"4 favourites expected, got {await rows.count()}")
+        expect(await page.locator(f"{PANEL} ol.chapters li.playable").count() == 4, "not playable")
+        await rows.first.locator("ha-icon-button.star").click()
+
+        async def taken_off() -> bool:
+            fav = (await _library(api, instance))["fig-fox"]["favourites"]
+            return bool(fav == {"mode": "only", "chapters": [1, 2, 4]})
+
+        await _until(taken_off, "the star taken off in the integration")
+        await _until(lambda: _count_is(rows, 3), "the row gone from the page")
+        # A creative figure takes stars too
+        await _goto(page, instance, "figures/list?key=fig-grandma&view=chapters", "ol.chapters")
+        stars = page.locator(f"{PANEL} ha-icon-button.star")
+        expect(await stars.count() > 0, "no stars on a creative figure")
+
+    await checks.run("the favourites of all figures on one page", favourites_page)
 
     async def creative_settings() -> None:
         await _goto(page, instance, "figures/list?key=fig-grandma&view=settings", "ha-settings-row")
@@ -1153,6 +1179,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             "Listening time",
             "Most played",
             "Most played chapters",
+            "Favourites",
+            "of the listening time went to favourite chapters",
+            "Heard a lot, no star yet",
             "Placed most often",
             "Listening time of the Toniebox 2",
             "Active time of the Toniebox 1",
@@ -1194,7 +1223,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         )
         await page.locator(f"{PANEL} .compare").wait_for()
         if shots is not None:
-            await page.set_viewport_size({"width": 1200, "height": 2110})
+            await page.set_viewport_size({"width": 1200, "height": 2900})
             await page.wait_for_timeout(400)
             await page.screenshot(path=str(shots / "listening.png"))
             await page.set_viewport_size({"width": 1200, "height": 820})
@@ -1288,6 +1317,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _rows_have_help(page)
         text = await page.locator(f"{PANEL} #sheet").inner_text()
         expect("Backend version" in text and "tested" in text and "tested with" not in text, text)
+        expect("How favourites play" in text, text)
         if shots is not None:
             await page.set_viewport_size({"width": 1200, "height": 1000})
             await page.wait_for_timeout(400)
@@ -1400,8 +1430,39 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _until(lambda: _gone(page.locator(f"{PANEL} #overlay ha-dialog")), "Escape")
         await controls.locator("[data-act^='tracks:']").click()
         await rows.last.wait_for(timeout=3000)
+        # A star in the list marks the chapter; the list stays open
+        star = rows.nth(5).locator("ha-icon-button.star")
+        expect(await star.get_attribute("aria-pressed") == "false", "chapter 6 has a star")
+        await star.click()
+        await _until(
+            lambda: _attr(rows.nth(5).locator("ha-icon-button.star"), "aria-pressed", "true"),
+            "the star in the list",
+        )
+        expect(await page.locator(f"{PANEL} #overlay ha-dialog").count() == 1, "the list closed")
+        await rows.nth(5).locator("ha-icon-button.star").click()
+        await _until(
+            lambda: _attr(rows.nth(5).locator("ha-icon-button.star"), "aria-pressed", "false"),
+            "the star taken off in the list",
+        )
         await rows.last.click()
         await _until(lambda: _gone(page.locator(f"{PANEL} #overlay ha-dialog")), "a chapter chosen")
+        # The chapter that plays shows its star beside its title; the favourites steer
+        # the figure, and a button lets it play everything until it is taken off
+        now_star = kids.locator("ha-icon-button.now-star")
+        expect(await now_star.get_attribute("aria-pressed") == "true", "the playing chapter's star")
+        expect("Only favourites" in await kids.inner_text(), "the mode at work is not shown")
+        everything = kids.locator("ha-icon-button.fav-all")
+        await everything.click()
+        await _until(
+            lambda: _attr(kids.locator("ha-icon-button.fav-all"), "aria-pressed", "true"),
+            "everything today",
+        )
+        expect("Everything today" in await kids.inner_text(), "everything today is not shown")
+        await kids.locator("ha-icon-button.fav-all").click()
+        await _until(
+            lambda: _attr(kids.locator("ha-icon-button.fav-all"), "aria-pressed", "false"),
+            "the favourites steer again",
+        )
         await page.wait_for_timeout(600)
         expect(await kids.locator("ha-alert[alert-type=error]").count() == 0, "the jump failed")
         expect("70 %" in card, f"volume not in percent: {card}")
@@ -1445,7 +1506,13 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 "type": "storybox_plus/favourites/set",
                 "tonie_id": "fig-fox",
                 "chapters": [],
-                "active": False,
+                "mode": None,
+            },
+            {"type": "storybox_plus/favourites/star", "tonie_id": "fig-fox", "chapter": 0},
+            {
+                "type": "storybox_plus/box/favourites",
+                "box_id": demo_cloud.KIDS_BOX,
+                "suspended": True,
             },
         ):
             reply = await api.ws(token, message)
@@ -1532,7 +1599,10 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             expect(await card.locator(".card-header .batt").count() == 1, "battery not in the head")
             # Exactly its controls, each an action of the media player, and they work
             acts = await card.locator("[data-act]").evaluate_all(
-                "els => els.map((el) => el.getAttribute('data-act').split(':').slice(2, 3)[0])"
+                """els => els.map((el) => {
+                  const parts = el.getAttribute('data-act').split(':');
+                  return ['star', 'tracks'].includes(parts[0]) ? parts[0] : parts[2];
+                })"""
             )
             expect(
                 set(acts)
@@ -1545,9 +1615,56 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                     "volume_up",
                     "sleep",
                     "sleep_clear",
+                    "star",
+                    "tracks",
                 },
                 f"other buttons on the card: {acts}",
             )
+            # The star of the chapter that plays: every user may set it and take it off
+            star = card.locator("ha-icon-button.now-star")
+            expect(await star.get_attribute("aria-pressed") == "true", "no star on the card")
+            await star.click()
+            await _until(
+                lambda: _attr(card.locator("ha-icon-button.now-star"), "aria-pressed", "false"),
+                "the star taken off on the card",
+            )
+            await card.locator("ha-icon-button.now-star").click()
+            await _until(
+                lambda: _attr(card.locator("ha-icon-button.now-star"), "aria-pressed", "true"),
+                "the star set on the card",
+            )
+            # The list of chapters opens in Home Assistant's dialog above the dashboard: a
+            # star there marks a chapter, a chapter chosen plays and closes the list
+            await card.locator("[data-act^='tracks:']").click()
+            rows = user.locator("storybox-plus-card #overlay ha-dialog ol.tracks li")
+            await rows.first.wait_for(timeout=5000)
+            expect(await rows.count() == 8, f"8 chapters expected, got {await rows.count()}")
+            expect(
+                await user.locator("storybox-plus-card #overlay li.current").count() == 1,
+                "the chapter that plays is not marked",
+            )
+            row_star = rows.nth(6).locator("ha-icon-button.star")
+            expect(await row_star.get_attribute("aria-pressed") == "false", "chapter 7 has a star")
+            await row_star.click()
+            await _until(
+                lambda: _attr(rows.nth(6).locator("ha-icon-button.star"), "aria-pressed", "true"),
+                "the star in the card's list",
+            )
+            await rows.nth(6).locator("ha-icon-button.star").click()
+            await _until(
+                lambda: _attr(rows.nth(6).locator("ha-icon-button.star"), "aria-pressed", "false"),
+                "the star taken off in the card's list",
+            )
+            if shots is not None:
+                await user.wait_for_timeout(400)
+                await user.screenshot(path=str(shots / "card-chapters.png"))
+            await rows.nth(3).click()
+            await _until(
+                lambda: _gone(user.locator("storybox-plus-card #overlay ha-dialog")),
+                "a chapter chosen on the card",
+            )
+            await user.wait_for_timeout(600)
+            expect(await card.locator("ha-alert[alert-type=error]").count() == 0, "the jump failed")
             volume = card.locator(".fact.vol")
             before = await volume.inner_text()
             await card.locator("[data-act$=':volume_up']").click()
@@ -1680,7 +1797,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                     await user.locator("#card-size").screenshot(path=str(shots / "card-wide.png"))
                 await user.evaluate("document.getElementById('card-size').remove()")
                 expect(size["columns"] == columns, f"{width} px: {size}")
-                expect(size["buttons"] == 5, f"{width} px without its buttons: {size}")
+                expect(size["buttons"] == 6, f"{width} px without its buttons: {size}")
                 if height:
                     expect(size["content"] <= height, f"{width} x {height} px overflows: {size}")
             if shots is not None:

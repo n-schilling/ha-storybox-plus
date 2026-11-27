@@ -153,9 +153,10 @@ async def test_all_starts_at_the_first_favourite(
     setup_entry: MockConfigEntry,
     hass_ws_client: WebSocketGenerator,
 ) -> None:
-    """With favourite chapters the figure repeats from the first of them instead of pausing."""
+    """With only the favourites playing the figure repeats from the first of them instead of pausing."""
     client = await hass_ws_client(hass)
-    await setup_entry.runtime_data.favourites.async_set(TONIE_ID, [0], True)
+    tonie = setup_entry.runtime_data.coordinator.data.tonies[TONIE_ID]
+    await setup_entry.runtime_data.favourites.async_set(tonie, [0], "only")
     channel = push.last
     channel.connect()
     channel.playback(chapter=0)
@@ -169,6 +170,62 @@ async def test_all_starts_at_the_first_favourite(
     channel.playback(chapter=1, position=0.0)
     await hass.async_block_till_done()
     assert [c[1:] for c in channel.commands][2:] == [JUMP(0), PLAY]
+
+
+async def test_all_follows_the_order_of_the_favourites(
+    hass: HomeAssistant,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """With the favourites first the order is played to its end, then it begins again."""
+    client = await hass_ws_client(hass)
+    tonie = setup_entry.runtime_data.coordinator.data.tonies[TONIE_ID]
+    await setup_entry.runtime_data.favourites.async_set(tonie, [1], "first")
+    channel = push.last
+    channel.connect()
+    channel.playback(chapter=1)
+    assert (await _call(client, _repeat("all")))["success"]
+    # The figure ends, the order does not: the other chapter follows
+    channel.playback(chapter=1, ended=True)
+    await hass.async_block_till_done()
+    assert [c[1:] for c in channel.commands] == [JUMP(0), PLAY]
+    # The favourite comes round again: the order is over and begins anew
+    channel.playback(chapter=0, position=0.0)
+    channel.playback(chapter=1, position=0.0)
+    await hass.async_block_till_done()
+    assert [c[1:] for c in channel.commands][2:] == [JUMP(1), PLAY]
+    channel.playback(chapter=1, position=5.0)
+    channel.playback(chapter=1, ended=True)
+    await hass.async_block_till_done()
+    assert [c[1:] for c in channel.commands][4:] == [JUMP(0), PLAY]
+
+
+async def test_a_repeat_the_cloud_refuses_leaves_the_pause(
+    hass: HomeAssistant,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The repeat took the place of the pause after the last favourite and failed: the pause is sent."""
+    from custom_components.storybox_plus.cloud import CloudConnectionError
+
+    client = await hass_ws_client(hass)
+    tonie = setup_entry.runtime_data.coordinator.data.tonies[TONIE_ID]
+    await setup_entry.runtime_data.favourites.async_set(tonie, [0], "only")
+    channel = push.last
+    channel.connect()
+    channel.playback(chapter=0)
+    assert (await _call(client, _repeat("all")))["success"]
+    channel.command_error = CloudConnectionError("gone")
+    channel.playback(chapter=1, position=0.0)
+    await hass.async_block_till_done()
+    assert channel.commands == []
+    channel.command_error = None
+    # The next report of the chapter: the repeat again, in place of the pause
+    channel.playback(chapter=1, position=5.0)
+    await hass.async_block_till_done()
+    assert [c[1:] for c in channel.commands] == [JUMP(0), PLAY]
 
 
 @pytest.mark.parametrize(

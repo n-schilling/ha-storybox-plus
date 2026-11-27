@@ -77,7 +77,7 @@ from .const import (
     UNAVAILABLE_AFTER_FAILURES,
     UPDATE_INTERVAL,
 )
-from .favourites import Action, FavouriteChapters
+from .favourites import Action, FavouriteChapters, Plan, Steering
 from .ids import account_identifier, box_of
 from .night import NightMode, NightModes
 from .notices import CloudNotices
@@ -349,6 +349,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self.push.set_boxes(b.box.mac for b in state.boxes.values() if b.box.live and b.box.mac)
         self._remove_stale_devices(state)
         self._drop_stale_repeats(state)
+        self.favourites.keep(set(state.boxes), set(state.tonies), dt_util.utcnow().timestamp())
         self._watch_presence(state)
         if self.analytics is not None:
             self.analytics.tick()
@@ -797,7 +798,16 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             box_state.playback = event.data
             if event.data.tonie_id is not None:
                 box_state.online = True
-            action = self.favourites.observe(box_state.box.id, event.data)
+            # Of the accounts that see a box, the one that speaks for it steers it
+            action = (
+                self.favourites.observe(
+                    box_state.box.id,
+                    event.data,
+                    lambda figure: self.favourite_plan(box_state, figure),
+                )
+                if self.counts_box(box_state.box.id)
+                else None
+            )
             again = self._observe_repeat(box_state, event.data, action)
             if again is not None:
                 self.config_entry.async_create_background_task(
@@ -907,18 +917,179 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
                 # As if placed anew: the level before the figure stays the one to restore
                 self._follow_figure_volume(box_state)
 
+    # ------------------------------------------------------------ favourites
+
+    def _keeper(self, owner: StoryboxConfigEntry | None) -> FavouriteChapters:
+        """Return the favourites of the account that speaks for a box or a figure."""
+        if owner is None or owner is self.config_entry:
+            return self.favourites
+        runtime: RuntimeData | None = getattr(owner, "runtime_data", None)
+        return runtime.favourites if runtime is not None else self.favourites
+
+    def stars(self, tonie_id: str) -> FavouriteChapters:
+        """Return who keeps the stars of a figure: one account, also where several have it."""
+        return self._keeper(tonie_owner(self.hass, tonie_id))
+
+    def runs(self, box_id: str) -> FavouriteChapters:
+        """Return who steers a box: the account that speaks for it."""
+        return self._keeper(box_owner(self.hass, box_id))
+
+    def playing_stars(self, tonie: Tonie | None) -> tuple[int, ...] | None:
+        """Return the favourites among the chapters a box plays of a figure.
+
+        None while that is not known: without a figure, and while a Tune lies
+        on it, whose chapters are not the figure's.
+        """
+        if tonie is None or self.tune_on(tonie.id) is not None:
+            return None
+        return self.stars(tonie.id).indexes(tonie)
+
+    def favourite_mode(self, box_state: BoxState | None, tonie_id: str) -> Steering | None:
+        """Return the mode the favourites of a figure play by on a box now; None: off.
+
+        The figure's own mode, else the account's. "bedtime" is "only" within
+        a bedtime of the box and "first" otherwise, also without a box.
+        """
+        kept = self.stars(tonie_id).get(tonie_id)
+        # The account that keeps the stars of the figure names the mode as well
+        owner = tonie_owner(self.hass, tonie_id)
+        runtime: RuntimeData | None = (
+            None
+            if owner is None or owner is self.config_entry
+            else getattr(owner, "runtime_data", None)
+        )
+        preferences = runtime.preferences if runtime is not None else self.preferences
+        mode = (kept.mode if kept else None) or preferences.favourites_mode
+        if mode == "off":
+            return None
+        if mode == "bedtime":
+            asleep = box_state is not None and bedtime.asleep(
+                box_state.schedules, self.now_at(box_state.box)
+            )
+            return "only" if asleep else "first"
+        return mode
+
+    def favourite_plan(self, box_state: BoxState, tonie_id: str) -> Plan | None:
+        """Return how a figure is steered on a box now; None while it is not.
+
+        Not without favourites, and not while a Tune lies on the figure: the
+        box then plays the Tune, whose chapters are not the figure's.
+        """
+        tonie = self.tonie(tonie_id)
+        if tonie is None or self.tune_on(tonie_id) is not None:
+            return None
+        chapters = self.stars(tonie.id).indexes(tonie)
+        mode = self.favourite_mode(box_state, tonie_id)
+        if not chapters or mode is None:
+            return None
+        if mode != "only" and not tonie.chapters:
+            # The other chapters are not known: there is no order to follow
+            return None
+        return Plan(mode, chapters, len(tonie.chapters))
+
+    async def async_star(self, tonie_id: str, chapter: int, favourite: bool | None = None) -> bool:
+        """Mark a chapter of a figure as a favourite or not (None: the other way round)."""
+        tonie = self.tonie(tonie_id)
+        if tonie is None:
+            raise ChapterError("unknown_figure")
+        if chapter < 0 or (tonie.chapters and chapter >= len(tonie.chapters)):
+            raise ChapterError("unknown_chapter")
+        if tonie.kind is TonieKind.CREATIVE and not tonie.chapters:
+            raise ChapterError("unknown_chapter")
+        result = await self.stars(tonie_id).async_star(tonie, chapter, favourite)
+        self.async_update_listeners()
+        return result
+
+    def suspend_favourites(self, box_id: str, suspended: bool) -> BoxState:
+        """Let the figure on a Toniebox 2 play everything until it is taken off, or end that."""
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        if not box_state.box.live:
+            raise BoxError("not_supported")
+        if box_state.tonie_id is None:
+            raise BoxError("nothing_plays")
+        self.runs(box_id).suspend(box_id, box_state.tonie_id, suspended)
+        self.async_update_listeners()
+        return box_state
+
+    def chapter_step(self, box_state: BoxState, step: int) -> int:
+        """Return the chapter a step forwards (1) or back (-1) leads to on a box.
+
+        By the order of the favourites while the figure is steered, else the
+        chapter beside the one that plays. The favourites are told, so the
+        chapter plays whatever the order says.
+        """
+        playback = box_state.playback
+        if playback is None or playback.tonie_id is None:
+            raise BoxError("nothing_plays")
+        runs = self.runs(box_state.box.id)
+        # After a restart the order is not known until the box reports
+        runs.sync(
+            box_state.box.id,
+            playback.tonie_id,
+            self.favourite_plan(box_state, playback.tonie_id),
+        )
+        chapter = runs.neighbour(box_state.box.id, playback.tonie_id, step)
+        if chapter is None:
+            chapter = max(0, (playback.chapter or 0) + step)
+            tonie = self.tonie(playback.tonie_id)
+            if tonie is not None and tonie.chapters:
+                chapter = min(chapter, len(tonie.chapters) - 1)
+        self.runs(box_state.box.id).chosen(box_state.box.id, playback.tonie_id, chapter)
+        return chapter
+
+    def chapter_chosen(self, box_state: BoxState, chapter: int) -> None:
+        """Tell the favourites that Home Assistant sends the box to a chapter."""
+        self.runs(box_state.box.id).chosen(box_state.box.id, box_state.tonie_id, chapter)
+
+    def chapter_unchosen(self, box_state: BoxState, chapter: int) -> None:
+        """Take the chapter back: the command for it did not reach the box."""
+        self.runs(box_state.box.id).unchosen(box_state.box.id, chapter)
+
+    async def async_play_favourite(self, box_id: str) -> int:
+        """Send a Toniebox 2 to the next favourite of the figure on it; after the last, the first."""
+        box_state = self.data.boxes.get(box_id)
+        if box_state is None:
+            raise BoxError("unknown_box")
+        mac = box_state.box.mac
+        if not box_state.box.live or mac is None:
+            raise BoxError("not_supported")
+        tonie = self.tonie(box_state.tonie_id)
+        if tonie is None:
+            raise BoxError("nothing_plays")
+        if self.tune_on(tonie.id) is not None:
+            raise BoxError("tune_plays")
+        chapters = self.stars(tonie.id).indexes(tonie)
+        if not chapters:
+            raise BoxError("no_favourites")
+        playback = box_state.playback
+        now = playback.chapter if playback and playback.chapter is not None else -1
+        chapter = next((c for c in chapters if c > now), chapters[0])
+        self.chapter_chosen(box_state, chapter)
+        try:
+            await self.push.async_set_position(mac, chapter, 0)
+            await self.push.async_play(mac)
+        except CloudError:
+            self.chapter_unchosen(box_state, chapter)
+            raise
+        return chapter
+
     async def _async_steer(self, box_state: BoxState, action: Action) -> None:
-        """Send the box to a favourite chapter, or pause it after the last one."""
+        """Send the box to the chapter the order wants, or pause it after the last one."""
         mac = box_state.box.mac
         if mac is None:
             return
         try:
-            if action[0] == "jump":
-                await self.push.async_set_position(mac, action[1], 0)
-            else:
+            if action[0] == "pause":
                 await self.push.async_pause(mac)
+            else:
+                await self.push.async_set_position(mac, action[1], 0)
+                if action[0] == "play":
+                    await self.push.async_play(mac)
         except CloudError as err:
-            _LOGGER.debug("The box was not steered to a favourite chapter: %s", err)
+            _LOGGER.debug("The box was not steered by the favourites: %s", err)
+            self.favourites.failed(box_state.box.id)
 
     # ------------------------------------------------------------ repeat
 
@@ -958,8 +1129,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
     ) -> int | None:
         """Take a playback report; return the chapter to play again from its start, if any.
 
-        With favourite chapters at work, "all" starts again at the first
-        favourite instead of pausing after the last one.
+        With favourites at work, "all" starts again at the first chapter of
+        their order once that order has ended, instead of pausing there or
+        at the end of the figure.
         """
         box_id = box_state.box.id
         last = self._repeat_last.get(box_id)
@@ -977,12 +1149,15 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if mode is None:
             return None
         again = repeat.decide(mode, playback, last)
-        favourites = self.favourites.get(playback.tonie_id)
-        ends = again is not None or (action is not None and action[0] == "pause")
-        if mode == "all" and ends and favourites and favourites.active and favourites.chapters:
-            again = favourites.chapters[0]
+        first = self.runs(box_id).first(box_id, playback.tonie_id)
+        if mode == "all" and first is not None:
+            if action is not None and action[0] != "pause":
+                # The order goes on: nothing ended yet
+                again = None
+            elif again is not None or action is not None:
+                again = first
         if again is not None:
-            self.favourites.forget_pause(box_id)
+            self.runs(box_id).chosen(box_id, playback.tonie_id, again)
             _LOGGER.debug("Repeat %s: chapter %s plays from its start", mode, again + 1)
         return again
 
@@ -996,10 +1171,16 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             await self.push.async_play(mac)
         except CloudError as err:
             _LOGGER.debug("The box was not sent back for the repeat: %s", err)
+            # The favourites judge the next report anew: a pause the repeat took the
+            # place of is sent after all, and the repeat gets its next try with it
+            self.chapter_unchosen(box_state, chapter)
+            self.runs(box_state.box.id).failed(box_state.box.id)
 
     # ------------------------------------------------------------ commands of the page
 
-    async def async_box_command(self, box_id: str, command: str, value: int | None) -> None:
+    async def async_box_command(
+        self, box_id: str, command: str, value: int | None, tonie_id: str | None = None
+    ) -> None:
         """Send a player command from the page to a Toniebox 2.
 
         play, pause, next, previous (chapters), chapter (its index from 0),
@@ -1018,18 +1199,30 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if command in ("next", "previous"):
             if playback is None or playback.tonie_id is None:
                 raise BoxError("nothing_plays")
-            chapter = max(0, (playback.chapter or 0) + (1 if command == "next" else -1))
-            tonie = self.tonie(playback.tonie_id)
-            if tonie is not None and tonie.chapters:
-                chapter = min(chapter, len(tonie.chapters) - 1)
-            await self.push.async_set_position(mac, chapter, 0)
+            chapter = self.chapter_step(box_state, 1 if command == "next" else -1)
+            try:
+                await self.push.async_set_position(mac, chapter, 0)
+            except CloudError:
+                self.chapter_unchosen(box_state, chapter)
+                raise
         elif command == "chapter" and value is not None:
-            if playback is None or playback.tonie_id is None:
+            # Before the box itself reports, the figure the cloud names counts
+            if box_state.tonie_id is None:
                 raise BoxError("nothing_plays")
-            tonie = self.tonie(playback.tonie_id)
+            # A chapter meant for one figure does not play another one's, nor a Tune's
+            if tonie_id is not None and box_state.tonie_id != tonie_id:
+                raise BoxError("other_figure")
+            if tonie_id is not None and self.tune_on(tonie_id) is not None:
+                raise BoxError("tune_plays")
+            tonie = self.tonie(box_state.tonie_id)
             if tonie is None or value >= len(tonie.chapters):
                 raise BoxError("unknown_chapter")
-            await self.push.async_set_position(mac, value, 0)
+            self.chapter_chosen(box_state, value)
+            try:
+                await self.push.async_set_position(mac, value, 0)
+            except CloudError:
+                self.chapter_unchosen(box_state, value)
+                raise
         elif command == "play":
             await self.push.async_play(mac)
         elif command == "pause":

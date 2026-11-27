@@ -51,6 +51,7 @@ async def test_to_lock(hass: HomeAssistant) -> None:
         "voice": None,
         "voice_language": None,
         "fetch_max_mb": 200,
+        "favourites_mode": "first",
     }
     assert prefs.to_lock([_tonie("old"), _tonie("c", TonieKind.CREATIVE)]) == []
     new, locked_already, disc = (
@@ -80,6 +81,7 @@ async def test_to_lock(hass: HomeAssistant) -> None:
         "voice": None,
         "voice_language": None,
         "fetch_max_mb": 200,
+        "favourites_mode": "first",
     }
     assert again.to_lock([_tonie("old"), _tonie("later"), _tonie("newest")]) == [_tonie("newest")]
 
@@ -175,6 +177,7 @@ async def test_preferences_set(
         "voice": None,
         "voice_language": None,
         "fetch_max_mb": 200,
+        "favourites_mode": "first",
     }
     await client.send_json_auto_id(
         {"type": f"{DOMAIN}/preferences/set", "entry_id": "nope", "auto_lock": False}
@@ -366,7 +369,12 @@ async def test_new_preferences_are_checked_and_kept(hass: HomeAssistant) -> None
         "de_DE",
         50,
     )
-    for wrong in ({"analytics_days": 12}, {"fetch_max_mb": 5}, {"voice": "v"}):
+    for wrong in (
+        {"analytics_days": 12},
+        {"fetch_max_mb": 5},
+        {"voice": "v"},
+        {"favourites_mode": "loud"},
+    ):
         with pytest.raises(ValueError):
             await prefs.async_set(**wrong)
     await prefs.async_set(voice="")

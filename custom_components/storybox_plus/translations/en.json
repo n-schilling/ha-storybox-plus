@@ -165,6 +165,12 @@
     },
     "other_figure": {
       "message": "Another figure is on the box now."
+    },
+    "no_favourites": {
+      "message": "The figure on the box has no favourite chapters."
+    },
+    "tune_plays": {
+      "message": "A Tune lies on the figure; the box plays the Tune, whose chapters take no stars."
     }
   },
   "services": {
@@ -181,6 +187,24 @@
     "clear_sleep_timer": {
       "name": "Clear sleep timer",
       "description": "Cancels the running sleep timer of the box."
+    },
+    "set_favourite": {
+      "name": "Set favourite chapter",
+      "description": "Marks a chapter of the figure on the box as a favourite, or takes the star off.",
+      "fields": {
+        "chapter": {
+          "name": "Chapter",
+          "description": "The chapter, counted from 1. Without it, the chapter that plays."
+        },
+        "favourite": {
+          "name": "Favourite",
+          "description": "On marks the chapter, off takes the star off. Without it, the star changes sides."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Play next favourite",
+      "description": "Plays the next favourite chapter of the figure on the box; after the last one, the first."
     }
   }
 }

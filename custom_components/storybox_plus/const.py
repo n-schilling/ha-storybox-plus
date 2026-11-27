@@ -47,6 +47,10 @@ ATTR_REASON = "reason"
 SERVICE_SET_SLEEP_TIMER = "set_sleep_timer"
 SERVICE_CLEAR_SLEEP_TIMER = "clear_sleep_timer"
 ATTR_MINUTES = "minutes"
+SERVICE_SET_FAVOURITE = "set_favourite"
+SERVICE_PLAY_FAVOURITE = "play_favourite"
+ATTR_CHAPTER = "chapter"
+ATTR_FAVOURITE = "favourite"
 
 # The page
 FRONTEND_URL_BASE = "/storybox_plus"

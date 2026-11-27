@@ -19,13 +19,22 @@ from homeassistant.components.media_player.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, CloudError, Playback, Tonie
-from .const import ATTR_MINUTES, DOMAIN, SERVICE_CLEAR_SLEEP_TIMER, SERVICE_SET_SLEEP_TIMER
-from .coordinator import BoxError, BoxState, StoryboxConfigEntry, StoryboxCoordinator
+from .const import (
+    ATTR_CHAPTER,
+    ATTR_FAVOURITE,
+    ATTR_MINUTES,
+    DOMAIN,
+    SERVICE_CLEAR_SLEEP_TIMER,
+    SERVICE_PLAY_FAVOURITE,
+    SERVICE_SET_FAVOURITE,
+    SERVICE_SET_SLEEP_TIMER,
+)
+from .coordinator import BoxError, BoxState, ChapterError, StoryboxConfigEntry, StoryboxCoordinator
 from .entity import BoxEntity, async_follow_boxes
 
 # Commands go one at a time to the cloud
@@ -61,6 +70,18 @@ async def async_setup_entry(
     platform.async_register_entity_service(
         SERVICE_CLEAR_SLEEP_TIMER, None, "async_clear_sleep_timer"
     )
+    platform.async_register_entity_service(
+        SERVICE_SET_FAVOURITE,
+        {
+            # The chapter counted from 1, as the media player counts its tracks
+            probatio.Optional(ATTR_CHAPTER): probatio.All(
+                probatio.Coerce(int), probatio.Range(min=1)
+            ),
+            probatio.Optional(ATTR_FAVOURITE): cv.boolean,
+        },
+        "async_set_favourite",
+    )
+    platform.async_register_entity_service(SERVICE_PLAY_FAVOURITE, None, "async_play_favourite")
 
 
 class BoxPlayer(BoxEntity, MediaPlayerEntity):
@@ -75,8 +96,8 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
     _attr_media_content_type = MediaType.MUSIC
     _attr_media_image_remotely_accessible = False
     _attr_name = None
-    # The address of a picture is no history
-    _unrecorded_attributes = frozenset({"box_picture"})
+    # The address of a picture is no history, nor are the names of the chapters
+    _unrecorded_attributes = frozenset({"box_picture", "chapter_list"})
     _attr_supported_features = (
         MediaPlayerEntityFeature.PLAY
         | MediaPlayerEntityFeature.PAUSE
@@ -110,9 +131,32 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         """Return what a dashboard shows beside the player: the box's picture, the chapters."""
         box_state = self.box_state
         tonie = self._tonie
+        playback = self._playback
+        favourite: bool | None = None
+        # None while a Tune lies on the figure: the box plays the Tune then
+        stars = self.coordinator.playing_stars(tonie)
+        if stars is not None and playback is not None and playback.chapter is not None:
+            favourite = playback.chapter in stars
         return {
             "box_picture": self.coordinator.box_picture(box_state.box) if box_state else None,
             "chapters": len(tonie.chapters) if tonie else None,
+            # Whether the chapter that plays is a favourite; None while no chapter is known
+            "favourite": favourite,
+            # The figure on the box: its ID, as the media IDs of its chapters carry it
+            # (chapter:<figure>:<index from 0>), and every chapter by name, length and star
+            "tonie_id": tonie.id if tonie else None,
+            "chapter_list": (
+                [
+                    {
+                        "title": c.title or None,
+                        "seconds": c.seconds,
+                        "favourite": None if stars is None else i in stars,
+                    }
+                    for i, c in enumerate(tonie.chapters)
+                ]
+                if tonie
+                else None
+            ),
         }
 
     @property
@@ -277,14 +321,25 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         await self._jump_chapter(-1)
 
     async def _jump_chapter(self, step: int) -> None:
-        playback = self._playback
-        if playback is None or playback.tonie_id is None:
-            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="nothing_plays")
-        chapter = max(0, (playback.chapter or 0) + step)
-        tonie = self.coordinator.tonie(playback.tonie_id)
-        if tonie is not None and tonie.chapters:
-            chapter = min(chapter, len(tonie.chapters) - 1)
-        await self._send(lambda mac: self.coordinator.push.async_set_position(mac, chapter, 0))
+        box_state = self.box_state
+        try:
+            if box_state is None:
+                raise BoxError("nothing_plays")
+            chapter = self.coordinator.chapter_step(box_state, step)
+        except BoxError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="nothing_plays"
+            ) from err
+        await self._send_to_chapter(box_state, chapter)
+
+    async def _send_to_chapter(self, box_state: BoxState, chapter: int) -> None:
+        """Send the box to the start of a chapter the favourites were told of."""
+        try:
+            await self._send(lambda mac: self.coordinator.push.async_set_position(mac, chapter, 0))
+        except HomeAssistantError:
+            # It did not reach the box: the chapter is not the chosen one any more
+            self.coordinator.chapter_unchosen(box_state, chapter)
+            raise
 
     def _refuse_if_alarm(self) -> None:
         """Refuse a command that would replace the alarm of a bedtime schedule.
@@ -341,12 +396,13 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         meanwhile is refused instead of playing another figure's chapter.
         """
         figure, _, index = media_id.removeprefix(CHAPTER_PREFIX).rpartition(":")
-        playback = self._playback
         if not media_id.startswith(CHAPTER_PREFIX) or not index.isdigit():
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="unknown_chapter"
             )
-        if playback is None or playback.tonie_id is None or playback.tonie_id != figure:
+        # Before the box itself reports, the figure the cloud names counts
+        box_state = self.box_state
+        if box_state is None or box_state.tonie_id is None or box_state.tonie_id != figure:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="other_figure")
         chapter = int(index)
         tonie = self.coordinator.tonie(figure)
@@ -354,7 +410,8 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="unknown_chapter"
             )
-        await self._send(lambda mac: self.coordinator.push.async_set_position(mac, chapter, 0))
+        self.coordinator.chapter_chosen(box_state, chapter)
+        await self._send_to_chapter(box_state, chapter)
 
     async def async_turn_off(self) -> None:
         """Put the box to sleep; the cloud cannot wake it again."""
@@ -365,6 +422,48 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         """Let the box fall asleep after the given minutes."""
         self._refuse_if_alarm()
         await self._send(lambda mac: self.coordinator.push.async_set_sleep_timer(mac, minutes * 60))
+
+    async def async_set_favourite(
+        self, chapter: int | None = None, favourite: bool | None = None
+    ) -> None:
+        """Mark a chapter of the figure on the box as a favourite, or take the star off.
+
+        Without a chapter the one that plays; without ``favourite`` the star
+        changes sides.
+        """
+        tonie = self._tonie
+        playback = self._playback
+        if tonie is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="nothing_plays")
+        if self.coordinator.tune_on(tonie.id) is not None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="tune_plays")
+        index = chapter - 1 if chapter is not None else playback.chapter if playback else None
+        try:
+            if index is None:
+                raise ChapterError("unknown_chapter")
+            await self.coordinator.async_star(tonie.id, index, favourite)
+        except ChapterError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="unknown_chapter"
+            ) from err
+
+    async def async_play_favourite(self) -> None:
+        """Play the next favourite chapter of the figure on the box; after the last, the first."""
+        try:
+            await self.coordinator.async_play_favourite(self._box_id)
+        except BoxError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key=(
+                    err.code if err.code in ("no_favourites", "tune_plays") else "nothing_plays"
+                ),
+            ) from err
+        except CloudError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="command_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
     async def async_clear_sleep_timer(self) -> None:
         """Cancel the sleep timer."""
