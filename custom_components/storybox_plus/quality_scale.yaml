@@ -29,7 +29,7 @@ rules:
     comment: aiomqtt is open source and published on PyPI from its repository with CI.
   docs-actions:
     status: done
-    comment: The README documents every action with its fields, the actions for automations with examples, and the media player actions it supports.
+    comment: docs/automations.md documents every action with its fields, the actions for automations with examples, and the media player actions it supports.
   docs-conditions:
     status: exempt
     comment: No conditions.

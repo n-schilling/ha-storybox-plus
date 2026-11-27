@@ -2,8 +2,8 @@
 
 Automations, dashboards and scripts use the entity IDs, unique IDs, translation
 keys, event types, event data, attributes, actions and WebSocket commands; the
-stores keep what the integration learned across updates. README, section
-Interface, describes the same; change both together and note the change in
+stores keep what the integration learned across updates. docs/automations.md,
+section Interface, describes the same; change both together and note the change in
 CHANGELOG.
 """
 

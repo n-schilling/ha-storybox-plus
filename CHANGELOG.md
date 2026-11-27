@@ -14,6 +14,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The README is short: what the integration is for, three pictures, the installation, limitations and troubleshooting. The rest moved into four documents under `docs/` (what it does, the page and the dashboard card, automations and interface, development), and a check makes sure the links between them lead somewhere.
 - The cloud under Setup → Preferences reads one line: it fits this version, it was updated and is not tested yet, or it answers differently than expected. The versions and the time of the last test moved behind the (i); what a test found goes into the issue on GitHub instead of onto the page.
 
 ## [1.3.0] - 2026-11-27

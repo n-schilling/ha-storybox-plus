@@ -550,7 +550,7 @@ if (!customElements.get(CARD)) {
       name: `Storybox Plus · ${t.cardName}`,
       description: t.cardDescription,
       preview: true,
-      documentationURL: "https://github.com/n-schilling/ha-storybox-plus#dashboard-card",
+      documentationURL: "https://github.com/n-schilling/ha-storybox-plus/blob/main/docs/page-and-card.md#dashboard-card",
     });
   }
 }

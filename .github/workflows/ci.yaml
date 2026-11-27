@@ -37,6 +37,8 @@ jobs:
         run: diff custom_components/storybox_plus/strings.json custom_components/storybox_plus/translations/en.json
       - name: Every language has every text
         run: python3 .github/scripts/check-translations.py
+      - name: Links of the README and the documents
+        run: python3 .github/scripts/check-links.py
 
   hassfest:
     name: Hassfest

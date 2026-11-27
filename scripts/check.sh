@@ -36,7 +36,7 @@ tool() { # tool <name> [<alternative>]: the one in .venv, else the one on PATH
             return
         fi
     done
-    echo "$1 not found, neither in .venv nor on PATH; see README, section Development." >&2
+    echo "$1 not found, neither in .venv nor on PATH; see docs/development.md." >&2
     return 1
 }
 
@@ -71,6 +71,7 @@ run "Changelog has the version $version" bash -c \
 run "Translations match strings.json" \
     diff custom_components/storybox_plus/strings.json custom_components/storybox_plus/translations/en.json
 run "Every language has every text" "$PYTHON" .github/scripts/check-translations.py
+run "Links of the README and the documents" "$PYTHON" .github/scripts/check-links.py
 run "Strict typing" "$MYPY" custom_components
 run "Tests" "$PYTEST" -q \
     --cov=custom_components.storybox_plus --cov-report=term-missing:skip-covered --cov-fail-under=95
@@ -88,7 +89,7 @@ done
 if $no_page; then
     skipped+=("Page (--no-page)")
 elif [[ ! -x .venv-panel/bin/python ]]; then
-    skipped+=("Page (no .venv-panel; see README, section Development)")
+    skipped+=("Page (no .venv-panel; see docs/development.md)")
 else
     browser=chromium
     if [[ -d "/Applications/Google Chrome.app" ]] || command -v google-chrome > /dev/null; then
