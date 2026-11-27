@@ -1460,3 +1460,10 @@ async def test_the_box_is_switched_on_with_its_figure(
     channel.playback(chapter=4)
     await _settle(hass)
     assert channel.commands == [_jump(5)]
+
+
+async def test_the_order_begins_while_the_box_still_loads(hass: HomeAssistant) -> None:
+    """Placed, the box says downloading for the whole first chapter and plays: the order begins at once."""
+    box = Box(hass, Plan("first", (2,), 5))
+    assert box.report(0, downloading=True) is None
+    assert box.report(0, downloading=True, running=True) == ("jump", 2)

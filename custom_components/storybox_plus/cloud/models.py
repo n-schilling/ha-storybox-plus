@@ -250,16 +250,23 @@ class Playback:
     position: float | None = None
     # The version of the content on the box; the cloud wants it to tell the chapters
     content_version: int | None = None
+    # The message named the moment the chapter ends: the chapter runs. A box that has
+    # just been given a figure says "downloading" for the whole chapter while it plays
+    running: bool = False
     received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def playing(self) -> bool:
-        """Return whether audio is playing right now."""
+        """Return whether audio is playing right now.
+
+        Not while the box only loads the content; a box that loads and names
+        the end of the chapter plays it meanwhile.
+        """
         return (
             self.tonie_id is not None
             and self.paused is False
             and not self.ended
-            and not self.downloading
+            and (not self.downloading or self.running)
         )
 
 
@@ -743,6 +750,7 @@ def parse_playback(data: dict[str, Any], now: float | None = None) -> Playback:
         paused=_flag(data.get("paused")),
         ended=_flag(data.get("ended")),
         downloading=_flag(data.get("downloading")),
+        running=until_ms is not None and position_ms is None,
         duration=duration,
         position=position,
         received_at=datetime.fromtimestamp(now, UTC),

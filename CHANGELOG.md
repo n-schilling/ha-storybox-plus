@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-27
+
+### Fixed
+
+- Right after a figure is placed, a Toniebox 2 reports that it loads the content, and plays meanwhile; the flag stays until the next chapter begins. Home Assistant took that as not playing: the media player showed idle, the listening time of that chapter was not counted, and the favourites began only with the next chapter. A box that loads and names the end of the chapter now counts as playing.
+
 ## [1.2.1] - 2026-11-27
 
 ### Fixed

@@ -562,13 +562,51 @@ def test_parse_playback_uses_the_clock() -> None:
         ({"paused": None}, False),
         ({"paused": False, "ended": True}, False),
         ({"paused": False, "downloading": True}, False),
+        # A box that loads and names the end of the chapter plays it meanwhile
+        ({"paused": False, "downloading": True, "running": True}, True),
+        ({"paused": True, "downloading": True, "running": True}, False),
         ({"tonie_id": None, "paused": False}, False),
     ],
 )
 def test_playback_playing(fields: dict[str, Any], playing: bool) -> None:
-    """Audio plays only with a figure, not paused, not ended, not downloading."""
+    """Audio plays only with a figure, not paused, not ended, not while the box only loads."""
     values: dict[str, Any] = {"tonie_id": "t1", **fields}
     assert Playback(**values).playing is playing
+
+
+def test_a_figure_just_placed_plays_while_it_loads() -> None:
+    """Right after a figure is placed the box says downloading and names the chapter's end."""
+    placed = parse_playback(
+        {
+            "tonie": "t1",
+            "paused": False,
+            "chapter": 0,
+            "chapterUntilMs": 1_000_073_000,
+            "chapterDuration": 135.873,
+            "ended": False,
+            "downloading": True,
+            "blocked": False,
+        },
+        now=1_000_000.0,
+    )
+    assert placed.running and placed.downloading
+    assert placed.playing
+    assert placed.position == pytest.approx(62.873)
+    # Paused, the message carries the position instead: nothing runs
+    held = parse_playback(
+        {
+            "tonie": "t1",
+            "paused": True,
+            "chapter": 0,
+            "chapterPositionMs": 5000,
+            "downloading": True,
+        },
+        now=1_000_000.0,
+    )
+    assert not held.running and not held.playing
+    # Only loading, no chapter that runs
+    loading = parse_playback({"tonie": "t1", "paused": False, "downloading": True}, now=1.0)
+    assert not loading.running and not loading.playing
 
 
 def test_parse_sleep_timer() -> None:
