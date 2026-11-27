@@ -21,6 +21,7 @@ from custom_components.storybox_plus.cloud import (
     TOPIC_BATTERY,
     TOPIC_ONLINE,
     TOPIC_PLAYBACK,
+    TOPIC_SETTINGS_APPLIED,
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
     Battery,
@@ -300,6 +301,8 @@ async def test_boxes_set_before_connecting(broker: FakeBroker, sleeps: list[floa
             SleepTimer(state="on", duration=600, until=Mock()),
         ),
         (TOPIC_BATTERY, b"[1, 2]", Battery(None, None, None)),
+        (TOPIC_SETTINGS_APPLIED, b'{"anything": 1}', True),
+        (TOPIC_SETTINGS_APPLIED, b"", True),
     ],
 )
 async def test_messages_are_parsed(

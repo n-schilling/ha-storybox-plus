@@ -1,0 +1,343 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Zaloguj się do chmury swoich boxów",
+        "description": "Zaloguj się na konto z aplikacji. Home Assistant zapisuje tylko token, nie hasło.",
+        "data": {
+          "email": "E-mail",
+          "password": "Hasło"
+        },
+        "data_description": {
+          "email": "Adres e-mail konta.",
+          "password": "Używane jednorazowo do logowania; nie jest zapisywane."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Zaloguj się ponownie",
+        "description": "Chmura nie przyjmuje już zapisanego tokena. Zaloguj się ponownie na to samo konto.",
+        "data": {
+          "email": "E-mail",
+          "password": "Hasło"
+        },
+        "data_description": {
+          "email": "Adres e-mail konta.",
+          "password": "Używane jednorazowo do logowania; nie jest zapisywane."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z chmurą.",
+      "invalid_auth": "E-mail lub hasło jest nieprawidłowe.",
+      "unknown": "Chmura odpowiedziała w nieoczekiwany sposób. Szczegóły są w dzienniku."
+    },
+    "abort": {
+      "already_configured": "To konto jest już skonfigurowane.",
+      "reauth_successful": "Logowanie zostało odnowione.",
+      "wrong_account": "To inne konto niż to, które zostało skonfigurowane."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Połączenie"
+      },
+      "charging": {
+        "name": "Ładowanie"
+      },
+      "headphones": {
+        "name": "Słuchawki",
+        "state_attributes": {
+          "kind": {
+            "name": "Rodzaj"
+          },
+          "battery": {
+            "name": "Bateria"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Tryb nocny"
+      },
+      "live_channel": {
+        "name": "Kanał na żywo"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Bateria"
+      },
+      "sleep_timer": {
+        "name": "Wyłącznik czasowy"
+      },
+      "next_alarm": {
+        "name": "Następny budzik",
+        "state_attributes": {
+          "due": {
+            "name": "Termin"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Boxy",
+        "state_attributes": {
+          "boxes": {
+            "name": "Boxy"
+          }
+        }
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Figurka",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Położona",
+              "removed": "Zdjęta"
+            }
+          },
+          "tonie": {
+            "name": "Figurka"
+          },
+          "tonie_id": {
+            "name": "ID figurki"
+          }
+        }
+      },
+      "notification": {
+        "name": "Powiadomienie z chmury",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Powiadomienie"
+            }
+          },
+          "kind": {
+            "name": "Rodzaj"
+          },
+          "text": {
+            "name": "Tekst"
+          },
+          "time": {
+            "name": "Czas"
+          },
+          "tonie_id": {
+            "name": "ID figurki"
+          },
+          "tonie": {
+            "name": "Figurka"
+          },
+          "reason": {
+            "name": "Powód"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Chmura nie przyjmuje już logowania."
+    },
+    "cannot_connect": {
+      "message": "Nie można połączyć się z chmurą: {error}"
+    },
+    "update_failed": {
+      "message": "Chmura nie odpowiedziała: {error}"
+    },
+    "command_failed": {
+      "message": "Box nie dostał polecenia: {error}"
+    },
+    "box_unknown": {
+      "message": "Tego boxa nie ma już na koncie."
+    },
+    "volume_unknown": {
+      "message": "Box nie zgłosił jeszcze swojej głośności."
+    },
+    "nothing_plays": {
+      "message": "Na boxie nie stoi żadna figurka."
+    },
+    "alarm_due": {
+      "message": "O {time} zadzwoni budzik z pory snu; to polecenie by go anulowało. Najpierw wyłącz budzik tej pory snu na stronie Storybox Plus."
+    },
+    "unknown_chapter": {
+      "message": "Figurka nie ma takiego rozdziału."
+    },
+    "other_figure": {
+      "message": "Na boxie stoi teraz inna figurka."
+    },
+    "no_favourites": {
+      "message": "Figurka na boxie nie ma ulubionych rozdziałów."
+    },
+    "tune_plays": {
+      "message": "Na figurce leży Tune; box odtwarza Tune, a jego rozdziały nie dostają gwiazdek."
+    },
+    "figure_unknown": {
+      "message": "Żadna figurka nie nazywa się „{figure}”. Użyj nazwy takiej, jak pokazuje ją strona Storybox Plus, albo ID figurki."
+    },
+    "figure_ambiguous": {
+      "message": "Liczba figurek kreatywnych o nazwie „{figure}”: {count}. Użyj zamiast tego ID figurki."
+    },
+    "not_creative": {
+      "message": "„{figure}” nie jest figurką kreatywną; tylko one przyjmują rozdziały."
+    },
+    "chapter_refused": {
+      "message": "Rozdziały nie zostały zmienione: {error}"
+    },
+    "cloud_failed": {
+      "message": "Chmura nie przyjęła zmiany: {error}"
+    },
+    "media_unreadable": {
+      "message": "Nie udało się odczytać multimediów: {error}"
+    },
+    "too_few_chapters": {
+      "message": "„{figure}” ma mniej niż dwa rozdziały; nie ma czego mieszać."
+    },
+    "not_a_box": {
+      "message": "{entity} nie jest Toniebox 2 z Storybox Plus."
+    },
+    "no_box": {
+      "message": "Nie wskazano żadnej Toniebox 2."
+    },
+    "setting_unsupported": {
+      "message": "{box} nie ma ustawienia {setting}."
+    },
+    "setting_refused": {
+      "message": "Ustawienie zostało odrzucone: {error}"
+    }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Ustaw wyłącznik czasowy",
+      "description": "Box sam zaśnie po podanej liczbie minut. Trwający wyłącznik zostanie zastąpiony.",
+      "fields": {
+        "minutes": {
+          "name": "Minuty",
+          "description": "Minuty, po których box zaśnie (najwyżej 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Usuń wyłącznik czasowy",
+      "description": "Anuluje trwający wyłącznik czasowy boxa."
+    },
+    "set_favourite": {
+      "name": "Ustaw ulubiony rozdział",
+      "description": "Oznacza rozdział figurki stojącej na boxie jako ulubiony albo zdejmuje gwiazdkę.",
+      "fields": {
+        "chapter": {
+          "name": "Rozdział",
+          "description": "Rozdział, liczony od 1. Bez tego: rozdział, który właśnie gra."
+        },
+        "favourite": {
+          "name": "Ulubiony",
+          "description": "Włączone oznacza rozdział, wyłączone zdejmuje gwiazdkę. Bez tego gwiazdka zmienia stan na przeciwny."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Odtwórz następny ulubiony",
+      "description": "Odtwarza następny ulubiony rozdział figurki stojącej na boxie; po ostatnim wraca do pierwszego."
+    },
+    "add_chapter": {
+      "name": "Dodaj rozdział",
+      "description": "Dla automatyzacji: dodaje rozdział do figurki kreatywnej – z pliku multimedialnego, z tekstu czytanego głosem konta lub z linku do wideo. Ręcznie łatwiej zrobić to na stronie Storybox Plus.",
+      "fields": {
+        "figure": {
+          "name": "Figurka",
+          "description": "Figurka kreatywna – nazwa taka, jak pokazuje ją strona Storybox Plus, albo jej ID."
+        },
+        "media": {
+          "name": "Multimedia",
+          "description": "Plik audio lub mówiony tekst z przeglądarki multimediów."
+        },
+        "text": {
+          "name": "Tekst",
+          "description": "Tekst, który głos wybrany na stronie przeczyta jako rozdział."
+        },
+        "url": {
+          "name": "Link do wideo",
+          "description": "Link internetowy, którego dźwięk pobiera aplikacja Media Fetcher."
+        },
+        "title": {
+          "name": "Tytuł",
+          "description": "Nazwa rozdziału. Bez tego: nazwa pliku, pierwsze słowa tekstu albo tytuł wideo."
+        },
+        "replace": {
+          "name": "Zastąp",
+          "description": "Potem usuwa rozdziały o tym samym tytule, żeby codzienne powitanie się nie gromadziło."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Usuń rozdziały",
+      "description": "Dla automatyzacji: usuwa z figurki kreatywnej rozdziały o danym tytule albo wszystkie poza ostatnimi. Usunięte nagranie przepada; chmura nie przechowuje kopii.",
+      "fields": {
+        "figure": {
+          "name": "Figurka",
+          "description": "Figurka kreatywna – nazwa taka, jak pokazuje ją strona Storybox Plus, albo jej ID."
+        },
+        "title": {
+          "name": "Tytuł",
+          "description": "Usuwa każdy rozdział o tym tytule (wielkość liter nie ma znaczenia)."
+        },
+        "keep_last": {
+          "name": "Zachowaj ostatnie",
+          "description": "Zachowuje tyle rozdziałów na końcu listy, a resztę usuwa; 0 usuwa wszystkie."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Wymieszaj rozdziały",
+      "description": "Dla automatyzacji: ustawia rozdziały figurki kreatywnej w nowej, losowej kolejności. Chmura konwertuje figurkę od nowa.",
+      "fields": {
+        "figure": {
+          "name": "Figurka",
+          "description": "Figurka kreatywna – nazwa taka, jak pokazuje ją strona Storybox Plus, albo jej ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Zmień ustawienia boxa",
+      "description": "Dla automatyzacji: zmienia ustawienia Toniebox 2, tak jak przycisk zapisu na stronie Storybox Plus. Zmieniają się tylko podane ustawienia.",
+      "fields": {
+        "max_volume": {
+          "name": "Maksymalna głośność",
+          "description": "W procentach, od 1 do 100."
+        },
+        "max_headphone_volume": {
+          "name": "Maksymalna głośność słuchawek",
+          "description": "W procentach, od 1 do 100."
+        },
+        "lightring_brightness": {
+          "name": "Jasność pierścienia świetlnego",
+          "description": "W procentach, od 0 do 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Pierścień świetlny w porze snu",
+          "description": "W procentach, od 0 do 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Maksymalna głośność w porze snu",
+          "description": "W procentach, od 1 do 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Maksymalna głośność słuchawek w porze snu",
+          "description": "W procentach, od 1 do 100."
+        },
+        "skipping_enabled": {
+          "name": "Pomijanie dotknięciem",
+          "description": "Dotknięcie boxa przechodzi do następnego lub poprzedniego rozdziału."
+        },
+        "skipping_direction": {
+          "name": "Strona dotyku",
+          "description": "Która strona boxa przewija do przodu: lewa czy prawa."
+        },
+        "scrubbing_enabled": {
+          "name": "Przewijanie przechyleniem",
+          "description": "Przechylenie boxa przewija do przodu lub do tyłu."
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 // Storybox Plus: what the page in the sidebar and the dashboard card share, the
-// icons, the texts in both languages, small helpers, the number format, the
+// icons, the texts in English and German, small helpers, the number format, the
 // shared style and the drawing of a box's card. The page and the card import it
 // with the version of their own script, so a browser never mixes an old module
 // with a new page.
@@ -151,7 +151,7 @@ export const TEXTS = {
     shuffleSwapHint: "On a Toniebox 2: once another figure is placed after it, the chapters get a new order. Taking it off and putting it back keeps where it was. Every shuffle makes the cloud convert the figure anew.",
     lockSwitch: "Locked to the household", lockHint: "A locked figure cannot be claimed into another household, for example when it is lent to a friend.",
     figVolume: "Volume of this figure", figVolumeBox: "As set on the box", figVolumeChip: "volume {v} / 13",
-    figVolumeHint: "On a Toniebox 2 the figure plays at this level; taken off or replaced, the box gets its level from before back.",
+    figVolumeHint: "On a Toniebox 2 the figure plays at this level; taken off or replaced, the box gets its level from before back. The 13 levels divide the maximum volume set for the box: level 13 is that maximum, not the loudest the box can play, so a figure never plays louder than the maximum allows.",
     favChip: "{n} favourites", favChip1: "1 favourite", favOn: "Mark as a favourite", favOff: "Favourite: take the star off",
     favIs: "Favourite",
     favHint: "A star marks a favourite chapter. How the favourites play on a Toniebox 2 is set for the account under Setup → Preferences, and for this figure alone under Settings.",
@@ -374,7 +374,7 @@ export const TEXTS = {
     shuffleSwapHint: "Auf einer Toniebox 2: Sobald danach eine andere Figur aufgestellt wird, bekommen die Kapitel eine neue Reihenfolge. Abnehmen und wieder aufstellen behält die Stelle. Jedes Mischen lässt die Cloud die Figur neu umwandeln.",
     lockSwitch: "Für den Haushalt gesperrt", lockHint: "Eine gesperrte Figur kann nicht in einen anderen Haushalt übernommen werden, etwa wenn sie verliehen wird.",
     figVolume: "Lautstärke dieser Figur", figVolumeBox: "Wie an der Box eingestellt", figVolumeChip: "Lautstärke {v} / 13",
-    figVolumeHint: "Auf einer Toniebox 2 spielt die Figur mit dieser Stufe; abgenommen oder ersetzt, bekommt die Box ihre Stufe von vorher zurück.",
+    figVolumeHint: "Auf einer Toniebox 2 spielt die Figur mit dieser Stufe; abgenommen oder ersetzt, bekommt die Box ihre Stufe von vorher zurück. Die 13 Stufen teilen die maximale Lautstärke auf, die für die Box eingestellt ist: Stufe 13 ist dieses Maximum, nicht das Lauteste, was die Box kann. Eine Figur spielt also nie lauter, als das Maximum erlaubt.",
     favChip: "{n} Favoriten", favChip1: "1 Favorit", favOn: "Als Favorit markieren", favOff: "Favorit: Stern wegnehmen",
     favIs: "Favorit",
     favHint: "Ein Stern markiert ein Kapitel als Favorit. Wie die Favoriten auf einer Toniebox 2 spielen, steht fürs Konto unter Einrichtung → Einstellungen und für diese Figur allein unter Einstellungen.",
@@ -501,6 +501,33 @@ export const TEXTS = {
     cloudHelp: "Storybox Plus liest die Version des Cloud-Backends einmal pro Stunde; es zählt nur das Release, nicht der Commit dahinter.",
     cloudDiffers: "Die Cloud läuft mit Release {v}; Storybox Plus wurde mit {t} getestet. Funktioniert etwas nicht, hat sich vielleicht die Schnittstelle der Cloud geändert.",
   },
+};
+
+// The languages tonies offers figures in. English and German are above; the
+// others are files of their own beside this module, fetched with its version
+// when a user first needs them. Until one has arrived, and for any other
+// language, the texts are English; a text missing in a language is English too.
+export const LANGUAGES = ["de", "en", "es", "fr", "it", "nl", "pl", "pt-BR"];
+const loading = {};
+const waiting = {};
+export const langKey = (lang) => {
+  const code = String(lang || "en").toLowerCase();
+  return LANGUAGES.find((l) => l.toLowerCase() === code) || LANGUAGES.find((l) => l === code.split(/[-_]/)[0]) || "en";
+};
+// The texts of a language; onLoad is called once when a language that had to be
+// fetched has arrived, so the caller can draw itself again
+export const textsFor = (lang, onLoad) => {
+  const key = langKey(lang);
+  if (TEXTS[key]) return TEXTS[key];
+  if (onLoad) (waiting[key] ||= new Set()).add(onLoad);
+  loading[key] ||= import(new URL(`./storybox-plus-texts-${key}.js${new URL(import.meta.url).search}`, import.meta.url).href)
+    .then((module) => ({ ...TEXTS.en, ...module.default }), () => TEXTS.en)
+    .then((texts) => {
+      TEXTS[key] = texts;
+      for (const done of waiting[key] || []) done();
+      delete waiting[key];
+    });
+  return TEXTS.en;
 };
 
 export const esc = (v) =>
@@ -675,7 +702,12 @@ export const BoxView = (Base) => class extends Base {
     }
 
     get _t() {
-      return this._lang.toLowerCase().startsWith("de") ? TEXTS.de : TEXTS.en;
+      // Counted, so whatever is kept per language is drawn anew with the texts
+      this._textsArrived ||= () => {
+        this._textsVersion = (this._textsVersion || 0) + 1;
+        this._render?.();
+      };
+      return textsFor(this._lang, this._textsArrived);
     }
 
     // A number in the number format of the user's profile

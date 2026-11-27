@@ -46,9 +46,9 @@ written from scratch and imports nothing from Home Assistant.
   - `metrics/battery` `{percent, raw, status}`; a box that shuts down sends only nulls.
   - `online-state` `{onlineState: "online"|"offline"}`.
   - `playback/state` `{tonie: "<id>", paused, chapter, chapterUntilMs, chapterDuration, chapterPositionMs, ended, downloading, blocked}`; sent again at every chapter change; an **empty payload** means the figure was taken off. While playing the position follows from `chapterUntilMs`, while paused from `chapterPositionMs`. Right after a figure is placed the box sends `downloading: true` together with `chapterUntilMs` and plays; the flag stays until the next message, which comes with the next chapter (seen 27 November 2026, firmware 1.6.28).
-  - `volume/state` `{level (0..13), hardwarePercentage}`.
+  - `volume/state` `{level (0..13), hardwarePercentage}`. The level is a share of the box's `maxVolume`: level 13 is the maximum, and the box rescales the level when the maximum changes (HA-Toniebox #67).
   - `app-reply/bedtime-state` `{stl: {state, duration, until, alarm}}`.
-  - `metrics/headphones` and `settings-applied` exist and are not used.
+  - `settings-applied`: the box took the settings saved in the cloud (`settingsApplied` turns true); its payload is not read.
 - Commands go to `external/toniebox/{MAC}/app-control/…`:
   - `playback` `{action: "start"|"pause"|"setPosition", chapter, ms}`.
   - `volume` `{level}`.

@@ -35,6 +35,8 @@ jobs:
         run: .github/scripts/changelog-section.sh CHANGELOG.md "$(jq -r '.version' custom_components/storybox_plus/manifest.json)" > /dev/null
       - name: Translations match strings.json
         run: diff custom_components/storybox_plus/strings.json custom_components/storybox_plus/translations/en.json
+      - name: Every language has every text
+        run: python3 .github/scripts/check-translations.py
 
   hassfest:
     name: Hassfest

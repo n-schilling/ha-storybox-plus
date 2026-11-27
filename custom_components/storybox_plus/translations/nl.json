@@ -1,0 +1,343 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Meld je aan bij de cloud van je boxen",
+        "description": "Meld je aan met het account van de app. Home Assistant bewaart alleen een token, niet het wachtwoord.",
+        "data": {
+          "email": "E-mail",
+          "password": "Wachtwoord"
+        },
+        "data_description": {
+          "email": "Het e-mailadres van het account.",
+          "password": "Wordt één keer gebruikt voor het aanmelden en niet opgeslagen."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw aanmelden",
+        "description": "De cloud accepteert het opgeslagen token niet meer. Meld je opnieuw aan met hetzelfde account.",
+        "data": {
+          "email": "E-mail",
+          "password": "Wachtwoord"
+        },
+        "data_description": {
+          "email": "Het e-mailadres van het account.",
+          "password": "Wordt één keer gebruikt voor het aanmelden en niet opgeslagen."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "De cloud is niet bereikbaar.",
+      "invalid_auth": "E-mailadres of wachtwoord is onjuist.",
+      "unknown": "De cloud gaf een onverwacht antwoord. Zie het logboek voor details."
+    },
+    "abort": {
+      "already_configured": "Dit account is al ingesteld.",
+      "reauth_successful": "De aanmelding is vernieuwd.",
+      "wrong_account": "Dit is een ander account dan het ingestelde."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Verbinding"
+      },
+      "charging": {
+        "name": "Opladen"
+      },
+      "headphones": {
+        "name": "Koptelefoon",
+        "state_attributes": {
+          "kind": {
+            "name": "Soort"
+          },
+          "battery": {
+            "name": "Batterij"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Nachtmodus"
+      },
+      "live_channel": {
+        "name": "Live-kanaal"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Batterij"
+      },
+      "sleep_timer": {
+        "name": "Slaaptimer"
+      },
+      "next_alarm": {
+        "name": "Volgende wekker",
+        "state_attributes": {
+          "due": {
+            "name": "Gaat af"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Boxen",
+        "state_attributes": {
+          "boxes": {
+            "name": "Boxen"
+          }
+        }
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Figuur",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Geplaatst",
+              "removed": "Weggehaald"
+            }
+          },
+          "tonie": {
+            "name": "Figuur"
+          },
+          "tonie_id": {
+            "name": "Figuur-ID"
+          }
+        }
+      },
+      "notification": {
+        "name": "Cloudmelding",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Melding"
+            }
+          },
+          "kind": {
+            "name": "Soort"
+          },
+          "text": {
+            "name": "Tekst"
+          },
+          "time": {
+            "name": "Tijd"
+          },
+          "tonie_id": {
+            "name": "Figuur-ID"
+          },
+          "tonie": {
+            "name": "Figuur"
+          },
+          "reason": {
+            "name": "Reden"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "De cloud accepteert de aanmelding niet meer."
+    },
+    "cannot_connect": {
+      "message": "De cloud is niet bereikbaar: {error}"
+    },
+    "update_failed": {
+      "message": "De cloud gaf geen antwoord: {error}"
+    },
+    "command_failed": {
+      "message": "De box heeft de opdracht niet ontvangen: {error}"
+    },
+    "box_unknown": {
+      "message": "De box staat niet meer in het account."
+    },
+    "volume_unknown": {
+      "message": "De box heeft haar volume nog niet doorgegeven."
+    },
+    "nothing_plays": {
+      "message": "Er staat geen figuur op de box."
+    },
+    "alarm_due": {
+      "message": "Een wekker van een bedtijdschema gaat om {time} af; dit zou hem annuleren. Zet eerst de wekker van het schema uit op de Storybox Plus-pagina."
+    },
+    "unknown_chapter": {
+      "message": "De figuur heeft geen zo'n hoofdstuk."
+    },
+    "other_figure": {
+      "message": "Er staat nu een andere figuur op de box."
+    },
+    "no_favourites": {
+      "message": "De figuur op de box heeft geen favoriete hoofdstukken."
+    },
+    "tune_plays": {
+      "message": "Er ligt een Tune op de figuur; de box speelt de Tune af, en de hoofdstukken daarvan krijgen geen sterren."
+    },
+    "figure_unknown": {
+      "message": "Geen enkele figuur heet \"{figure}\". Gebruik de naam zoals de Storybox Plus-pagina die toont, of het ID van de figuur."
+    },
+    "figure_ambiguous": {
+      "message": "{count} creatieve figuren heten \"{figure}\". Gebruik in plaats daarvan het ID van de figuur."
+    },
+    "not_creative": {
+      "message": "\"{figure}\" is geen creatieve figuur; alleen die nemen hoofdstukken aan."
+    },
+    "chapter_refused": {
+      "message": "De hoofdstukken zijn niet gewijzigd: {error}"
+    },
+    "cloud_failed": {
+      "message": "De cloud nam de wijziging niet aan: {error}"
+    },
+    "media_unreadable": {
+      "message": "De media konden niet worden gelezen: {error}"
+    },
+    "too_few_chapters": {
+      "message": "\"{figure}\" heeft minder dan twee hoofdstukken; er valt niets door elkaar te halen."
+    },
+    "not_a_box": {
+      "message": "{entity} is geen Toniebox 2 van Storybox Plus."
+    },
+    "no_box": {
+      "message": "Er is geen Toniebox 2 gekozen."
+    },
+    "setting_unsupported": {
+      "message": "{box} heeft de instelling {setting} niet."
+    },
+    "setting_refused": {
+      "message": "De instelling is geweigerd: {error}"
+    }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Slaaptimer instellen",
+      "description": "Laat de box na het opgegeven aantal minuten vanzelf in slaap vallen. Een lopende timer wordt vervangen.",
+      "fields": {
+        "minutes": {
+          "name": "Minuten",
+          "description": "Minuten tot de box in slaap valt (hooguit 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Slaaptimer wissen",
+      "description": "Annuleert de lopende slaaptimer van de box."
+    },
+    "set_favourite": {
+      "name": "Favoriet hoofdstuk instellen",
+      "description": "Markeert een hoofdstuk van de figuur op de box als favoriet, of haalt de ster weg.",
+      "fields": {
+        "chapter": {
+          "name": "Hoofdstuk",
+          "description": "Het hoofdstuk, geteld vanaf 1. Zonder opgave: het hoofdstuk dat nu speelt."
+        },
+        "favourite": {
+          "name": "Favoriet",
+          "description": "Aan markeert het hoofdstuk, uit haalt de ster weg. Zonder opgave wisselt de ster van stand."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Volgende favoriet afspelen",
+      "description": "Speelt het volgende favoriete hoofdstuk van de figuur op de box af; na het laatste weer het eerste."
+    },
+    "add_chapter": {
+      "name": "Hoofdstuk toevoegen",
+      "description": "Voor automatiseringen: voegt een hoofdstuk toe aan een creatieve figuur, uit een mediabron, een tekst die de stem van het account uitspreekt of een videolink. Handmatig is het makkelijker op de Storybox Plus-pagina.",
+      "fields": {
+        "figure": {
+          "name": "Figuur",
+          "description": "De creatieve figuur, met de naam zoals de Storybox Plus-pagina die toont, of met het ID."
+        },
+        "media": {
+          "name": "Media",
+          "description": "Een audiobestand of een gesproken tekst uit de mediabrowser."
+        },
+        "text": {
+          "name": "Tekst",
+          "description": "Een tekst die de op de pagina gekozen stem als hoofdstuk uitspreekt."
+        },
+        "url": {
+          "name": "Videolink",
+          "description": "Een weblink waarvan de Media Fetcher-app de audio ophaalt."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "De naam van het hoofdstuk. Zonder opgave: de bestandsnaam, de eerste woorden van de tekst of de titel van de video."
+        },
+        "replace": {
+          "name": "Vervangen",
+          "description": "Verwijdert daarna de hoofdstukken met dezelfde titel, zodat een dagelijkse groet zich niet opstapelt."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Hoofdstukken verwijderen",
+      "description": "Voor automatiseringen: verwijdert van een creatieve figuur de hoofdstukken met een bepaalde titel, of alle behalve de laatste. De verwijderde audio is weg; de cloud bewaart geen kopie.",
+      "fields": {
+        "figure": {
+          "name": "Figuur",
+          "description": "De creatieve figuur, met de naam zoals de Storybox Plus-pagina die toont, of met het ID."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Verwijdert elk hoofdstuk met deze titel (hoofdletters maken niet uit)."
+        },
+        "keep_last": {
+          "name": "Laatste bewaren",
+          "description": "Bewaart dit aantal hoofdstukken aan het eind van de lijst en verwijdert de rest; 0 verwijdert alles."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Hoofdstukken door elkaar halen",
+      "description": "Voor automatiseringen: zet de hoofdstukken van een creatieve figuur in een nieuwe willekeurige volgorde. De cloud zet de figuur opnieuw om.",
+      "fields": {
+        "figure": {
+          "name": "Figuur",
+          "description": "De creatieve figuur, met de naam zoals de Storybox Plus-pagina die toont, of met het ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Boxinstellingen wijzigen",
+      "description": "Voor automatiseringen: wijzigt instellingen van een Toniebox 2, zoals de opslaan-knop op de Storybox Plus-pagina. Alleen de opgegeven instellingen veranderen.",
+      "fields": {
+        "max_volume": {
+          "name": "Maximaal volume",
+          "description": "In procenten, 1 tot 100."
+        },
+        "max_headphone_volume": {
+          "name": "Maximaal volume van de koptelefoon",
+          "description": "In procenten, 1 tot 100."
+        },
+        "lightring_brightness": {
+          "name": "Helderheid van de lichtring",
+          "description": "In procenten, 0 tot 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Lichtring bij bedtijd",
+          "description": "In procenten, 0 tot 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Maximaal volume bij bedtijd",
+          "description": "In procenten, 1 tot 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Maximaal volume van de koptelefoon bij bedtijd",
+          "description": "In procenten, 1 tot 100."
+        },
+        "skipping_enabled": {
+          "name": "Overslaan door te tikken",
+          "description": "Tikken op de box springt naar het volgende of vorige hoofdstuk."
+        },
+        "skipping_direction": {
+          "name": "Kant om te tikken",
+          "description": "Welke kant van de box vooruit springt: links of rechts."
+        },
+        "scrubbing_enabled": {
+          "name": "Spoelen door te kantelen",
+          "description": "Kantelen van de box spoelt vooruit of terug."
+        }
+      }
+    }
+  }
+}

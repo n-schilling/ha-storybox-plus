@@ -70,6 +70,7 @@ run "Changelog has the version $version" bash -c \
     '.github/scripts/changelog-section.sh CHANGELOG.md "$1" > /dev/null' _ "$version"
 run "Translations match strings.json" \
     diff custom_components/storybox_plus/strings.json custom_components/storybox_plus/translations/en.json
+run "Every language has every text" "$PYTHON" .github/scripts/check-translations.py
 run "Strict typing" "$MYPY" custom_components
 run "Tests" "$PYTEST" -q \
     --cov=custom_components.storybox_plus --cov-report=term-missing:skip-covered --cov-fail-under=95

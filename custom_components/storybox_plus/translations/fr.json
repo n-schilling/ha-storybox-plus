@@ -1,0 +1,343 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion au cloud de vos boîtes",
+        "description": "Connectez-vous avec le compte de l'appli. Home Assistant ne conserve qu'un jeton, pas le mot de passe.",
+        "data": {
+          "email": "E-mail",
+          "password": "Mot de passe"
+        },
+        "data_description": {
+          "email": "L'adresse e-mail du compte.",
+          "password": "Utilisé une seule fois pour la connexion ; il n'est pas enregistré."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Se reconnecter",
+        "description": "Le cloud n'accepte plus le jeton enregistré. Reconnectez-vous avec le même compte.",
+        "data": {
+          "email": "E-mail",
+          "password": "Mot de passe"
+        },
+        "data_description": {
+          "email": "L'adresse e-mail du compte.",
+          "password": "Utilisé une seule fois pour la connexion ; il n'est pas enregistré."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Le cloud est injoignable.",
+      "invalid_auth": "L'e-mail ou le mot de passe est incorrect.",
+      "unknown": "Le cloud a répondu de façon inattendue. Consultez le journal pour en savoir plus."
+    },
+    "abort": {
+      "already_configured": "Ce compte est déjà configuré.",
+      "reauth_successful": "La connexion a été renouvelée.",
+      "wrong_account": "Ce compte n'est pas celui qui a été configuré."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Connexion"
+      },
+      "charging": {
+        "name": "Charge"
+      },
+      "headphones": {
+        "name": "Casque",
+        "state_attributes": {
+          "kind": {
+            "name": "Type"
+          },
+          "battery": {
+            "name": "Batterie"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Mode nuit"
+      },
+      "live_channel": {
+        "name": "Canal en direct"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Batterie"
+      },
+      "sleep_timer": {
+        "name": "Minuteur de mise en veille"
+      },
+      "next_alarm": {
+        "name": "Prochain réveil",
+        "state_attributes": {
+          "due": {
+            "name": "Échéance"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Boîtes",
+        "state_attributes": {
+          "boxes": {
+            "name": "Boîtes"
+          }
+        }
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Figurine",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Posée",
+              "removed": "Retirée"
+            }
+          },
+          "tonie": {
+            "name": "Figurine"
+          },
+          "tonie_id": {
+            "name": "ID de la figurine"
+          }
+        }
+      },
+      "notification": {
+        "name": "Notification du cloud",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Notification"
+            }
+          },
+          "kind": {
+            "name": "Type"
+          },
+          "text": {
+            "name": "Texte"
+          },
+          "time": {
+            "name": "Heure"
+          },
+          "tonie_id": {
+            "name": "ID de la figurine"
+          },
+          "tonie": {
+            "name": "Figurine"
+          },
+          "reason": {
+            "name": "Motif"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Le cloud n'accepte plus la connexion."
+    },
+    "cannot_connect": {
+      "message": "Le cloud est injoignable : {error}"
+    },
+    "update_failed": {
+      "message": "Le cloud n'a pas répondu : {error}"
+    },
+    "command_failed": {
+      "message": "La boîte n'a pas reçu la commande : {error}"
+    },
+    "box_unknown": {
+      "message": "La boîte ne fait plus partie du compte."
+    },
+    "volume_unknown": {
+      "message": "La boîte n'a pas encore indiqué son volume."
+    },
+    "nothing_plays": {
+      "message": "Aucune figurine n'est posée sur la boîte."
+    },
+    "alarm_due": {
+      "message": "Un réveil d'une routine du coucher sonne à {time} ; cette action l'annulerait. Désactivez d'abord le réveil de la routine sur la page Storybox Plus."
+    },
+    "unknown_chapter": {
+      "message": "La figurine n'a pas ce chapitre."
+    },
+    "other_figure": {
+      "message": "Une autre figurine est maintenant sur la boîte."
+    },
+    "no_favourites": {
+      "message": "La figurine sur la boîte n'a pas de chapitres favoris."
+    },
+    "tune_plays": {
+      "message": "Un Tune est posé sur la figurine ; la boîte lit le Tune, dont les chapitres ne reçoivent pas d'étoile."
+    },
+    "figure_unknown": {
+      "message": "Aucune figurine ne s'appelle « {figure} ». Utilisez le nom tel que la page Storybox Plus l'affiche, ou l'ID de la figurine."
+    },
+    "figure_ambiguous": {
+      "message": "{count} figurines créatives s'appellent « {figure} ». Utilisez plutôt l'ID de la figurine."
+    },
+    "not_creative": {
+      "message": "« {figure} » n'est pas une figurine créative ; seules celles-ci acceptent des chapitres."
+    },
+    "chapter_refused": {
+      "message": "Les chapitres n'ont pas été modifiés : {error}"
+    },
+    "cloud_failed": {
+      "message": "Le cloud n'a pas accepté la modification : {error}"
+    },
+    "media_unreadable": {
+      "message": "Le média n'a pas pu être lu : {error}"
+    },
+    "too_few_chapters": {
+      "message": "« {figure} » a moins de deux chapitres ; il n'y a rien à mélanger."
+    },
+    "not_a_box": {
+      "message": "{entity} n'est pas une Toniebox 2 de Storybox Plus."
+    },
+    "no_box": {
+      "message": "Aucune Toniebox 2 n'a été ciblée."
+    },
+    "setting_unsupported": {
+      "message": "{box} n'a pas le réglage {setting}."
+    },
+    "setting_refused": {
+      "message": "Le réglage a été refusé : {error}"
+    }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Régler le minuteur de mise en veille",
+      "description": "Met la boîte en veille toute seule après le nombre de minutes indiqué. Un minuteur en cours est remplacé.",
+      "fields": {
+        "minutes": {
+          "name": "Minutes",
+          "description": "Minutes avant la mise en veille de la boîte (1092 au maximum)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Annuler le minuteur de mise en veille",
+      "description": "Annule le minuteur de mise en veille en cours de la boîte."
+    },
+    "set_favourite": {
+      "name": "Définir un chapitre favori",
+      "description": "Marque un chapitre de la figurine sur la boîte comme favori, ou retire l'étoile.",
+      "fields": {
+        "chapter": {
+          "name": "Chapitre",
+          "description": "Le chapitre, numéroté à partir de 1. Sans indication : le chapitre en cours de lecture."
+        },
+        "favourite": {
+          "name": "Favori",
+          "description": "Activé marque le chapitre, désactivé retire l'étoile. Sans indication, l'étoile est inversée."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Lire le favori suivant",
+      "description": "Lit le prochain chapitre favori de la figurine sur la boîte ; après le dernier, le premier."
+    },
+    "add_chapter": {
+      "name": "Ajouter un chapitre",
+      "description": "Pour les automatisations : ajoute un chapitre à une figurine créative, à partir d'une source média, d'un texte lu par la voix du compte ou d'un lien vidéo. À la main, c'est plus simple sur la page Storybox Plus.",
+      "fields": {
+        "figure": {
+          "name": "Figurine",
+          "description": "La figurine créative, par son nom tel que la page Storybox Plus l'affiche, ou par son ID."
+        },
+        "media": {
+          "name": "Média",
+          "description": "Un fichier audio ou un texte parlé du navigateur de médias."
+        },
+        "text": {
+          "name": "Texte",
+          "description": "Un texte que la voix choisie sur la page lit comme chapitre."
+        },
+        "url": {
+          "name": "Lien vidéo",
+          "description": "Un lien web dont l'application Media Fetcher récupère l'audio."
+        },
+        "title": {
+          "name": "Titre",
+          "description": "Le nom du chapitre. Sans indication : le nom du fichier, les premiers mots du texte ou le titre de la vidéo."
+        },
+        "replace": {
+          "name": "Remplacer",
+          "description": "Supprime ensuite les chapitres de même titre, pour qu'un message du jour ne s'accumule pas."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Supprimer des chapitres",
+      "description": "Pour les automatisations : supprime d'une figurine créative les chapitres portant un titre, ou tous sauf les derniers. L'audio supprimé est perdu ; le cloud n'en garde aucune copie.",
+      "fields": {
+        "figure": {
+          "name": "Figurine",
+          "description": "La figurine créative, par son nom tel que la page Storybox Plus l'affiche, ou par son ID."
+        },
+        "title": {
+          "name": "Titre",
+          "description": "Supprime tous les chapitres portant ce titre (majuscules ou minuscules)."
+        },
+        "keep_last": {
+          "name": "Garder les derniers",
+          "description": "Garde ce nombre de chapitres en fin de liste et supprime les autres ; 0 supprime tout."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Mélanger les chapitres",
+      "description": "Pour les automatisations : remet les chapitres d'une figurine créative dans un nouvel ordre aléatoire. Le cloud convertit la figurine à nouveau.",
+      "fields": {
+        "figure": {
+          "name": "Figurine",
+          "description": "La figurine créative, par son nom tel que la page Storybox Plus l'affiche, ou par son ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Modifier les réglages de la boîte",
+      "description": "Pour les automatisations : modifie les réglages d'une Toniebox 2, comme le bouton d'enregistrement de la page Storybox Plus. Seuls les réglages indiqués changent.",
+      "fields": {
+        "max_volume": {
+          "name": "Volume maximal",
+          "description": "En pourcentage, de 1 à 100."
+        },
+        "max_headphone_volume": {
+          "name": "Volume maximal du casque",
+          "description": "En pourcentage, de 1 à 100."
+        },
+        "lightring_brightness": {
+          "name": "Luminosité de l'anneau lumineux",
+          "description": "En pourcentage, de 0 à 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Anneau lumineux au coucher",
+          "description": "En pourcentage, de 0 à 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Volume maximal au coucher",
+          "description": "En pourcentage, de 1 à 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Volume maximal du casque au coucher",
+          "description": "En pourcentage, de 1 à 100."
+        },
+        "skipping_enabled": {
+          "name": "Passer en tapotant",
+          "description": "Tapoter la boîte passe au chapitre suivant ou précédent."
+        },
+        "skipping_direction": {
+          "name": "Côté à tapoter",
+          "description": "Quel côté de la boîte fait avancer : gauche ou droite."
+        },
+        "scrubbing_enabled": {
+          "name": "Avancer en inclinant",
+          "description": "Incliner la boîte fait avancer ou reculer la lecture."
+        }
+      }
+    }
+  }
+}

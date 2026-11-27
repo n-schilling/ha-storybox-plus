@@ -1,0 +1,343 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Accedi al cloud delle tue box",
+        "description": "Accedi con l'account dell'app. Home Assistant conserva solo un token, non la password.",
+        "data": {
+          "email": "E-mail",
+          "password": "Password"
+        },
+        "data_description": {
+          "email": "L'indirizzo e-mail dell'account.",
+          "password": "Serve una volta sola per l'accesso e non viene salvata."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Accedi di nuovo",
+        "description": "Il cloud non accetta più il token salvato. Accedi di nuovo con lo stesso account.",
+        "data": {
+          "email": "E-mail",
+          "password": "Password"
+        },
+        "data_description": {
+          "email": "L'indirizzo e-mail dell'account.",
+          "password": "Serve una volta sola per l'accesso e non viene salvata."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Il cloud non è raggiungibile.",
+      "invalid_auth": "E-mail o password errata.",
+      "unknown": "Il cloud ha risposto in modo inatteso. Per i dettagli guarda il log."
+    },
+    "abort": {
+      "already_configured": "Questo account è già configurato.",
+      "reauth_successful": "L'accesso è stato rinnovato.",
+      "wrong_account": "Questo è un account diverso da quello configurato."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Connessione"
+      },
+      "charging": {
+        "name": "In carica"
+      },
+      "headphones": {
+        "name": "Cuffie",
+        "state_attributes": {
+          "kind": {
+            "name": "Tipo"
+          },
+          "battery": {
+            "name": "Batteria"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Modalità notte"
+      },
+      "live_channel": {
+        "name": "Canale live"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Batteria"
+      },
+      "sleep_timer": {
+        "name": "Timer di spegnimento"
+      },
+      "next_alarm": {
+        "name": "Prossima sveglia",
+        "state_attributes": {
+          "due": {
+            "name": "Scadenza"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Box",
+        "state_attributes": {
+          "boxes": {
+            "name": "Box"
+          }
+        }
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Personaggio",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Appoggiato",
+              "removed": "Tolto"
+            }
+          },
+          "tonie": {
+            "name": "Personaggio"
+          },
+          "tonie_id": {
+            "name": "ID del personaggio"
+          }
+        }
+      },
+      "notification": {
+        "name": "Notifica del cloud",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Notifica"
+            }
+          },
+          "kind": {
+            "name": "Tipo"
+          },
+          "text": {
+            "name": "Testo"
+          },
+          "time": {
+            "name": "Ora"
+          },
+          "tonie_id": {
+            "name": "ID del personaggio"
+          },
+          "tonie": {
+            "name": "Personaggio"
+          },
+          "reason": {
+            "name": "Motivo"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "Il cloud non accetta più l'accesso."
+    },
+    "cannot_connect": {
+      "message": "Il cloud non è raggiungibile: {error}"
+    },
+    "update_failed": {
+      "message": "Il cloud non ha risposto: {error}"
+    },
+    "command_failed": {
+      "message": "La box non ha ricevuto il comando: {error}"
+    },
+    "box_unknown": {
+      "message": "La box non fa più parte dell'account."
+    },
+    "volume_unknown": {
+      "message": "La box non ha ancora comunicato il suo volume."
+    },
+    "nothing_plays": {
+      "message": "Nessun personaggio è sulla box."
+    },
+    "alarm_due": {
+      "message": "Alle {time} suona la sveglia di un'ora della nanna: questo la annullerebbe. Prima disattiva la sveglia dell'orario nella pagina di Storybox Plus."
+    },
+    "unknown_chapter": {
+      "message": "Il personaggio non ha questo capitolo."
+    },
+    "other_figure": {
+      "message": "Ora sulla box c'è un altro personaggio."
+    },
+    "no_favourites": {
+      "message": "Il personaggio sulla box non ha capitoli preferiti."
+    },
+    "tune_plays": {
+      "message": "Sul personaggio c'è una Tune: la box riproduce la Tune, e i suoi capitoli non prendono stelle."
+    },
+    "figure_unknown": {
+      "message": "Nessun personaggio si chiama \"{figure}\". Usa il nome mostrato nella pagina di Storybox Plus, oppure l'ID del personaggio."
+    },
+    "figure_ambiguous": {
+      "message": "{count} personaggi creativi si chiamano \"{figure}\". Usa invece l'ID del personaggio."
+    },
+    "not_creative": {
+      "message": "\"{figure}\" non è un personaggio creativo; solo questi accettano capitoli."
+    },
+    "chapter_refused": {
+      "message": "I capitoli non sono stati modificati: {error}"
+    },
+    "cloud_failed": {
+      "message": "Il cloud non ha accettato la modifica: {error}"
+    },
+    "media_unreadable": {
+      "message": "Non è stato possibile leggere il contenuto: {error}"
+    },
+    "too_few_chapters": {
+      "message": "\"{figure}\" ha meno di due capitoli; non c'è nulla da mescolare."
+    },
+    "not_a_box": {
+      "message": "{entity} non è una Toniebox 2 di Storybox Plus."
+    },
+    "no_box": {
+      "message": "Non è stata indicata nessuna Toniebox 2."
+    },
+    "setting_unsupported": {
+      "message": "{box} non ha l'impostazione {setting}."
+    },
+    "setting_refused": {
+      "message": "L'impostazione è stata rifiutata: {error}"
+    }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Imposta timer di spegnimento",
+      "description": "Fa addormentare la box da sola dopo il numero di minuti indicato. Un timer in corso viene sostituito.",
+      "fields": {
+        "minutes": {
+          "name": "Minuti",
+          "description": "Minuti prima che la box si addormenti (al massimo 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Annulla timer di spegnimento",
+      "description": "Annulla il timer di spegnimento in corso della box."
+    },
+    "set_favourite": {
+      "name": "Imposta capitolo preferito",
+      "description": "Segna come preferito un capitolo del personaggio sulla box, oppure toglie la stella.",
+      "fields": {
+        "chapter": {
+          "name": "Capitolo",
+          "description": "Il capitolo, contando da 1. Se manca, il capitolo in riproduzione."
+        },
+        "favourite": {
+          "name": "Preferito",
+          "description": "Acceso segna il capitolo, spento toglie la stella. Se manca, la stella cambia stato."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Riproduci il preferito successivo",
+      "description": "Riproduce il capitolo preferito successivo del personaggio sulla box; dopo l'ultimo, il primo."
+    },
+    "add_chapter": {
+      "name": "Aggiungi capitolo",
+      "description": "Per le automazioni: aggiunge un capitolo a un personaggio creativo, da una fonte multimediale, da un testo letto dalla voce dell'account o da un link video. A mano è più semplice nella pagina di Storybox Plus.",
+      "fields": {
+        "figure": {
+          "name": "Personaggio",
+          "description": "Il personaggio creativo, con il nome mostrato nella pagina di Storybox Plus, oppure con il suo ID."
+        },
+        "media": {
+          "name": "Contenuto multimediale",
+          "description": "Un file audio o un testo parlato dal browser multimediale."
+        },
+        "text": {
+          "name": "Testo",
+          "description": "Un testo che la voce scelta nella pagina legge come capitolo."
+        },
+        "url": {
+          "name": "Link video",
+          "description": "Un link web di cui l'app Media Fetcher scarica l'audio."
+        },
+        "title": {
+          "name": "Titolo",
+          "description": "Il nome del capitolo. Se manca: il nome del file, le prime parole del testo o il titolo del video."
+        },
+        "replace": {
+          "name": "Sostituisci",
+          "description": "Poi rimuove i capitoli con lo stesso titolo, così un saluto quotidiano non si accumula."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Rimuovi capitoli",
+      "description": "Per le automazioni: rimuove da un personaggio creativo i capitoli di un titolo, o tutti tranne gli ultimi. L'audio rimosso va perso; il cloud non ne conserva una copia.",
+      "fields": {
+        "figure": {
+          "name": "Personaggio",
+          "description": "Il personaggio creativo, con il nome mostrato nella pagina di Storybox Plus, oppure con il suo ID."
+        },
+        "title": {
+          "name": "Titolo",
+          "description": "Rimuove tutti i capitoli con questo titolo (maiuscole e minuscole indifferenti)."
+        },
+        "keep_last": {
+          "name": "Tieni gli ultimi",
+          "description": "Tiene questo numero di capitoli in fondo all'elenco e rimuove gli altri; 0 li rimuove tutti."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Mescola capitoli",
+      "description": "Per le automazioni: mette i capitoli di un personaggio creativo in un nuovo ordine casuale. Il cloud converte di nuovo il personaggio.",
+      "fields": {
+        "figure": {
+          "name": "Personaggio",
+          "description": "Il personaggio creativo, con il nome mostrato nella pagina di Storybox Plus, oppure con il suo ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Modifica impostazioni della box",
+      "description": "Per le automazioni: modifica le impostazioni di una Toniebox 2, come il pulsante di salvataggio nella pagina di Storybox Plus. Cambiano solo le impostazioni indicate.",
+      "fields": {
+        "max_volume": {
+          "name": "Volume massimo",
+          "description": "In percentuale, da 1 a 100."
+        },
+        "max_headphone_volume": {
+          "name": "Volume massimo delle cuffie",
+          "description": "In percentuale, da 1 a 100."
+        },
+        "lightring_brightness": {
+          "name": "Luminosità dell'anello luminoso",
+          "description": "In percentuale, da 0 a 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Anello luminoso all'ora della nanna",
+          "description": "In percentuale, da 0 a 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Volume massimo all'ora della nanna",
+          "description": "In percentuale, da 1 a 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Volume massimo delle cuffie all'ora della nanna",
+          "description": "In percentuale, da 1 a 100."
+        },
+        "skipping_enabled": {
+          "name": "Salta con un tocco",
+          "description": "Toccando la box si passa al capitolo successivo o precedente."
+        },
+        "skipping_direction": {
+          "name": "Lato da toccare",
+          "description": "Quale lato della box va avanti: sinistro o destro."
+        },
+        "scrubbing_enabled": {
+          "name": "Scorri inclinando",
+          "description": "Inclinando la box si va avanti o indietro."
+        }
+      }
+    }
+  }
+}

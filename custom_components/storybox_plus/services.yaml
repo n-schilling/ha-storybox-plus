@@ -43,3 +43,132 @@ play_favourite:
     entity:
       integration: storybox_plus
       domain: media_player
+
+add_chapter:
+  fields:
+    figure:
+      required: true
+      example: Grandma's greetings
+      selector:
+        text:
+    media:
+      required: false
+      selector:
+        media:
+          accept:
+            - audio/*
+    text:
+      required: false
+      example: Good night, sleep well!
+      selector:
+        text:
+          multiline: true
+    url:
+      required: false
+      example: https://www.youtube.com/watch?v=...
+      selector:
+        text:
+          type: url
+    title:
+      required: false
+      example: Good night
+      selector:
+        text:
+    replace:
+      required: false
+      default: false
+      selector:
+        boolean:
+
+remove_chapters:
+  fields:
+    figure:
+      required: true
+      example: Grandma's greetings
+      selector:
+        text:
+    title:
+      required: false
+      example: Good night
+      selector:
+        text:
+    keep_last:
+      required: false
+      example: 3
+      selector:
+        number:
+          min: 0
+          max: 99
+          mode: box
+
+shuffle_chapters:
+  fields:
+    figure:
+      required: true
+      example: Bedtime songs
+      selector:
+        text:
+
+set_box_settings:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player
+  fields:
+    max_volume:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    max_headphone_volume:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    lightring_brightness:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    bedtime_lightring_brightness:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    bedtime_max_volume:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    bedtime_max_headphone_volume:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    skipping_enabled:
+      required: false
+      selector:
+        boolean:
+    skipping_direction:
+      required: false
+      selector:
+        select:
+          options:
+            - left
+            - right
+    scrubbing_enabled:
+      required: false
+      selector:
+        boolean:

@@ -10,6 +10,7 @@ from pytest_homeassistant.typing import WebSocketGenerator
 
 from homeassistant.core import HomeAssistant
 
+from custom_components.storybox_plus.cloud import TOPIC_SETTINGS_APPLIED
 from custom_components.storybox_plus.cloud.models import parse_box, parse_box_settings
 from custom_components.storybox_plus.const import DOMAIN
 from custom_components.storybox_plus.coordinator import setting_supported
@@ -137,6 +138,35 @@ async def test_overview_shows_the_settings_of_each_generation(
         "offline_mode": None,
         "applied": False,
     }
+
+
+async def test_box_reports_the_settings_taken(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The push message settings-applied ends the page's note at once, without a poll."""
+    cloud.main.box(BOX_ID).update({**LIVE_SETTINGS, "settingsApplied": False})
+    cloud.main.box(BOX_ID)["features"].extend(["language", "ageMode"])
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+
+    async def applied() -> Any:
+        result = await _call(client, {"type": f"{DOMAIN}/overview"})
+        return {b["id"]: b for b in result["result"]["boxes"]}[BOX_ID]["settings"]["applied"]
+
+    assert await applied() is False
+    push.last.send(TOPIC_SETTINGS_APPLIED, True, mac="AA:BB:CC:DD:EE:FF")
+    assert await applied() is False
+    push.last.send(TOPIC_SETTINGS_APPLIED, True)
+    assert await applied() is True
+    # A second message changes nothing
+    push.last.send(TOPIC_SETTINGS_APPLIED, True)
+    assert await applied() is True
 
 
 async def test_change_settings(

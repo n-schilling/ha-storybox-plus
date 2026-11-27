@@ -154,6 +154,10 @@ async def test_actions_and_websocket_commands(
         "clear_sleep_timer",
         "set_favourite",
         "play_favourite",
+        "add_chapter",
+        "remove_chapters",
+        "shuffle_chapters",
+        "set_box_settings",
     }
     commands = {name for name in hass.data[WS_DOMAIN] if name.startswith(f"{DOMAIN}/")}
     assert commands == {

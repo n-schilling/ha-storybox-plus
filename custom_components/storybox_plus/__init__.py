@@ -12,9 +12,10 @@ from typing import Any
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 from homeassistant.util.ssl import client_context
 
@@ -35,6 +36,7 @@ from .log import DATA_LOG, async_get_log, async_remove_log
 from .night import NightModes
 from .notices import CloudNotices
 from .preferences import Preferences
+from .services import async_setup_services
 from .shuffle import ShuffleOnSwap
 from .volumes import FigureVolumes
 from .websocket import async_register_websocket
@@ -47,6 +49,13 @@ PLATFORMS: list[Platform] = [
     Platform.MEDIA_PLAYER,
     Platform.SENSOR,
 ]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the actions for automations, whether an account is loaded or not."""
+    async_setup_services(hass)
+    return True
 
 
 def analytics_store(hass: HomeAssistant, entry_id: str) -> Store[AnalyticsData]:

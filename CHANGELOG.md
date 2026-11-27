@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The page, the dashboard card and Home Assistant's texts of the integration speak French, Spanish, Italian, Dutch, Polish and Brazilian Portuguese besides English and German: the languages tonies offers figures in. A language other than English and German is fetched by the page when it is first needed. A check in CI makes sure every language has every text with its placeholders.
+
+- Actions for automations (the page stays the easy way by hand): `storybox_plus.add_chapter` adds a chapter to a creative figure from a media source, a text spoken by the account's voice or a video link, and with `replace` removes the older chapters of the same title; `storybox_plus.remove_chapters` removes the chapters of a title or all but the last ones; `storybox_plus.shuffle_chapters` shuffles a creative figure; `storybox_plus.set_box_settings` changes settings of a Toniebox 2. The chapter actions name the figure by its name or ID and answer with the figure. They are for administrators and automations.
+
+### Changed
+
+- A Toniebox 2 that has taken new settings says so through the push channel; the page's note that the box waits for them goes at once instead of with the next poll.
+- The volume of a figure explains, on the page and in the README, that its 13 levels are shares of the box's maximum volume: level 13 is that maximum, so a figure never plays louder than the maximum allows.
+
 ## [1.2.2] - 2026-11-27
 
 ### Fixed

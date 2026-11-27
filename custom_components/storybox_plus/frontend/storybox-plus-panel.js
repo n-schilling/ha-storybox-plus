@@ -1039,7 +1039,7 @@ if (!customElements.get("storybox-plus-panel")) {
       const item = sub === "box" ? this._boxById(this._key) : sub === "fig" ? this._figure(this._key) : null;
       const name = sub ? item?.name || item?.id || "" : "";
       const views = item ? (sub === "box" ? this._boxViews(item) : this._figViews(item)) : [];
-      const key = [this._area, this._page, !!this._narrow, this._lang, sub, this._key, name, views.map(([v]) => v).join(), this._shownView].join("|");
+      const key = [this._area, this._page, !!this._narrow, this._lang, this._textsVersion, sub, this._key, name, views.map(([v]) => v).join(), this._shownView].join("|");
       if (key !== this._frameKey) {
         this._frameKey = key;
         this._frame(sub, name, views);

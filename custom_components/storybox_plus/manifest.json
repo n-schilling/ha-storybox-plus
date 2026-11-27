@@ -5,6 +5,7 @@
     "frontend",
     "hassio",
     "lovelace",
+    "media_source",
     "panel_custom",
     "tts"
   ],

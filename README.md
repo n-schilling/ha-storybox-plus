@@ -23,6 +23,7 @@ What it is for, for example:
 - how much was listened to, per figure, per chapter and per day, and when: per weekday and hour;
 - playing, pausing, skipping, the volume and the sleep timer of a Toniebox 2 right on its card, and its headphones shown;
 - Tunes vouchers redeemed and ready-made content put on a creative figure from a code.
+- for automations: a greeting spoken onto a creative figure every evening, chapters removed or shuffled, settings of a box changed, through [actions](#actions-for-automations); by hand, the page is the easy way.
 
 This project is not affiliated with or endorsed by tonies GmbH. "Toniebox" and "Tonie" are their trademarks and are used here only to name the devices.
 
@@ -156,6 +157,8 @@ Tunes are audio plays bought in the app that can be laid on fitting figures: the
 
 Every figure can carry a volume level of its own (1 to 13, the box's steps), set on its page entry. When it is placed on a Toniebox 2, the integration remembers the level the box had and sets the figure's; taken off or replaced, the box gets the remembered level back exactly, whatever was turned at the box in between. A figure placed right after another one with a level starts from the level before that one, so a chain of figures never drifts. A level changed while the figure stands on a box applies at once.
 
+The 13 levels are relative to the box's **maximum volume** (a setting of the box): level 13 is that maximum, not the loudest the box can play, and every level below is a share of it. A figure therefore never plays louder than the maximum allows; to make a quiet figure louder than that, raise the maximum of the box.
+
 The remembered levels live in the store, so a restart in between still restores them. As long as the box has not reported its level (right after the push channel came up), a figure's level is not set, because it could not be undone. Like everything live, it goes through the cloud: the first second of the figure plays at the old level.
 
 ### Notifications of the cloud
@@ -232,7 +235,7 @@ The page shows the settings each box has, as the cloud names them, and changes t
 
 A new name reaches the box's device in Home Assistant at once, also one given in the app; a name given to the device in Home Assistant stays. The card shows the box in its colour, with the picture the app uses.
 
-The box takes new settings the next time it is online; until then the page says it waits for the box. Offline mode is shown, not changed: the cloud does not take it. Resetting a box to its factory settings is left to the app.
+The box takes new settings the next time it is online; until then the page says it waits for the box. A Toniebox 2 reports through the push channel the moment it has taken them, and the note goes at once; for a Toniebox 1 it goes with the next poll, within 5 minutes. Offline mode is shown, not changed: the cloud does not take it. Resetting a box to its factory settings is left to the app.
 
 A Toniebox 1 also takes a presence entity there: a device tracker of the box (from your router's integration, for example) or a binary sensor for connectivity, such as a ping. The cloud knows nothing live of a Toniebox 1; with the entity its card shows a dot for online or offline, unknown while the entity is unavailable. The entity is kept in Home Assistant only and creates no entity of its own. Without one, the box shows no state.
 
@@ -302,6 +305,10 @@ Home Assistant's own container has no JavaScript runtime, which yt-dlp needs for
 Settings are rows with their explanation behind an (i); one save button appears while something differs from what is saved. Errors read one line by their kind, Home Assistant's message behind the (i). Numbers follow the number format of the user's profile, and number fields take a point or a comma. Addresses of before (`#figures`, `#preferences`, …) lead to the page that took their place; opened without an address while no account is loaded, the page starts at the setup.
 
 At the end of the header: when the open page's data came ("As of 14:53:23", left out on a phone), a refresh button that asks the integration again without reloading the page and spins while it waits, and the button to the integration's page in Home Assistant. The boxes ask again every 10 seconds by themselves, and the stamp follows. On a phone the areas move to a bar at the bottom.
+
+### Languages
+
+The page, the dashboard card and everything Home Assistant shows of the integration (setup, entities, actions, messages) speak the languages tonies offers figures in: English, German, French, Spanish, Italian, Dutch, Polish and Brazilian Portuguese. They follow the language of the user's profile; any other language gets English. The page fetches the texts of a language other than English and German the first time it needs them, so for a moment it may show English. English and German are written by hand, the other languages are translated; corrections are welcome.
 
 ### Dashboard card
 
@@ -410,6 +417,35 @@ actions:
       message: "The box in the kids' room needs charging."
 ```
 
+A greeting spoken onto a creative figure every evening, replacing yesterday's; with the figure's live mode on (on the page), it plays first when the figure is placed:
+
+```yaml
+triggers:
+  - trigger: time
+    at: "18:30:00"
+actions:
+  - action: storybox_plus.add_chapter
+    data:
+      figure: Grandma's greetings
+      text: "Good night, sleep well. Tomorrow we go to the zoo!"
+      title: Good night
+      replace: true
+```
+
+A lower maximum volume while guests sleep over, back to normal afterwards:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: input_boolean.guests
+actions:
+  - action: storybox_plus.set_box_settings
+    target:
+      entity_id: media_player.kids_room
+    data:
+      max_volume: "{{ 40 if trigger.to_state.state == 'on' else 75 }}"
+```
+
 ## Known limitations
 
 - The Toniebox 1 has no live data: no battery, no playback, no figure, not even whether it is online. It gets no device in Home Assistant; its settings are changed on the page. Whether it is online and its active time come only from a presence entity you choose, and are as exact as that entity.
@@ -467,7 +503,23 @@ The media player takes play, pause, volume (13 levels), next and previous chapte
 | `storybox_plus.set_favourite` | optional `chapter` (counted from 1; none: the one that plays), optional `favourite` (none: the star changes sides) | marks a chapter of the figure on the box as a favourite, or takes its star off |
 | `storybox_plus.play_favourite` | none | plays the next favourite of the figure on the box; after the last one, the first |
 
-All target the media player of a Toniebox 2. While the alarm of a bedtime is due, the two of the sleep timer and turning the media player off are refused, because each would replace the alarm.
+All target the media player of a Toniebox 2 and may be called by every user. While the alarm of a bedtime is due, the two of the sleep timer and turning the media player off are refused, because each would replace the alarm.
+
+#### Actions for automations
+
+> [!NOTE]
+> These four actions are meant for **automations and scripts** only: for what should happen on its own, at a time or on an event. To change chapters or settings by hand, the **Storybox Plus page** in the sidebar is the easy way: it shows the figure, says what will happen, asks before anything is lost and gathers several changes into one. Everything the actions do, the page does too.
+
+They are for administrators; automations and scripts may call them. Figures have no entities, so the three chapter actions name a creative figure by its **name** as the page shows it (any case) or by its **ID**; a name two creative figures share is refused, use the ID then. Each answers, when asked for a response, with the figure: `figure` (its name), `id`, `chapters` (the titles in their order) and `minutes_free`. Every change of chapters makes the cloud convert the figure anew, as on the page; a box downloads it again the next time the figure is placed.
+
+| Action | Fields | Description |
+|---|---|---|
+| `storybox_plus.add_chapter` | `figure`; exactly one source: `media` (from the media selector: a file of a media folder, a text spoken by a speech entity, or another media source that gives a web address; up to 200 MB), `text` (up to 5000 characters, spoken by the voice chosen on the page) or `url` (a video link, fetched by the Media Fetcher app); optional `title` (else the file name, the first words of the text or the video's title), optional `replace` (default off) | appends a chapter to a creative figure. With `replace`, the chapters with the same title are removed afterwards, so a daily greeting does not pile up; for a moment the figure needs room for both. A link waits until the video is fetched, which can take minutes |
+| `storybox_plus.remove_chapters` | `figure`; either `title` (every chapter with this title, any case) or `keep_last` (keeps that many chapters at the end of the list, 0 removes all) | removes chapters of a creative figure. The audio is gone: the cloud keeps no copy. Nothing to remove asks the cloud nothing |
+| `storybox_plus.shuffle_chapters` | `figure` | puts the chapters of a creative figure (at least two) into a new random order |
+| `storybox_plus.set_box_settings` | target: the media player of one or more Tonieboxes 2; any of `max_volume`, `max_headphone_volume`, `bedtime_max_volume`, `bedtime_max_headphone_volume` (1 to 100), `lightring_brightness`, `bedtime_lightring_brightness` (0 to 100), `skipping_enabled`, `skipping_direction` (`left`, `right`), `scrubbing_enabled` | changes the settings given, as the save button on the page does; the others stay. The box takes them when it is online; the page's note that the box waits ends as soon as it reports them taken |
+
+A refused call says why: an unknown or ambiguous figure, a figure that is no creative one, a Tune lying on it, a text without a voice, a link without the Media Fetcher app, media that cannot be read, a setting the box does not have.
 
 ### WebSocket commands
 

@@ -52,6 +52,8 @@ TOPIC_PLAYBACK = "playback/state"
 TOPIC_VOLUME = "volume/state"
 TOPIC_SLEEP_TIMER = "app-reply/bedtime-state"
 TOPIC_HEADPHONES = "metrics/headphones"
+# The box took the settings saved in the cloud; what it sends with it is not read
+TOPIC_SETTINGS_APPLIED = "settings-applied"
 SUBSCRIBED = (
     TOPIC_BATTERY,
     TOPIC_ONLINE,
@@ -59,6 +61,7 @@ SUBSCRIBED = (
     TOPIC_VOLUME,
     TOPIC_SLEEP_TIMER,
     TOPIC_HEADPHONES,
+    TOPIC_SETTINGS_APPLIED,
 )
 
 COMMAND_PLAYBACK = "playback"
@@ -303,6 +306,8 @@ class PushClient:
             return PushEvent(mac, subtopic, parse_sleep_timer(data))
         if subtopic == TOPIC_HEADPHONES:
             return PushEvent(mac, subtopic, parse_headphones(data))
+        if subtopic == TOPIC_SETTINGS_APPLIED:
+            return PushEvent(mac, subtopic, True)
         return None
 
     # ------------------------------------------------------------ commands

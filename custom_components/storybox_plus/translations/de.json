@@ -171,6 +171,39 @@
     },
     "tune_plays": {
       "message": "Auf der Figur liegt ein Tune; die Box spielt den Tune, dessen Kapitel keine Sterne bekommen."
+    },
+    "figure_unknown": {
+      "message": "Keine Figur heißt „{figure}“. Nimm den Namen, wie ihn die Seite von Storybox Plus zeigt, oder die ID der Figur."
+    },
+    "figure_ambiguous": {
+      "message": "{count} Kreativ-Figuren heißen „{figure}“. Nimm stattdessen die ID der Figur."
+    },
+    "not_creative": {
+      "message": "„{figure}“ ist keine Kreativ-Figur; nur diese nehmen Kapitel."
+    },
+    "chapter_refused": {
+      "message": "Die Kapitel wurden nicht geändert: {error}"
+    },
+    "cloud_failed": {
+      "message": "Die Cloud hat die Änderung nicht angenommen: {error}"
+    },
+    "media_unreadable": {
+      "message": "Das Medium ließ sich nicht lesen: {error}"
+    },
+    "too_few_chapters": {
+      "message": "„{figure}“ hat weniger als zwei Kapitel; es gibt nichts zu mischen."
+    },
+    "not_a_box": {
+      "message": "{entity} ist keine Toniebox 2 von Storybox Plus."
+    },
+    "no_box": {
+      "message": "Es wurde keine Toniebox 2 gewählt."
+    },
+    "setting_unsupported": {
+      "message": "{box} hat die Einstellung {setting} nicht."
+    },
+    "setting_refused": {
+      "message": "Die Einstellung wurde abgelehnt: {error}"
     }
   },
   "services": {
@@ -205,6 +238,106 @@
     "play_favourite": {
       "name": "Nächsten Favoriten spielen",
       "description": "Spielt das nächste Favoriten-Kapitel der Figur auf der Box; nach dem letzten das erste."
+    },
+    "add_chapter": {
+      "name": "Kapitel hinzufügen",
+      "description": "Für Automationen: fügt einer Kreativ-Figur ein Kapitel hinzu, aus einer Medienquelle, einem Text, den die Stimme des Kontos spricht, oder einem Video-Link. Von Hand geht das einfacher auf der Seite von Storybox Plus.",
+      "fields": {
+        "figure": {
+          "name": "Figur",
+          "description": "Die Kreativ-Figur, mit ihrem Namen wie auf der Seite von Storybox Plus oder mit ihrer ID."
+        },
+        "media": {
+          "name": "Medium",
+          "description": "Eine Audiodatei oder ein gesprochener Text aus dem Medienbrowser."
+        },
+        "text": {
+          "name": "Text",
+          "description": "Ein Text, den die auf der Seite gewählte Stimme als Kapitel spricht."
+        },
+        "url": {
+          "name": "Video-Link",
+          "description": "Ein Web-Link, dessen Ton die Media Fetcher App holt."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Der Name des Kapitels. Ohne: der Dateiname, die ersten Wörter des Textes oder der Titel des Videos."
+        },
+        "replace": {
+          "name": "Ersetzen",
+          "description": "Entfernt danach die Kapitel mit demselben Titel, damit sich ein täglicher Gruß nicht anhäuft."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Kapitel entfernen",
+      "description": "Für Automationen: entfernt die Kapitel eines Titels oder alle bis auf die letzten von einer Kreativ-Figur. Der entfernte Ton ist weg; die Cloud behält keine Kopie.",
+      "fields": {
+        "figure": {
+          "name": "Figur",
+          "description": "Die Kreativ-Figur, mit ihrem Namen wie auf der Seite von Storybox Plus oder mit ihrer ID."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Entfernt jedes Kapitel mit diesem Titel (Groß- und Kleinschreibung egal)."
+        },
+        "keep_last": {
+          "name": "Die letzten behalten",
+          "description": "Behält so viele Kapitel am Ende der Liste und entfernt die anderen; 0 entfernt alle."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Kapitel mischen",
+      "description": "Für Automationen: bringt die Kapitel einer Kreativ-Figur in eine neue, zufällige Reihenfolge. Die Cloud wandelt die Figur dafür neu um.",
+      "fields": {
+        "figure": {
+          "name": "Figur",
+          "description": "Die Kreativ-Figur, mit ihrem Namen wie auf der Seite von Storybox Plus oder mit ihrer ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Einstellungen der Box ändern",
+      "description": "Für Automationen: ändert Einstellungen einer Toniebox 2, wie der Speichern-Knopf auf der Seite von Storybox Plus. Nur die angegebenen Einstellungen ändern sich.",
+      "fields": {
+        "max_volume": {
+          "name": "Maximale Lautstärke",
+          "description": "Prozent, 1 bis 100."
+        },
+        "max_headphone_volume": {
+          "name": "Maximale Kopfhörer-Lautstärke",
+          "description": "Prozent, 1 bis 100."
+        },
+        "lightring_brightness": {
+          "name": "Helligkeit des Lichtrings",
+          "description": "Prozent, 0 bis 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Lichtring in der Schlafenszeit",
+          "description": "Prozent, 0 bis 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Maximale Lautstärke in der Schlafenszeit",
+          "description": "Prozent, 1 bis 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Maximale Kopfhörer-Lautstärke in der Schlafenszeit",
+          "description": "Prozent, 1 bis 100."
+        },
+        "skipping_enabled": {
+          "name": "Kapitel per Klopfen wechseln",
+          "description": "Klopfen auf die Box springt zum nächsten oder vorigen Kapitel."
+        },
+        "skipping_direction": {
+          "name": "Klopf-Seite",
+          "description": "Welche Seite der Box vorwärts springt: links oder rechts."
+        },
+        "scrubbing_enabled": {
+          "name": "Spulen per Kippen",
+          "description": "Kippen der Box spult vor oder zurück."
+        }
+      }
     }
   }
 }

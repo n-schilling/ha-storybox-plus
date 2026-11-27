@@ -1,0 +1,343 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Inicia sesión en la nube de tus cajas",
+        "description": "Inicia sesión con la cuenta de la app. Home Assistant solo guarda un token, no la contraseña.",
+        "data": {
+          "email": "Correo electrónico",
+          "password": "Contraseña"
+        },
+        "data_description": {
+          "email": "El correo electrónico de la cuenta.",
+          "password": "Se usa una sola vez para iniciar sesión; no se guarda."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Iniciar sesión de nuevo",
+        "description": "La nube ya no acepta el token guardado. Inicia sesión de nuevo con la misma cuenta.",
+        "data": {
+          "email": "Correo electrónico",
+          "password": "Contraseña"
+        },
+        "data_description": {
+          "email": "El correo electrónico de la cuenta.",
+          "password": "Se usa una sola vez para iniciar sesión; no se guarda."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No se puede acceder a la nube.",
+      "invalid_auth": "El correo electrónico o la contraseña no son correctos.",
+      "unknown": "La nube respondió de forma inesperada. Consulta el registro para más detalles."
+    },
+    "abort": {
+      "already_configured": "Esta cuenta ya está configurada.",
+      "reauth_successful": "Se ha renovado el inicio de sesión.",
+      "wrong_account": "Esta cuenta es distinta de la que está configurada."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Conexión"
+      },
+      "charging": {
+        "name": "Cargando"
+      },
+      "headphones": {
+        "name": "Auriculares",
+        "state_attributes": {
+          "kind": {
+            "name": "Tipo"
+          },
+          "battery": {
+            "name": "Batería"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Modo noche"
+      },
+      "live_channel": {
+        "name": "Canal en directo"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Batería"
+      },
+      "sleep_timer": {
+        "name": "Temporizador de sueño"
+      },
+      "next_alarm": {
+        "name": "Próxima alarma",
+        "state_attributes": {
+          "due": {
+            "name": "Vence"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Cajas",
+        "state_attributes": {
+          "boxes": {
+            "name": "Cajas"
+          }
+        }
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Figura",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Colocada",
+              "removed": "Retirada"
+            }
+          },
+          "tonie": {
+            "name": "Figura"
+          },
+          "tonie_id": {
+            "name": "ID de la figura"
+          }
+        }
+      },
+      "notification": {
+        "name": "Aviso de la nube",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Aviso"
+            }
+          },
+          "kind": {
+            "name": "Tipo"
+          },
+          "text": {
+            "name": "Texto"
+          },
+          "time": {
+            "name": "Hora"
+          },
+          "tonie_id": {
+            "name": "ID de la figura"
+          },
+          "tonie": {
+            "name": "Figura"
+          },
+          "reason": {
+            "name": "Motivo"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "La nube ya no acepta el inicio de sesión."
+    },
+    "cannot_connect": {
+      "message": "No se puede acceder a la nube: {error}"
+    },
+    "update_failed": {
+      "message": "La nube no ha respondido: {error}"
+    },
+    "command_failed": {
+      "message": "La caja no ha recibido la orden: {error}"
+    },
+    "box_unknown": {
+      "message": "La caja ya no está en la cuenta."
+    },
+    "volume_unknown": {
+      "message": "La caja todavía no ha informado de su volumen."
+    },
+    "nothing_plays": {
+      "message": "No hay ninguna figura sobre la caja."
+    },
+    "alarm_due": {
+      "message": "Una alarma de una hora de dormir suena a las {time}; esto la cancelaría. Antes, desactiva la alarma de esa hora de dormir en la página de Storybox Plus."
+    },
+    "unknown_chapter": {
+      "message": "La figura no tiene ese capítulo."
+    },
+    "other_figure": {
+      "message": "Ahora hay otra figura sobre la caja."
+    },
+    "no_favourites": {
+      "message": "La figura que está sobre la caja no tiene capítulos favoritos."
+    },
+    "tune_plays": {
+      "message": "Hay un Tune sobre la figura; la caja reproduce el Tune, y sus capítulos no admiten estrellas."
+    },
+    "figure_unknown": {
+      "message": "Ninguna figura se llama \"{figure}\". Usa el nombre como lo muestra la página de Storybox Plus, o el ID de la figura."
+    },
+    "figure_ambiguous": {
+      "message": "{count} figuras creativas se llaman \"{figure}\". Usa mejor el ID de la figura."
+    },
+    "not_creative": {
+      "message": "\"{figure}\" no es una figura creativa; solo esas admiten capítulos."
+    },
+    "chapter_refused": {
+      "message": "No se cambiaron los capítulos: {error}"
+    },
+    "cloud_failed": {
+      "message": "La nube no aceptó el cambio: {error}"
+    },
+    "media_unreadable": {
+      "message": "No se pudo leer el medio: {error}"
+    },
+    "too_few_chapters": {
+      "message": "\"{figure}\" tiene menos de dos capítulos; no hay nada que mezclar."
+    },
+    "not_a_box": {
+      "message": "{entity} no es una Toniebox 2 de Storybox Plus."
+    },
+    "no_box": {
+      "message": "No se indicó ninguna Toniebox 2."
+    },
+    "setting_unsupported": {
+      "message": "{box} no tiene el ajuste {setting}."
+    },
+    "setting_refused": {
+      "message": "Se rechazó el ajuste: {error}"
+    }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Establecer temporizador de sueño",
+      "description": "Hace que la caja se duerma sola después del número de minutos indicado. Un temporizador en marcha se sustituye.",
+      "fields": {
+        "minutes": {
+          "name": "Minutos",
+          "description": "Minutos hasta que la caja se duerma (como máximo 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Borrar temporizador de sueño",
+      "description": "Cancela el temporizador de sueño en marcha de la caja."
+    },
+    "set_favourite": {
+      "name": "Marcar capítulo favorito",
+      "description": "Marca como favorito un capítulo de la figura que está sobre la caja, o le quita la estrella.",
+      "fields": {
+        "chapter": {
+          "name": "Capítulo",
+          "description": "El capítulo, contado desde 1. Si no se indica, el capítulo que se está reproduciendo."
+        },
+        "favourite": {
+          "name": "Favorito",
+          "description": "Activado marca el capítulo, desactivado le quita la estrella. Si no se indica, la estrella cambia de estado."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Reproducir el siguiente favorito",
+      "description": "Reproduce el siguiente capítulo favorito de la figura que está sobre la caja; después del último, vuelve al primero."
+    },
+    "add_chapter": {
+      "name": "Añadir capítulo",
+      "description": "Para automatizaciones: añade un capítulo a una figura creativa, desde una fuente multimedia, un texto que lee la voz de la cuenta o un enlace de vídeo. A mano es más fácil en la página de Storybox Plus.",
+      "fields": {
+        "figure": {
+          "name": "Figura",
+          "description": "La figura creativa, por su nombre como lo muestra la página de Storybox Plus, o por su ID."
+        },
+        "media": {
+          "name": "Medio",
+          "description": "Un archivo de audio o un texto hablado del explorador multimedia."
+        },
+        "text": {
+          "name": "Texto",
+          "description": "Un texto que la voz elegida en la página lee como capítulo."
+        },
+        "url": {
+          "name": "Enlace de vídeo",
+          "description": "Un enlace web cuyo audio obtiene la aplicación Media Fetcher."
+        },
+        "title": {
+          "name": "Título",
+          "description": "El nombre del capítulo. Si no se indica: el nombre del archivo, las primeras palabras del texto o el título del vídeo."
+        },
+        "replace": {
+          "name": "Sustituir",
+          "description": "Después quita los capítulos con el mismo título, para que un saludo diario no se acumule."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Quitar capítulos",
+      "description": "Para automatizaciones: quita de una figura creativa los capítulos de un título, o todos menos los últimos. El audio quitado se pierde; la nube no guarda copia.",
+      "fields": {
+        "figure": {
+          "name": "Figura",
+          "description": "La figura creativa, por su nombre como lo muestra la página de Storybox Plus, o por su ID."
+        },
+        "title": {
+          "name": "Título",
+          "description": "Quita todos los capítulos con este título (sin distinguir mayúsculas)."
+        },
+        "keep_last": {
+          "name": "Conservar los últimos",
+          "description": "Conserva este número de capítulos al final de la lista y quita los demás; 0 los quita todos."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Mezclar capítulos",
+      "description": "Para automatizaciones: pone los capítulos de una figura creativa en un nuevo orden aleatorio. La nube vuelve a convertir la figura.",
+      "fields": {
+        "figure": {
+          "name": "Figura",
+          "description": "La figura creativa, por su nombre como lo muestra la página de Storybox Plus, o por su ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Cambiar ajustes de la caja",
+      "description": "Para automatizaciones: cambia ajustes de una Toniebox 2, igual que el botón de guardar de la página de Storybox Plus. Solo cambian los ajustes indicados.",
+      "fields": {
+        "max_volume": {
+          "name": "Volumen máximo",
+          "description": "En porcentaje, de 1 a 100."
+        },
+        "max_headphone_volume": {
+          "name": "Volumen máximo de los auriculares",
+          "description": "En porcentaje, de 1 a 100."
+        },
+        "lightring_brightness": {
+          "name": "Brillo del anillo de luz",
+          "description": "En porcentaje, de 0 a 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Anillo de luz a la hora de dormir",
+          "description": "En porcentaje, de 0 a 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Volumen máximo a la hora de dormir",
+          "description": "En porcentaje, de 1 a 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Volumen máximo de los auriculares a la hora de dormir",
+          "description": "En porcentaje, de 1 a 100."
+        },
+        "skipping_enabled": {
+          "name": "Saltar con toques",
+          "description": "Tocar la caja salta al capítulo siguiente o al anterior."
+        },
+        "skipping_direction": {
+          "name": "Lado del toque",
+          "description": "Qué lado de la caja avanza: izquierdo o derecho."
+        },
+        "scrubbing_enabled": {
+          "name": "Avanzar inclinando",
+          "description": "Inclinar la caja avanza o retrocede la reproducción."
+        }
+      }
+    }
+  }
+}

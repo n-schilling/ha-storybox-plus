@@ -20,7 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.storybox_plus import fetcher
 from custom_components.storybox_plus.const import DOMAIN
-from custom_components.storybox_plus.websocket import _content_type
+from custom_components.storybox_plus.websocket import content_type
 
 from .conftest import (
     BACKEND_VERSION,
@@ -1190,7 +1190,7 @@ async def test_chapter_commands_need_an_admin(
 
 
 @pytest.mark.parametrize(
-    ("filename", "content_type"),
+    ("filename", "expected"),
     [
         ("a.mp3", "audio/mpeg"),
         ("a.M4B", "audio/mp4"),
@@ -1202,9 +1202,9 @@ async def test_chapter_commands_need_an_admin(
         ("noending", "audio/mpeg"),
     ],
 )
-def test_content_type_by_ending(filename: str, content_type: str) -> None:
+def test_content_type_by_ending(filename: str, expected: str) -> None:
     """The upload's content type follows the file ending; unknown ones count as MP3."""
-    assert _content_type(filename) == content_type
+    assert content_type(filename) == expected
 
 
 async def test_shared_household_shows_and_counts_once(

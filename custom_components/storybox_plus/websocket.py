@@ -617,7 +617,7 @@ async def websocket_arrange_chapters(
     )
 
 
-def _content_type(filename: str) -> str:
+def content_type(filename: str) -> str:
     """Name the audio type of a file by its ending; unknown endings count as MP3."""
     suffix = Path(filename).suffix.lower()
     if suffix in _AUDIO_TYPES:
@@ -659,13 +659,13 @@ async def websocket_add_chapter(
         connection.send_error(msg["id"], "empty_file", _CHAPTER_MESSAGES["empty_file"])
         return
     title = (msg.get("title") or "").strip() or Path(filename).stem or filename
-    content_type = _content_type(filename)
+    audio_type = content_type(filename)
     coordinator = entry.runtime_data.coordinator
     await _answer_with_figure(
         connection,
         msg,
         coordinator,
-        coordinator.async_add_chapter(msg["tonie_id"], title, data, filename, content_type),
+        coordinator.async_add_chapter(msg["tonie_id"], title, data, filename, audio_type),
     )
 
 

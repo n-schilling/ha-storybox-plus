@@ -1,0 +1,343 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Entre na nuvem das suas caixas",
+        "description": "Entre com a conta do app. O Home Assistant guarda só um token, não a senha.",
+        "data": {
+          "email": "E-mail",
+          "password": "Senha"
+        },
+        "data_description": {
+          "email": "O endereço de e-mail da conta.",
+          "password": "Usada uma única vez para entrar; não é guardada."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Entrar novamente",
+        "description": "A nuvem não aceita mais o token guardado. Entre novamente com a mesma conta.",
+        "data": {
+          "email": "E-mail",
+          "password": "Senha"
+        },
+        "data_description": {
+          "email": "O endereço de e-mail da conta.",
+          "password": "Usada uma única vez para entrar; não é guardada."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Não foi possível acessar a nuvem.",
+      "invalid_auth": "E-mail ou senha incorretos.",
+      "unknown": "A nuvem respondeu de forma inesperada. Veja o log para mais detalhes."
+    },
+    "abort": {
+      "already_configured": "Esta conta já está configurada.",
+      "reauth_successful": "O login foi renovado.",
+      "wrong_account": "Esta é uma conta diferente da que foi configurada."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Conectividade"
+      },
+      "charging": {
+        "name": "Carregando"
+      },
+      "headphones": {
+        "name": "Fones de ouvido",
+        "state_attributes": {
+          "kind": {
+            "name": "Tipo"
+          },
+          "battery": {
+            "name": "Bateria"
+          }
+        }
+      },
+      "night_mode": {
+        "name": "Modo noturno"
+      },
+      "live_channel": {
+        "name": "Canal ao vivo"
+      }
+    },
+    "sensor": {
+      "battery": {
+        "name": "Bateria"
+      },
+      "sleep_timer": {
+        "name": "Timer de sono"
+      },
+      "next_alarm": {
+        "name": "Próximo alarme",
+        "state_attributes": {
+          "due": {
+            "name": "Previsto para"
+          }
+        }
+      },
+      "boxes": {
+        "name": "Caixas",
+        "state_attributes": {
+          "boxes": {
+            "name": "Caixas"
+          }
+        }
+      }
+    },
+    "event": {
+      "figure": {
+        "name": "Tonie",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "placed": "Colocado",
+              "removed": "Retirado"
+            }
+          },
+          "tonie": {
+            "name": "Tonie"
+          },
+          "tonie_id": {
+            "name": "ID do Tonie"
+          }
+        }
+      },
+      "notification": {
+        "name": "Aviso da nuvem",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "notification": "Aviso"
+            }
+          },
+          "kind": {
+            "name": "Tipo"
+          },
+          "text": {
+            "name": "Texto"
+          },
+          "time": {
+            "name": "Hora"
+          },
+          "tonie_id": {
+            "name": "ID do Tonie"
+          },
+          "tonie": {
+            "name": "Tonie"
+          },
+          "reason": {
+            "name": "Motivo"
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_auth": {
+      "message": "A nuvem não aceita mais o login."
+    },
+    "cannot_connect": {
+      "message": "Não foi possível acessar a nuvem: {error}"
+    },
+    "update_failed": {
+      "message": "A nuvem não respondeu: {error}"
+    },
+    "command_failed": {
+      "message": "A caixa não recebeu o comando: {error}"
+    },
+    "box_unknown": {
+      "message": "A caixa não está mais na conta."
+    },
+    "volume_unknown": {
+      "message": "A caixa ainda não informou o volume."
+    },
+    "nothing_plays": {
+      "message": "Não há nenhum Tonie na caixa."
+    },
+    "alarm_due": {
+      "message": "Um alarme de uma hora de dormir toca às {time}; isso o cancelaria. Desligue antes o alarme dessa hora de dormir na página do Storybox Plus."
+    },
+    "unknown_chapter": {
+      "message": "O Tonie não tem esse capítulo."
+    },
+    "other_figure": {
+      "message": "Agora há outro Tonie na caixa."
+    },
+    "no_favourites": {
+      "message": "O Tonie que está na caixa não tem capítulos favoritos."
+    },
+    "tune_plays": {
+      "message": "Há um Tune sobre o Tonie; a caixa toca o Tune, e os capítulos dele não recebem estrela."
+    },
+    "figure_unknown": {
+      "message": "Nenhum Tonie se chama \"{figure}\". Use o nome como a página do Storybox Plus o mostra, ou o ID do Tonie."
+    },
+    "figure_ambiguous": {
+      "message": "{count} Tonies criativos se chamam \"{figure}\". Use o ID do Tonie."
+    },
+    "not_creative": {
+      "message": "\"{figure}\" não é um Tonie criativo; só esses aceitam capítulos."
+    },
+    "chapter_refused": {
+      "message": "Os capítulos não foram alterados: {error}"
+    },
+    "cloud_failed": {
+      "message": "A nuvem não aceitou a alteração: {error}"
+    },
+    "media_unreadable": {
+      "message": "Não foi possível ler a mídia: {error}"
+    },
+    "too_few_chapters": {
+      "message": "\"{figure}\" tem menos de dois capítulos; não há nada para embaralhar."
+    },
+    "not_a_box": {
+      "message": "{entity} não é uma Toniebox 2 do Storybox Plus."
+    },
+    "no_box": {
+      "message": "Nenhuma Toniebox 2 foi indicada."
+    },
+    "setting_unsupported": {
+      "message": "{box} não tem o ajuste {setting}."
+    },
+    "setting_refused": {
+      "message": "O ajuste foi recusado: {error}"
+    }
+  },
+  "services": {
+    "set_sleep_timer": {
+      "name": "Definir timer de sono",
+      "description": "Faz a caixa desligar sozinha depois do número de minutos indicado. Um timer em andamento é substituído.",
+      "fields": {
+        "minutes": {
+          "name": "Minutos",
+          "description": "Minutos até a caixa desligar (no máximo 1092)."
+        }
+      }
+    },
+    "clear_sleep_timer": {
+      "name": "Cancelar timer de sono",
+      "description": "Cancela o timer de sono em andamento da caixa."
+    },
+    "set_favourite": {
+      "name": "Definir capítulo favorito",
+      "description": "Marca um capítulo do Tonie que está na caixa como favorito, ou tira a estrela.",
+      "fields": {
+        "chapter": {
+          "name": "Capítulo",
+          "description": "O capítulo, contado a partir de 1. Sem isso, o capítulo que está tocando."
+        },
+        "favourite": {
+          "name": "Favorito",
+          "description": "Ligado marca o capítulo, desligado tira a estrela. Sem isso, a estrela alterna."
+        }
+      }
+    },
+    "play_favourite": {
+      "name": "Tocar o próximo favorito",
+      "description": "Toca o próximo capítulo favorito do Tonie que está na caixa; depois do último, volta ao primeiro."
+    },
+    "add_chapter": {
+      "name": "Adicionar capítulo",
+      "description": "Para automações: adiciona um capítulo a um Tonie criativo, a partir de uma mídia, de um texto lido pela voz da conta ou de um link de vídeo. Manualmente é mais fácil na página do Storybox Plus.",
+      "fields": {
+        "figure": {
+          "name": "Tonie",
+          "description": "O Tonie criativo, pelo nome como a página do Storybox Plus o mostra, ou pelo ID."
+        },
+        "media": {
+          "name": "Mídia",
+          "description": "Um arquivo de áudio ou um texto falado do navegador de mídia."
+        },
+        "text": {
+          "name": "Texto",
+          "description": "Um texto que a voz escolhida na página lê como capítulo."
+        },
+        "url": {
+          "name": "Link de vídeo",
+          "description": "Um link da web cujo áudio o app Media Fetcher busca."
+        },
+        "title": {
+          "name": "Título",
+          "description": "O nome do capítulo. Sem isso: o nome do arquivo, as primeiras palavras do texto ou o título do vídeo."
+        },
+        "replace": {
+          "name": "Substituir",
+          "description": "Depois remove os capítulos com o mesmo título, para que uma saudação diária não se acumule."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Remover capítulos",
+      "description": "Para automações: remove de um Tonie criativo os capítulos de um título, ou todos menos os últimos. O áudio removido se perde; a nuvem não guarda cópia.",
+      "fields": {
+        "figure": {
+          "name": "Tonie",
+          "description": "O Tonie criativo, pelo nome como a página do Storybox Plus o mostra, ou pelo ID."
+        },
+        "title": {
+          "name": "Título",
+          "description": "Remove todos os capítulos com este título (maiúsculas não importam)."
+        },
+        "keep_last": {
+          "name": "Manter os últimos",
+          "description": "Mantém esta quantidade de capítulos no fim da lista e remove os outros; 0 remove todos."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Embaralhar capítulos",
+      "description": "Para automações: coloca os capítulos de um Tonie criativo em uma nova ordem aleatória. A nuvem converte o Tonie de novo.",
+      "fields": {
+        "figure": {
+          "name": "Tonie",
+          "description": "O Tonie criativo, pelo nome como a página do Storybox Plus o mostra, ou pelo ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Alterar ajustes da caixa",
+      "description": "Para automações: altera ajustes de uma Toniebox 2, como o botão de salvar da página do Storybox Plus. Só os ajustes indicados mudam.",
+      "fields": {
+        "max_volume": {
+          "name": "Volume máximo",
+          "description": "Em porcentagem, de 1 a 100."
+        },
+        "max_headphone_volume": {
+          "name": "Volume máximo dos fones de ouvido",
+          "description": "Em porcentagem, de 1 a 100."
+        },
+        "lightring_brightness": {
+          "name": "Brilho do anel de luz",
+          "description": "Em porcentagem, de 0 a 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Anel de luz na hora de dormir",
+          "description": "Em porcentagem, de 0 a 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Volume máximo na hora de dormir",
+          "description": "Em porcentagem, de 1 a 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Volume máximo dos fones de ouvido na hora de dormir",
+          "description": "Em porcentagem, de 1 a 100."
+        },
+        "skipping_enabled": {
+          "name": "Pular com toques",
+          "description": "Tocar na caixa pula para o capítulo seguinte ou anterior."
+        },
+        "skipping_direction": {
+          "name": "Lado do toque",
+          "description": "Qual lado da caixa avança: esquerdo ou direito."
+        },
+        "scrubbing_enabled": {
+          "name": "Avançar inclinando",
+          "description": "Inclinar a caixa avança ou volta a reprodução."
+        }
+      }
+    }
+  }
+}

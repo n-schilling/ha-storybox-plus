@@ -34,6 +34,7 @@ from .cloud import (
     TOPIC_HEADPHONES,
     TOPIC_ONLINE,
     TOPIC_PLAYBACK,
+    TOPIC_SETTINGS_APPLIED,
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
     Auth,
@@ -836,6 +837,15 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         elif event.topic == TOPIC_SLEEP_TIMER and isinstance(event.data, SleepTimer):
             box_state.sleep_timer = event.data
             self._check_alarm(box_state, self.data)
+        elif (
+            event.topic == TOPIC_SETTINGS_APPLIED
+            and box_state.box.settings.settings_applied is False
+        ):
+            # The page's note that the box has not taken the settings yet goes at once,
+            # not with the next poll
+            box_state.box = replace(
+                box_state.box, settings=replace(box_state.box.settings, settings_applied=True)
+            )
         if self.analytics is not None:
             playback = box_state.playback
             self.analytics.observe(

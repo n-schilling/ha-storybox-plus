@@ -10,7 +10,7 @@
 // fewer rows in a sections view it draws itself large, then medium, then small,
 // and keeps the first that fits.
 const {
-  STYLE, BoxView, TEXTS, esc,
+  STYLE, BoxView, textsFor, esc,
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 const CARD = "storybox-plus-card";
@@ -39,7 +39,7 @@ const known = (state) => (state && state.state !== "unavailable" && state.state 
 const number = (value) => (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
 // The language of the last card that got its data, for the editor's labels
 let language = "en";
-const texts = (lang) => ((lang || "en").toLowerCase().startsWith("de") ? TEXTS.de : TEXTS.en);
+const texts = (lang, onLoad) => textsFor(lang, onLoad);
 
 // The page's sheet without its full-window frame; the large card lays itself out by
 // its width: side by side from 600 px (a wide, low tile such as half of a wall
@@ -391,7 +391,7 @@ if (!customElements.get(CARD)) {
       const players = this._players();
       const boxes = (players || []).map((player) => this._read(player));
       const fixed = this._layout === "grid";
-      const key = JSON.stringify([players === null, boxes, this._config, this._lang, this._hass.locale, fixed,
+      const key = JSON.stringify([players === null, boxes, this._config, this._lang, this._textsVersion, this._hass.locale, fixed,
         this.clientWidth, this.clientHeight, this._ctlBusy || "", this._ctlError ? [this._ctlError.id, this._ctlError.err?.code || ""] : ""]);
       if (key === this._key) return;
       this._key = key;
@@ -506,6 +506,12 @@ if (!customElements.get(CARD)) {
     set hass(hass) {
       this._hass = hass;
       language = hass?.locale?.language || hass?.language || language;
+      // A language that is still being fetched builds the form anew once it is here
+      this._textsArrived ||= () => {
+        this._language = null;
+        this._render();
+      };
+      texts(language, this._textsArrived);
       this._render();
     }
 

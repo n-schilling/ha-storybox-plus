@@ -7,9 +7,10 @@ rules:
   action-setup:
     status: done
     comment: >-
-      The two actions (set_sleep_timer, clear_sleep_timer) are entity actions
-      of the media player, registered with its platform; they need no config
-      entry lookup of their own.
+      The actions of the media player (sleep timer, favourites) are entity
+      actions registered with its platform. The four actions for automations
+      (add_chapter, remove_chapters, shuffle_chapters, set_box_settings) are
+      registered in async_setup and look up the loaded entries when called.
   appropriate-polling:
     status: done
     comment: >-
@@ -28,7 +29,7 @@ rules:
     comment: aiomqtt is open source and published on PyPI from its repository with CI.
   docs-actions:
     status: done
-    comment: The README documents the sleep timer actions and the media player actions it supports.
+    comment: The README documents every action with its fields, the actions for automations with examples, and the media player actions it supports.
   docs-conditions:
     status: exempt
     comment: No conditions.

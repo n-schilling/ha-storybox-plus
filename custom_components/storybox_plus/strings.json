@@ -171,6 +171,39 @@
     },
     "tune_plays": {
       "message": "A Tune lies on the figure; the box plays the Tune, whose chapters take no stars."
+    },
+    "figure_unknown": {
+      "message": "No figure is named \"{figure}\". Use the name as the Storybox Plus page shows it, or the figure's ID."
+    },
+    "figure_ambiguous": {
+      "message": "{count} creative figures are named \"{figure}\". Use the figure's ID instead."
+    },
+    "not_creative": {
+      "message": "\"{figure}\" is no creative figure; only those take chapters."
+    },
+    "chapter_refused": {
+      "message": "The chapters were not changed: {error}"
+    },
+    "cloud_failed": {
+      "message": "The cloud did not take the change: {error}"
+    },
+    "media_unreadable": {
+      "message": "The media could not be read: {error}"
+    },
+    "too_few_chapters": {
+      "message": "\"{figure}\" has fewer than two chapters; there is nothing to shuffle."
+    },
+    "not_a_box": {
+      "message": "{entity} is no Toniebox 2 of Storybox Plus."
+    },
+    "no_box": {
+      "message": "No Toniebox 2 was targeted."
+    },
+    "setting_unsupported": {
+      "message": "{box} does not have the setting {setting}."
+    },
+    "setting_refused": {
+      "message": "The setting was refused: {error}"
     }
   },
   "services": {
@@ -205,6 +238,106 @@
     "play_favourite": {
       "name": "Play next favourite",
       "description": "Plays the next favourite chapter of the figure on the box; after the last one, the first."
+    },
+    "add_chapter": {
+      "name": "Add chapter",
+      "description": "For automations: adds a chapter to a creative figure, from a media source, a text the account's voice speaks, or a video link. By hand this is easier on the Storybox Plus page.",
+      "fields": {
+        "figure": {
+          "name": "Figure",
+          "description": "The creative figure, by its name as the Storybox Plus page shows it, or by its ID."
+        },
+        "media": {
+          "name": "Media",
+          "description": "An audio file or a spoken text from the media browser."
+        },
+        "text": {
+          "name": "Text",
+          "description": "A text the voice chosen on the page speaks as the chapter."
+        },
+        "url": {
+          "name": "Video link",
+          "description": "A web link whose audio the Media Fetcher app fetches."
+        },
+        "title": {
+          "name": "Title",
+          "description": "The chapter's name. Without it: the file name, the first words of the text or the video's title."
+        },
+        "replace": {
+          "name": "Replace",
+          "description": "Removes the chapters with the same title afterwards, so a daily greeting does not pile up."
+        }
+      }
+    },
+    "remove_chapters": {
+      "name": "Remove chapters",
+      "description": "For automations: removes the chapters of a title, or all but the last ones, from a creative figure. The removed audio is gone; the cloud keeps no copy.",
+      "fields": {
+        "figure": {
+          "name": "Figure",
+          "description": "The creative figure, by its name as the Storybox Plus page shows it, or by its ID."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Removes every chapter with this title (any case)."
+        },
+        "keep_last": {
+          "name": "Keep the last",
+          "description": "Keeps this many chapters at the end of the list and removes the others; 0 removes all."
+        }
+      }
+    },
+    "shuffle_chapters": {
+      "name": "Shuffle chapters",
+      "description": "For automations: puts the chapters of a creative figure into a new random order. The cloud converts the figure anew.",
+      "fields": {
+        "figure": {
+          "name": "Figure",
+          "description": "The creative figure, by its name as the Storybox Plus page shows it, or by its ID."
+        }
+      }
+    },
+    "set_box_settings": {
+      "name": "Change box settings",
+      "description": "For automations: changes settings of a Toniebox 2, as the save button on the Storybox Plus page does. Only the given settings change.",
+      "fields": {
+        "max_volume": {
+          "name": "Maximum volume",
+          "description": "Percent, 1 to 100."
+        },
+        "max_headphone_volume": {
+          "name": "Maximum headphone volume",
+          "description": "Percent, 1 to 100."
+        },
+        "lightring_brightness": {
+          "name": "Light ring brightness",
+          "description": "Percent, 0 to 100."
+        },
+        "bedtime_lightring_brightness": {
+          "name": "Light ring at bedtime",
+          "description": "Percent, 0 to 100."
+        },
+        "bedtime_max_volume": {
+          "name": "Maximum volume at bedtime",
+          "description": "Percent, 1 to 100."
+        },
+        "bedtime_max_headphone_volume": {
+          "name": "Maximum headphone volume at bedtime",
+          "description": "Percent, 1 to 100."
+        },
+        "skipping_enabled": {
+          "name": "Skip by tapping",
+          "description": "Tapping the box skips to the next or previous chapter."
+        },
+        "skipping_direction": {
+          "name": "Tapping side",
+          "description": "Which side of the box skips forward: left or right."
+        },
+        "scrubbing_enabled": {
+          "name": "Wind by tilting",
+          "description": "Tilting the box winds forward or back."
+        }
+      }
     }
   }
 }

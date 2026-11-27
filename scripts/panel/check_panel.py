@@ -1389,6 +1389,29 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         "numbers in German on the page and in the fields, a comma typed back", numbers_in_german
     )
 
+    async def fetched_language() -> None:
+        # A language other than English and German comes from a file of its own,
+        # fetched the first time; the page draws itself again once it is there
+        texts = (INTEGRATION / "frontend" / "storybox-plus-texts-fr.js").read_text(encoding="utf-8")
+        french = json.loads(texts.split("export default ", 1)[1].rstrip().removesuffix(";"))
+        await page.evaluate("localStorage.setItem('selectedLanguage', JSON.stringify('fr'))")
+        try:
+            await _goto(page, instance, "boxes/overview", ".batt-btn")
+            want = [french[k] for k in ("tabBoxes", "tabFigures", "tabListening", "tabSetup")]
+
+            async def french_tabs() -> bool:
+                area = await page.locator(PANEL).evaluate(
+                    "el => el.shadowRoot.getElementById('frame').tabs.map((t) => t.name)"
+                )
+                return bool(area == want)
+
+            await _until(french_tabs, f"tabs {want}")
+        finally:
+            await page.evaluate("localStorage.setItem('selectedLanguage', JSON.stringify('en'))")
+            await page.reload()
+
+    await checks.run("a language of its own file: the page in French", fetched_language)
+
     async def extras() -> None:
         await _goto(page, instance, "boxes/overview", ".batt-btn")
         kids = page.locator(f"{PANEL} .grid > ha-card").nth(0)
