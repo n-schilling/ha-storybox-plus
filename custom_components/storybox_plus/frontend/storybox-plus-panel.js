@@ -155,9 +155,6 @@ if (!customElements.get("storybox-plus-panel")) {
     .ch-tools { display: inline-flex; flex: none; margin-right: -8px; }
     .chapters li.playable { cursor: pointer; }
     .chapters li.playable:hover, .chapters li.playable:focus-visible { background: var(--secondary-background-color); outline: none; }
-    .cloud-diff { margin: 8px 0 0; padding-left: 20px; }
-    .cloud-diff li { margin: 2px 0; overflow-wrap: anywhere; }
-    .cloud-diff code { font-family: var(--ha-font-family-code, monospace); }
     .fav-fig { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
     .top.fav-share { margin-top: 12px; }
     .top ha-icon-button { flex: none; margin: -4px -8px -4px 0; }
@@ -2573,10 +2570,23 @@ if (!customElements.get("storybox-plus-panel")) {
         const triggers = boxes.map((b) => `  - trigger: state\n    entity_id: ${b.entities.figure}\n` +
           `    not_from: [unavailable, unknown]\n    id: ${b.entities.player}`).join("\n");
         const test = `{{ trigger.to_state.attributes.event_type == 'placed' and trigger.to_state.attributes.tonie_id == '${f.id}' }}`;
+        // Each begins the same way: this figure placed on any Toniebox 2; the box is trigger.id
+        const placed = `triggers:\n${triggers}\nconditions:\n  - condition: template\n    value_template: ${q(test)}\n`;
+        const box = '    target:\n      entity_id: "{{ trigger.id }}"\n';
         out.push([t.autoPlacedTitle, t.autoPlacedHint,
-          `alias: ${q(fill(t.autoPlacedAlias, { n: f.name }))}\ntriggers:\n${triggers}\nconditions:\n` +
-          `  - condition: template\n    value_template: ${q(test)}\nactions:\n` +
-          "  - action: storybox_plus.set_sleep_timer\n    target:\n      entity_id: \"{{ trigger.id }}\"\n    data:\n      minutes: 45\n"]);
+          `alias: ${q(fill(t.autoPlacedAlias, { n: f.name }))}\n${placed}actions:\n` +
+          `  - action: storybox_plus.set_sleep_timer\n${box}    data:\n      minutes: 45\n`]);
+        out.push([t.autoRepeatTitle, t.autoRepeatHint,
+          `alias: ${q(fill(t.autoRepeatAlias, { n: f.name }))}\n${placed}actions:\n` +
+          `  - action: media_player.repeat_set\n${box}    data:\n      repeat: all\n`]);
+        out.push([t.autoLateTitle, t.autoLateHint,
+          `alias: ${q(fill(t.autoLateAlias, { n: f.name }))}\n${placed}` +
+          '  - condition: time\n    after: "19:30:00"\n    before: "06:00:00"\nactions:\n' +
+          `  - action: media_player.media_pause\n${box}`]);
+        out.push([t.autoTellTitle, t.autoTellHint,
+          `alias: ${q(fill(t.autoTellAlias, { n: f.name }))}\n${placed}actions:\n` +
+          `  - action: persistent_notification.create\n    data:\n      title: ${q(f.name)}\n` +
+          `      message: ${q(fill(t.autoTellText, { n: f.name, box: "{{ state_attr(trigger.id, 'friendly_name') }}" }))}\n`]);
       }
       if (f.kind === "creative") {
         out.push([t.autoGreetTitle, t.autoGreetHint,
@@ -2593,17 +2603,30 @@ if (!customElements.get("storybox-plus-panel")) {
       return out;
     }
 
-    // Ready-made automations for a Toniebox 2: quieter in the evening, back in the morning
+    // Ready-made automations for a Toniebox 2: quieter in the evening and back in the
+    // morning, a sleep timer every evening, a note when the battery runs low
     _boxSnippets(b) {
       const t = this._t;
       const q = (v) => JSON.stringify(v);
       const usual = b.settings?.values?.max_volume ?? 75;
       const evening = Math.max(1, Math.min(usual, Math.round(usual * 0.6)));
-      return [[t.autoQuietTitle, t.autoQuietHint,
-        `alias: ${q(fill(t.autoQuietAlias, { n: b.name || b.id }))}\ntriggers:\n` +
+      const name = b.name || b.id;
+      const out = [[t.autoQuietTitle, t.autoQuietHint,
+        `alias: ${q(fill(t.autoQuietAlias, { n: name }))}\ntriggers:\n` +
         `  - trigger: time\n    at: "19:00:00"\n    id: evening\n  - trigger: time\n    at: "07:00:00"\n    id: morning\nactions:\n` +
         `  - action: storybox_plus.set_box_settings\n    target:\n      entity_id: ${b.entities.player}\n    data:\n` +
-        `      max_volume: "{{ ${evening} if trigger.id == 'evening' else ${usual} }}"\n`]];
+        `      max_volume: "{{ ${evening} if trigger.id == 'evening' else ${usual} }}"\n`],
+      [t.autoSleepTitle, t.autoSleepHint,
+        `alias: ${q(fill(t.autoSleepAlias, { n: name }))}\ntriggers:\n  - trigger: time\n    at: "19:30:00"\nconditions:\n` +
+        `  - condition: state\n    entity_id: ${b.entities.player}\n    state: playing\nactions:\n` +
+        `  - action: storybox_plus.set_sleep_timer\n    target:\n      entity_id: ${b.entities.player}\n    data:\n      minutes: 30\n`]];
+      if (b.entities.battery) {
+        out.push([t.autoBatteryTitle, t.autoBatteryHint,
+          `alias: ${q(fill(t.autoBatteryAlias, { n: name }))}\ntriggers:\n  - trigger: numeric_state\n` +
+          `    entity_id: ${b.entities.battery}\n    below: 20\nactions:\n` +
+          `  - action: persistent_notification.create\n    data:\n      title: ${q(name)}\n      message: ${q(t.autoBatteryText)}\n`]);
+      }
+      return out;
     }
 
     // The view: how to use a snippet, then each with its copy button
@@ -2732,48 +2755,40 @@ if (!customElements.get("storybox-plus-panel")) {
         html += this._section(named(t.prefChapters),
           this._voiceRows(scope, e) +
           this._row(scope, "fetch_max_mb", t.prefFetchMax, t.prefFetchMaxHint, { text: { suffix: "MB" } }, true), { cls: "rows" });
-        // Only the release counts, not the commit behind it
-        const c = e.cloud || {};
-        let cloud;
-        if (!c.version) cloud = this._alertHelp("info", t.cloudUnknown, t.cloudHelp);
-        else if (c.matches) cloud = this._alertHelp("success", `${fill(t.cloudVersion, { v: c.version })} · ${t.cloudTested}`, t.cloudHelp);
-        else cloud = this._alertHelp("warning", `${fill(t.cloudVersion, { v: c.version })} · ${fill(t.cloudUntested, { t: c.tested })}`, fill(t.cloudDiffers, { v: c.release, t: c.tested }));
-        html += this._section(named(t.prefCloud), cloud + this._cloudCheck(e), { help: t.cloudCheckHelp });
+        html += this._cloudSection(e, named(t.prefCloud));
       }
       return html;
     }
 
-    // What the last check of the cloud's interface found, and the button that runs it:
-    // offered while the cloud runs a release this version was not tested with, or
-    // while the last check found something
-    _cloudCheck(e) {
+    // The cloud in one line: it fits, it was updated and is not tested yet, or it answers
+    // differently than expected. The versions and when it was last tested are behind
+    // the (i). The test is offered while the cloud runs a release this version was not
+    // tested with and no test of it passed, or while the last test found something;
+    // what it found goes into the issue on GitHub, not onto the page
+    _cloudSection(e, title) {
       const t = this._t;
       const c = e.cloud || {};
       const k = c.check;
-      const differs = (k?.results || []).filter((r) => r.status === "changed" || r.status === "failed");
-      let html = "";
-      if (k) {
-        const none = k.results.filter((r) => r.status === "empty" || r.status === "unseen").length;
-        const at = time(k.at);
-        const values = {
-          v: k.release || "?",
-          d: Number.isFinite(at) ? new Date(at).toLocaleString(this._lang, { dateStyle: "medium", timeStyle: "short", ...timeOptions(this._hass) }) : "",
-        };
-        if (differs.length) {
-          html += `<ha-alert alert-type="warning">${esc(fill(t.cloudCheckBad, { ...values, n: this._fmt(differs.length) }))}` +
-            `<ul class="cloud-diff">${differs.map((r) => `<li><code>${esc(r.name)}</code> ${esc(t[`cloudSt_${r.status}`])}` +
-              `${r.detail.length ? `: ${esc(r.detail.join("; "))}` : ""}</li>`).join("")}</ul></ha-alert>`;
-        } else {
-          html += `<ha-alert alert-type="success">${esc(fill(t.cloudCheckOk, { ...values, n: this._fmt(k.results.length - none) }))}</ha-alert>`;
-        }
-        if (none) html += `<div class="muted small">${esc(fill(t.cloudCheckSkipped, { n: this._fmt(none) }))}</div>`;
-        if (c.release && k.release !== c.release) html += `<div class="muted small">${esc(fill(t.cloudCheckOther, { v: k.release || "?" }))}</div>`;
+      const differs = (k?.results || []).some((r) => r.status === "changed" || r.status === "failed");
+      const passed = !!k && !differs && k.release === c.release;
+      const at = time(k?.at);
+      const help = [
+        c.version ? fill(t.cloudDetail, { v: c.version, t: c.tested || "?" }) : "",
+        Number.isFinite(at)
+          ? fill(t.cloudChecked, { d: new Date(at).toLocaleString(this._lang, { dateStyle: "medium", timeStyle: "short", ...timeOptions(this._hass) }) }) : "",
+        t.cloudCheckHelp,
+      ].filter(Boolean).join(" ");
+      let body;
+      if (!c.version) body = this._alertHelp("info", t.cloudUnknown);
+      else if (differs) body = this._alertHelp("warning", t.cloudBad);
+      else if (c.matches || passed) body = this._alertHelp("success", t.cloudFits);
+      else body = this._alertHelp("info", t.cloudNew);
+      if (differs || (c.version && !c.matches && !passed)) {
+        const busy = this._cloudBusy === e.entry_id;
+        body += `<div class="bar-row">${this._btn(`cloudcheck:${e.entry_id}`, t.cloudCheck, "refresh", { look: differs ? "plain" : "filled", disabled: busy })}` +
+          `${differs ? this._btn(`cloudissue:${e.entry_id}`, t.cloudIssue, "upload") + this._help(t.cloudIssueHelp) : ""}</div>`;
       }
-      const offer = (c.version && !c.matches) || differs.length;
-      if (!offer) return html;
-      const busy = this._cloudBusy === e.entry_id;
-      return html + `<div class="bar-row">${this._btn(`cloudcheck:${e.entry_id}`, t.cloudCheck, "refresh", { look: differs.length ? "plain" : "filled", disabled: busy })}` +
-        `${differs.length ? this._btn(`cloudissue:${e.entry_id}`, t.cloudIssue, "upload") + this._help(t.cloudIssueHelp) : ""}</div>`;
+      return this._section(title, body, { help });
     }
 
     // Reads only; the integration answers with what it found

@@ -1061,13 +1061,29 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                 expect(bool(item["alias"]) and item["triggers"] and item["actions"], str(item))
             return parsed
 
-        creative = await snippets("figures/list?key=fig-grandma&view=automations", 4)
+        creative = await snippets("figures/list?key=fig-grandma&view=automations", 7)
         placed = creative[0]
         expect("fig-grandma" in placed["conditions"][0]["value_template"], str(placed))
         expect(all(t["entity_id"].startswith("event.") for t in placed["triggers"]), str(placed))
         expect(all(t["id"].startswith("media_player.") for t in placed["triggers"]), str(placed))
+        # What every figure has: placed on a box, something happens there
         expect(
-            [a["action"] for item in creative[1:] for a in item["actions"]]
+            [a["action"] for item in creative[:4] for a in item["actions"]]
+            == [
+                "storybox_plus.set_sleep_timer",
+                "media_player.repeat_set",
+                "media_player.media_pause",
+                "persistent_notification.create",
+            ],
+            str(creative),
+        )
+        expect(
+            all("fig-grandma" in i["conditions"][0]["value_template"] for i in creative[:4]), "id"
+        )
+        expect(creative[2]["conditions"][1]["condition"] == "time", str(creative[2]))
+        expect("trigger.id" in creative[3]["actions"][0]["data"]["message"], str(creative[3]))
+        expect(
+            [a["action"] for item in creative[4:] for a in item["actions"]]
             == [
                 "storybox_plus.add_chapter",
                 "storybox_plus.shuffle_chapters",
@@ -1075,10 +1091,15 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             ],
             str(creative),
         )
-        expect(all(i["actions"][0]["data"]["figure"] == "fig-grandma" for i in creative[1:]), "id")
-        await snippets("figures/list?key=fig-fox&view=automations", 1)
-        (quiet,) = await snippets(f"boxes/overview?key={demo_cloud.KIDS_BOX}&view=automations", 1)
+        expect(all(i["actions"][0]["data"]["figure"] == "fig-grandma" for i in creative[4:]), "id")
+        await snippets("figures/list?key=fig-fox&view=automations", 4)
+        quiet, sleep, battery = await snippets(
+            f"boxes/overview?key={demo_cloud.KIDS_BOX}&view=automations", 3
+        )
         expect(quiet["actions"][0]["target"]["entity_id"].startswith("media_player."), str(quiet))
+        expect(sleep["conditions"][0]["state"] == "playing", str(sleep))
+        expect(battery["triggers"][0]["entity_id"].startswith("sensor."), str(battery))
+        expect(battery["triggers"][0]["below"] == 20, str(battery))
         await page.locator(f"{PANEL} [data-act='autocopy:0']").click()
         await _until(
             lambda: _attr(page.locator(f"{PANEL} ha-alert").first, "alert-type", "success"),
@@ -1365,7 +1386,9 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _goto(page, instance, "setup/preferences", "ha-settings-row")
         await _rows_have_help(page)
         text = await page.locator(f"{PANEL} #sheet").inner_text()
-        expect("Backend version" in text and "tested" in text and "tested with" not in text, text)
+        # The cloud in one line; versions and dates are behind the (i), not on the page
+        expect("The cloud fits this version." in text, text)
+        expect("Backend version" not in text and "Test the cloud interface" not in text, text)
         expect("How favourites play" in text, text)
         # The check of the cloud's interface: run by the integration, its result on the page.
         # The made-up cloud answers no real requests, so nothing can be compared
@@ -1380,8 +1403,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         )
         await _goto(page, instance, "setup/preferences", "ha-settings-row")
         text = await page.locator(f"{PANEL} #sheet").inner_text()
-        expect("The cloud answers as expected" in text, f"no result of the check: {text}")
-        expect("could not be compared" in text, f"what was not compared is not named: {text}")
+        expect("The cloud fits this version." in text, f"no result of the check: {text}")
+        expect("compared" not in text, f"details of the check on the page: {text}")
         if shots is not None:
             await page.set_viewport_size({"width": 1200, "height": 1000})
             await page.wait_for_timeout(400)

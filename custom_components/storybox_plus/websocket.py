@@ -359,7 +359,7 @@ def _box_dict(
 def _box_entities(
     entry: StoryboxConfigEntry, coordinator: StoryboxCoordinator, box_state: BoxState
 ) -> dict[str, str | None]:
-    """The entity IDs automations need of a box: its media player and its figure event."""
+    """The entity IDs automations need of a box: its media player, figure event and battery."""
     registry = er.async_get(coordinator.hass)
     box_id = box_state.box.id
     return {
@@ -368,6 +368,9 @@ def _box_entities(
         ),
         "figure": registry.async_get_entity_id(
             "event", DOMAIN, box_unique_id(entry, box_id, "figure")
+        ),
+        "battery": registry.async_get_entity_id(
+            "sensor", DOMAIN, box_unique_id(entry, box_id, "battery")
         ),
     }
 

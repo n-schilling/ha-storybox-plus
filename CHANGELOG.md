@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-27
+
+### Added
+
+- More ready-made automations in the view Automations: for every figure, placed on a Toniebox 2, repeat it, pause it late in the evening, or write a note; for every Toniebox 2 a sleep timer each evening and a note when the battery runs low.
+
+### Changed
+
+- The cloud under Setup → Preferences reads one line: it fits this version, it was updated and is not tested yet, or it answers differently than expected. The versions and the time of the last test moved behind the (i); what a test found goes into the issue on GitHub instead of onto the page.
+
 ## [1.3.0] - 2026-11-27
 
 ### Added
