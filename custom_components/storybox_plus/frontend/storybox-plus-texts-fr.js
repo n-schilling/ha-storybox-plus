@@ -415,6 +415,8 @@ export default {
   "ctlSleep": "Minuteur de mise en veille {m} min",
   "ctlSleepTitle": "Minuteur de mise en veille",
   "sleepMin": "{m} min",
+  "sleepOwn": "Autre durée en minutes",
+  "sleepStart": "Démarrer",
   "ctlSleepOff": "Annuler le minuteur de mise en veille",
   "boxSettingsOf": "Réglages de la boîte",
   "settingsPending": "En attente de la boîte",

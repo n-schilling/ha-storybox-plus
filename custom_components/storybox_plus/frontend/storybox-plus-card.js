@@ -80,7 +80,8 @@ const CARD_STYLE = `
     .pic { width: 40px; height: 40px; }
     .controls { flex-wrap: wrap; gap: 0; }
     .controls .ctl-gap { display: none; }
-    .sleep-pick { display: none; }
+    /* The head has no room for the volume beside the battery; its buttons stay */
+    .status .vol { display: none; }
   }
   /* Home Assistant's buttons have no height until they have drawn themselves */
   .controls { min-height: 48px; }
@@ -233,7 +234,22 @@ if (!customElements.get(CARD)) {
       if (button) {
         if (button.hasAttribute("disabled")) return;
         const [kind, player, command, value] = button.getAttribute("data-act").split(":");
-        if (kind === "ctl") this._command(player, command, value);
+        if (kind === "ctl") {
+          // A time chosen in the sleep timer's dialog closes it
+          if (command === "sleep") this._sleepFor = null;
+          this._command(player, command, value);
+        }
+        // The sleep timer's dialog, and the minutes typed into its field
+        if (kind === "sleepset") {
+          this._sleepFor = player;
+          this._renderOverlay();
+        }
+        if (kind === "sleepown") {
+          const minutes = this._sleepOwn(this.shadowRoot.getElementById("sleep"));
+          if (minutes === null) return;
+          this._sleepFor = null;
+          this._command(player, "sleep", minutes);
+        }
         // The star of the chapter that plays, or of one in the list: the chapter it was
         // drawn for (its index from 0) and the state it does not show yet
         const wanted = button.getAttribute("aria-pressed") !== "true";
@@ -378,11 +394,17 @@ if (!customElements.get(CARD)) {
     // The list of chapters of the box whose button was pressed, in Home Assistant's dialog
     _renderOverlay() {
       const host = this.shadowRoot.getElementById("overlay");
-      if (!host || (!this._tracks && !host.firstElementChild)) return;
-      this._renderTracks(host, this._tracks && this._hass?.states[this._tracks] ? this._read(this._tracks) : null, {
-        busy: this._ctlBusy === this._tracks,
-        error: this._ctlError?.id === this._tracks ? this._error(this._ctlError.err) : null,
-      });
+      if (host && (this._tracks || host.firstElementChild)) {
+        this._renderTracks(host, this._tracks && this._hass?.states[this._tracks] ? this._read(this._tracks) : null, {
+          busy: this._ctlBusy === this._tracks,
+          error: this._ctlError?.id === this._tracks ? this._error(this._ctlError.err) : null,
+        });
+      }
+      // The sleep timer's dialog of the box whose button was pressed
+      const sleep = this.shadowRoot.getElementById("sleep");
+      if (sleep && (this._sleepFor || sleep.firstElementChild)) {
+        this._renderSleep(sleep, this._sleepFor && this._hass?.states[this._sleepFor] ? this._read(this._sleepFor) : null);
+      }
     }
 
     _render() {
@@ -400,7 +422,7 @@ if (!customElements.get(CARD)) {
       if (!card) {
         // The frame stays: a new ha-card shows its content only once it has drawn
         // itself, so what is measured right after creating it would be nothing
-        root.innerHTML = `<style>${STYLE}${CARD_STYLE}</style><ha-card><div class="content"></div></ha-card><div id="overlay"></div>`;
+        root.innerHTML = `<style>${STYLE}${CARD_STYLE}</style><ha-card><div class="content"></div></ha-card><div id="overlay"></div><div id="sleep"></div>`;
         card = root.querySelector("ha-card");
         this._watch();
         card.updateComplete?.then(() => {

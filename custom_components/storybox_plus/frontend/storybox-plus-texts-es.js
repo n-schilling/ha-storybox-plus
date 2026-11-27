@@ -415,6 +415,8 @@ export default {
   "ctlSleep": "Temporizador de sueño {m} min",
   "ctlSleepTitle": "Temporizador de sueño",
   "sleepMin": "{m} min",
+  "sleepOwn": "Otra duración en minutos",
+  "sleepStart": "Iniciar",
   "ctlSleepOff": "Cancelar el temporizador de sueño",
   "boxSettingsOf": "Ajustes de la caja",
   "settingsPending": "Esperando a la caja",

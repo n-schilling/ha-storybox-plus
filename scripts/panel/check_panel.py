@@ -699,9 +699,39 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         head = cards.nth(0).locator(".card-header")
         dot = await head.locator(".dot.ok").get_attribute("aria-label")
         expect(dot == "Online", f"the dot's words: {dot}")
-        # While an alarm is due the timers stay away; otherwise there are two
-        timers = await cards.nth(0).locator(".sleep-pick ha-button").all_inner_texts()
-        expect(timers in ([], ["30 min", "60 min"]), f"sleep timers: {timers}")
+        # While an alarm is due the sleep timer stays away; otherwise one button opens its dialog
+        expect(await cards.nth(0).locator(".sleep-open").count() <= 1, "sleep timer buttons")
+        # The volume sits in the head beside the battery
+        expect(await head.locator(".status .fact.vol").count() == 1, "volume in the head")
+        # The sleep timer's dialog on the page: without the alarm the button is there, a
+        # time chosen closes the dialog and starts the timer (or the box refuses it in words)
+        panel = page.locator(PANEL)
+        await panel.evaluate(
+            """(el) => {
+              for (const b of el._overview.boxes) b.bedtime = null;
+              el._update();
+            }"""
+        )
+        opener = cards.nth(0).locator(".sleep-open")
+        await opener.wait_for(timeout=5000)
+        await opener.click()
+        dialog = page.locator(f"{PANEL} #sleep ha-dialog")
+        await dialog.locator(".sleep-quick ha-button").first.wait_for(timeout=5000)
+        quick = [
+            q.strip() for q in await dialog.locator(".sleep-quick ha-button").all_inner_texts()
+        ]
+        expect(quick == ["15 min", "30 min", "45 min", "60 min"], f"sleep timer times: {quick}")
+        expect(await dialog.locator(".sleep-own").count() == 1, "no field for other minutes")
+        await dialog.locator(".sleep-quick ha-button").nth(1).click()
+        await _until(lambda: _gone(dialog), "the sleep timer's dialog after a time chosen")
+        await page.wait_for_timeout(600)
+        # The demo box has an alarm due, so it refuses the timer: in its own words
+        errors = await cards.nth(0).locator("ha-alert[alert-type=error]").all_inner_texts()
+        expect(
+            not errors or "An alarm of a bedtime is set" in errors[0],
+            f"the sleep timer failed on the page: {errors}",
+        )
+        await panel.evaluate("(el) => el._loadOverview()")
         minis = page.locator(f"{PANEL} .grid > ha-card.mini-box")
         expect(await minis.count() == 1, f"{await minis.count()} small cards")
         expect(await minis.locator(".card-header, .dot").count() == 0, "heading or dot")
@@ -1597,7 +1627,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await controls.locator("[data-act$=':volume:11']").click()
         await controls.locator("[data-act$=':volume:12']").wait_for(timeout=3000)
         await _until(
-            lambda: _has_text(kids.locator(".facts"), "90 %"),
+            lambda: _has_text(kids.locator(".card-header .fact.vol"), "90 %"),
             "the volume the box reports after two presses",
         )
 
@@ -1727,7 +1757,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             acts = await card.locator("[data-act]").evaluate_all(
                 """els => els.map((el) => {
                   const parts = el.getAttribute('data-act').split(':');
-                  return ['star', 'tracks'].includes(parts[0]) ? parts[0] : parts[2];
+                  return ['star', 'tracks', 'sleepset'].includes(parts[0]) ? parts[0] : parts[2];
                 })"""
             )
             expect(
@@ -1740,6 +1770,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                     "volume_down",
                     "volume_up",
                     "sleep",
+                    "sleepset",
                     "sleep_clear",
                     "star",
                     "tracks",
@@ -1803,6 +1834,57 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             await card.locator("[data-act$=':pause'], [data-act$=':play']").first.click()
             await user.wait_for_timeout(600)
             expect(await card.locator("ha-alert[alert-type=error]").count() == 0, "a button failed")
+            # The sleep timer's button opens a dialog: four usual times and a field for any
+            # other; a time typed there starts the timer and closes the dialog. While an
+            # alarm is due there is no such button, so the card reads the box without its alarm
+            await user.locator("storybox-plus-card").first.evaluate(
+                """(card) => {
+                  const read = card._read.bind(card);
+                  card._read = (player) => ({ ...read(player), bedtime: null });
+                  card._key = null;
+                  card._render();
+                }"""
+            )
+            opener = card.locator(".sleep-open")
+            await opener.wait_for(timeout=5000)
+            await opener.click()
+            dialog = user.locator("storybox-plus-card #sleep ha-dialog")
+            await dialog.locator(".sleep-quick ha-button").first.wait_for(timeout=5000)
+            quick = await dialog.locator(".sleep-quick ha-button").all_inner_texts()
+            expect(
+                [q.strip() for q in quick] == ["15 min", "30 min", "45 min", "60 min"],
+                f"sleep timer times: {quick}",
+            )
+            if shots is not None:
+                await user.wait_for_timeout(400)
+                await user.screenshot(path=str(shots / "card-sleep.png"))
+            # Nothing typed starts nothing, nor do more minutes than the box takes
+            await dialog.locator(".sleep-start").click()
+            await dialog.locator(".sleep-own").fill("2000")
+            await dialog.locator(".sleep-start").click()
+            await user.wait_for_timeout(300)
+            expect(await dialog.count() == 1, "the dialog closed without minutes the box takes")
+            await dialog.locator(".sleep-own").fill("20")
+            await dialog.locator(".sleep-own").press("Enter")
+            await _until(lambda: _gone(dialog), "the sleep timer's dialog after its start")
+
+            # The box takes the timer, or refuses it in words while an alarm is due
+            async def started() -> bool:
+                text = await card.inner_text()
+                return "Sleep timer until" in text or "An alarm of a bedtime is set" in text
+
+            await _until(started, "the answer to the sleep timer")
+            stop = card.locator("[data-act$=':sleep_clear']")
+            if await stop.count():
+                await stop.click()
+                await opener.wait_for(timeout=10000)
+            await user.locator("storybox-plus-card").first.evaluate(
+                """(card) => {
+                  delete card._read;
+                  card._key = null;
+                  card._render();
+                }"""
+            )
             slim = user.locator("storybox-plus-card ha-card").nth(1)
             await slim.locator(".card-header").wait_for()
             slim_text = await slim.inner_text()

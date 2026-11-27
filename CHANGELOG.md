@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-27
+
+### Changed
+
+- The sleep timer of a Toniebox 2 is one button in the row of the others, on the page and on the dashboard card. It opens a small dialog with 15, 30, 45 and 60 minutes and a field for any other duration.
+- The volume sits in the head of a box beside the battery, and both look alike; the row below is left to what is out of the ordinary (headphones, a running sleep timer, the next alarm, the night mode).
+- The account's sensor that counts and lists the boxes with a media player is named "Tonieboxes 2" instead of "Boxes", because it leaves a Toniebox 1 out. An installed sensor keeps its entity ID; a new installation names it `sensor.<account>_tonieboxes_2`.
+
 ## [1.3.1] - 2026-11-27
 
 ### Added

@@ -415,6 +415,8 @@ export default {
   "ctlSleep": "Slaaptimer {m} min",
   "ctlSleepTitle": "Slaaptimer",
   "sleepMin": "{m} min",
+  "sleepOwn": "Andere duur in minuten",
+  "sleepStart": "Starten",
   "ctlSleepOff": "Slaaptimer annuleren",
   "boxSettingsOf": "Instellingen van de box",
   "settingsPending": "Wachten op de box",

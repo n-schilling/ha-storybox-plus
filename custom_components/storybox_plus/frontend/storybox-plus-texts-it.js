@@ -415,6 +415,8 @@ export default {
   "ctlSleep": "Timer di spegnimento {m} min",
   "ctlSleepTitle": "Timer di spegnimento",
   "sleepMin": "{m} min",
+  "sleepOwn": "Altra durata in minuti",
+  "sleepStart": "Avvia",
   "ctlSleepOff": "Annulla il timer di spegnimento",
   "boxSettingsOf": "Impostazioni della box",
   "settingsPending": "In attesa della box",

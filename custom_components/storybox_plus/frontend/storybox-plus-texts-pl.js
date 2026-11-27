@@ -415,6 +415,8 @@ export default {
   "ctlSleep": "Wyłącznik czasowy {m} min",
   "ctlSleepTitle": "Wyłącznik czasowy",
   "sleepMin": "{m} min",
+  "sleepOwn": "Inny czas w minutach",
+  "sleepStart": "Start",
   "ctlSleepOff": "Anuluj wyłącznik czasowy",
   "boxSettingsOf": "Ustawienia boxa",
   "settingsPending": "Czekam na box",

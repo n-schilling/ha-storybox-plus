@@ -816,7 +816,25 @@ if (!customElements.get("storybox-plus-panel")) {
           return;
         case "ctl": {
           const [boxId, command, value] = arg.split(":");
+          // A time chosen in the sleep timer's dialog closes it
+          if (command === "sleep" && this._sleepFor) {
+            this._sleepFor = null;
+            this._update();
+          }
           this._command(boxId, command, value);
+          return;
+        }
+        case "sleepset":
+          this._sleepFor = arg;
+          this._update();
+          return;
+        case "sleepown": {
+          // The minutes typed into the dialog's field
+          const minutes = this._sleepOwn(this.shadowRoot.getElementById("sleep"));
+          if (minutes === null) return;
+          this._sleepFor = null;
+          this._update();
+          this._command(arg, "sleep", minutes);
           return;
         }
         case "repeat": {
@@ -1093,6 +1111,7 @@ if (!customElements.get("storybox-plus-panel")) {
           <ha-button slot="fab" id="save" size="l" data-act="save" hidden>${icon("save").replace("<ha-svg-icon", '<ha-svg-icon slot="start"')}${esc(t.save)}</ha-button>
         </hass-tabs-subpage>
         <div id="overlay"></div>
+        <div id="sleep"></div>
         <input type="file" id="upload" accept="${AUDIO_TYPES}" multiple hidden>`;
       const frame = this.shadowRoot.getElementById("frame");
       frame.hass = this._hass;
@@ -1112,6 +1131,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!host) return;
       this._renderTracks(host, this._tracks && this._area === "boxes" && !this._sub ? this._boxById(this._tracks) : null,
         { busy: !!this._ctlBusy || !!this._starBusy, error: this._note });
+      this._renderSleep(this.shadowRoot.getElementById("sleep"), this._sleepFor && this._area === "boxes" && !this._sub ? this._boxById(this._sleepFor) : null);
     }
 
     _update() {

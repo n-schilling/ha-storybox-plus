@@ -67,7 +67,7 @@ async def test_entities(hass: HomeAssistant, setup_entry: MockConfigEntry) -> No
         "sensor.kinderzimmer_next_alarm": (f"{BOX_ID}_next_alarm", "next_alarm", True),
         "event.kinderzimmer_figure": (f"{BOX_ID}_figure", "figure", True),
         "binary_sensor.familie_muster_live_channel": ("live_channel", "live_channel", True),
-        "sensor.familie_muster_boxes": ("boxes", "boxes", True),
+        "sensor.familie_muster_tonieboxes_2": ("boxes", "boxes", True),
         "event.familie_muster_cloud_notification": ("notification", "notification", True),
     }
 
@@ -111,7 +111,7 @@ async def test_attributes(
     assert timer is not None
     assert timer.attributes["device_class"] == "timestamp"
 
-    boxes = hass.states.get("sensor.familie_muster_boxes")
+    boxes = hass.states.get("sensor.familie_muster_tonieboxes_2")
     assert boxes is not None
     assert boxes.state == "1"
     (box,) = boxes.attributes["boxes"]

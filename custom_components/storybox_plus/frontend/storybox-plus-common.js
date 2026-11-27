@@ -251,7 +251,7 @@ export const TEXTS = {
     repeatOff: "Repeat: off", repeatAll: "Repeat: the whole figure", repeatOne: "Repeat: this chapter",
     ctlTracks: "Chapters", tracksTitle: "Chapters",
     ctlPrev: "Previous chapter", ctlNext: "Next chapter", ctlPlay: "Play", ctlPause: "Pause", ctlLouder: "Louder", ctlQuieter: "Quieter",
-    ctlSleep: "Sleep timer {m} min", ctlSleepTitle: "Sleep timer", sleepMin: "{m} min", ctlSleepOff: "Cancel the sleep timer",
+    ctlSleep: "Sleep timer {m} min", ctlSleepTitle: "Sleep timer", sleepMin: "{m} min", sleepOwn: "Other duration in minutes", sleepStart: "Start", ctlSleepOff: "Cancel the sleep timer",
     boxSettingsOf: "Settings of the box", settingsPending: "Waiting for the box", offlineMode: "Offline mode",
     offlineHelp: "The box is set to work without the cloud; it takes changes only once it is back online.",
     noSettings: "The cloud names no settings of this box.",
@@ -519,7 +519,7 @@ export const TEXTS = {
     repeatOff: "Wiederholen: aus", repeatAll: "Wiederholen: ganze Figur", repeatOne: "Wiederholen: dieses Kapitel",
     ctlTracks: "Kapitel", tracksTitle: "Kapitel",
     ctlPrev: "Vorheriges Kapitel", ctlNext: "Nächstes Kapitel", ctlPlay: "Abspielen", ctlPause: "Pausieren", ctlLouder: "Lauter", ctlQuieter: "Leiser",
-    ctlSleep: "Schlaf-Timer {m} Min.", ctlSleepTitle: "Schlaf-Timer", sleepMin: "{m} Min.", ctlSleepOff: "Schlaf-Timer abbrechen",
+    ctlSleep: "Schlaf-Timer {m} Min.", ctlSleepTitle: "Schlaf-Timer", sleepMin: "{m} Min.", sleepOwn: "Andere Dauer in Minuten", sleepStart: "Starten", ctlSleepOff: "Schlaf-Timer abbrechen",
     boxSettingsOf: "Einstellungen der Box", settingsPending: "Wartet auf die Box", offlineMode: "Offline-Modus",
     offlineHelp: "Die Box ist auf Betrieb ohne Cloud gestellt; Änderungen übernimmt sie erst, wenn sie wieder online ist.",
     noSettings: "Die Cloud nennt keine Einstellungen dieser Box.",
@@ -650,6 +650,9 @@ export const parseDay = (key) => {
   const [y, m, d] = String(key).split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
 };
+// The times the sleep timer's dialog offers, and the longest the box takes
+const SLEEP_MINUTES = [15, 30, 45, 60];
+const SLEEP_MAX_MINUTES = 1092;
 export const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 // "HH:MM" from Home Assistant's time field, which adds seconds
 export const clock = (v) => (typeof v === "string" && /^\d{1,2}:\d{2}/.test(v) ? v.split(":").slice(0, 2).map((x) => x.padStart(2, "0")).join(":") : null);
@@ -702,7 +705,7 @@ ha-badge.chip.warn { --badge-color: var(--warning-color); color: var(--warning-c
 ha-badge.chip.on, ha-badge.chip.fav { --badge-color: var(--primary-color); color: var(--primary-color); }
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .tile-title { font-weight: var(--ha-font-weight-medium, 500); margin-bottom: 4px; }
-.status { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: var(--ha-font-size-m, 14px);
+.status { display: inline-flex; align-items: center; gap: 14px; margin-left: auto; font-size: var(--ha-font-size-m, 14px);
   color: var(--secondary-text-color); font-weight: var(--ha-font-weight-normal, 400); }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--secondary-text-color); opacity: 0.6; }
 .dot.ok { background: var(--success-color); opacity: 1; }
@@ -761,7 +764,14 @@ ha-icon-button.fav-all.on { color: var(--primary-color); }
 ha-icon-button.repeat.on { color: var(--primary-color); }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 8px 0 4px; }
 .ctl-gap { width: 12px; }
-.sleep-pick { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; color: var(--secondary-text-color); }
+.sleep-set { display: flex; flex-direction: column; gap: 16px; padding-bottom: 8px; }
+.sleep-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sleep-free { display: flex; align-items: center; gap: 12px; }
+.sleep-free label { display: flex; flex: 1 1 auto; align-items: center; gap: 12px; min-width: 0; }
+.sleep-free span { flex: 1 1 auto; }
+.sleep-own { flex: none; width: 72px; box-sizing: border-box; padding: 8px 10px; font: inherit; text-align: right; color: var(--primary-text-color);
+  background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 8px; }
+.sleep-own:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
 .box-pic { width: 40px; height: 40px; object-fit: contain; flex: none; margin-right: 4px; }
 .box-pic.broken { display: none; }
 .box-pic.small { width: 32px; height: 32px; margin-right: 0; }
@@ -886,19 +896,21 @@ export const BoxView = (Base) => class extends Base {
       const batt = !live || !show("battery") || !Number.isFinite(b.battery) ? "" : card
         ? `<span class="fact">${this._batteryLevel(b)}</span>`
         : b.battery_stats
-          ? `<ha-button appearance="plain" size="s" class="batt-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}"><span class="fact">${this._batteryLevel(b)}</span></ha-button>`
+          ? `<ha-button appearance="plain" variant="neutral" size="s" class="batt-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}"><span class="fact">${this._batteryLevel(b)}</span></ha-button>`
           : `<span class="fact">${this._batteryLevel(b)}</span>`;
-      const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span>${this._dot(b)}` +
-        `<span class="chips">${chips}</span><span class="status">${batt}</span>${cog}`;
-      const facts = [];
+      // The volume sits in the head beside the battery
+      let vol = "";
       if ((Number.isFinite(b.volume) || Number.isFinite(b.volume_percent)) && show("volume")) {
         // The box's own percent once it reported the level; a level just sent shows as a level.
         // The dashboard card knows the percent only: the media player's volume
         const sent = this._volSent?.box === b.id;
         const level = Number.isFinite(b.volume) ? fill(t.volumeLevel, { v: this._fmt(b.volume), max: this._fmt(b.volume_max ?? 13) }) : "";
         const shown = Number.isFinite(b.volume_percent) && !sent ? `${this._fmt(b.volume_percent)} %` : level;
-        facts.push(`<span class="fact vol${sent ? " pending" : ""}"${level ? ` title="${esc(level)}"` : ""}>${icon("volume")}${esc(shown)}</span>`);
+        vol = `<span class="fact vol${sent ? " pending" : ""}"${level ? ` title="${esc(level)}"` : ""}>${icon("volume")}${esc(shown)}</span>`;
       }
+      const title = `${pic ? `<img class="box-pic" src="${esc(pic)}" alt="">` : ""}<span class="box-name">${esc(b.name || b.id)}</span>${this._dot(b)}` +
+        `<span class="chips">${chips}</span><span class="status">${vol}${batt}</span>${cog}`;
+      const facts = [];
       if (b.headphones?.connected && show("headphones")) {
         const hp = Number.isFinite(b.headphones.battery) ? fill(t.headphonesBattery, { p: this._fmt(b.headphones.battery) }) : t.headphones;
         facts.push(`<span class="fact">${icon("headphones")}${esc(hp)}</span>`);
@@ -963,9 +975,8 @@ export const BoxView = (Base) => class extends Base {
       if (!alarm) {
         html += timerOn
           ? btn("sleep_clear", "sleepOff", t.ctlSleepOff, false)
-          : `<span class="sleep-pick" title="${esc(t.ctlSleepTitle)}">${icon("sleep")}` + [30, 60].map((m) =>
-            `<ha-button appearance="plain" size="s" data-act="ctl:${esc(b.id)}:sleep:${m}" title="${esc(fill(t.ctlSleep, { m: this._fmt(m) }))}"${busy ? " disabled" : ""}>` +
-            `${esc(fill(t.sleepMin, { m: this._fmt(m) }))}</ha-button>`).join("") + `</span>`;
+          // How long is chosen in a small dialog
+          : iconButton("sleep", t.ctlSleepTitle, `class="sleep-open" data-act="sleepset:${esc(b.id)}"${busy ? " disabled" : ""}`);
       }
       html += `</div>`;
       if (this._ctlError?.id === b.id) html += this._errHtml(this._error(this._ctlError.err));
@@ -1025,6 +1036,56 @@ export const BoxView = (Base) => class extends Base {
         dialog.innerHTML = html;
       }
       dialog.open = true;
+    }
+
+    // How long until a box falls asleep, in Home Assistant's dialog inside `host`: a few
+    // usual times and a field for any other. this._sleepFor names the box it is open for
+    _renderSleep(host, b) {
+      if (!host) return;
+      const t = this._t;
+      let dialog = host.firstElementChild;
+      // Gone with the box, with a timer set meanwhile, or with an alarm that needs the timer
+      if (!b || b.online !== true || this._sleep(b.sleep_timer) || b.bedtime?.next_alarm?.due) {
+        this._sleepFor = null;
+        if (dialog) dialog.open = false;
+        return;
+      }
+      if (!dialog) {
+        dialog = document.createElement("ha-dialog");
+        this._sleepHtml = null;
+        dialog.addEventListener("closed", () => {
+          this._sleepFor = null;
+          dialog.remove();
+        });
+        // Enter in the field starts the timer
+        dialog.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && e.target?.classList?.contains("sleep-own")) dialog.querySelector(".sleep-start")?.click();
+        });
+        host.append(dialog);
+      }
+      dialog.width = "small";
+      dialog.headerTitle = t.ctlSleepTitle;
+      dialog.headerSubtitle = b.name || b.id;
+      const html = `<div class="sleep-set"><div class="sleep-quick">${SLEEP_MINUTES.map((m) =>
+        `<ha-button appearance="filled" data-act="ctl:${esc(b.id)}:sleep:${m}" title="${esc(fill(t.ctlSleep, { m: this._fmt(m) }))}">` +
+        `${esc(fill(t.sleepMin, { m: this._fmt(m) }))}</ha-button>`).join("")}</div>` +
+        `<div class="sleep-free"><label><span>${esc(t.sleepOwn)}</span>` +
+        `<input class="sleep-own" type="number" inputmode="numeric" min="1" max="${SLEEP_MAX_MINUTES}" step="1" required></label>` +
+        `<ha-button class="sleep-start" data-act="sleepown:${esc(b.id)}">${esc(t.sleepStart)}</ha-button></div></div>`;
+      if (html !== this._sleepHtml) {
+        this._sleepHtml = html;
+        dialog.innerHTML = html;
+      }
+      dialog.open = true;
+    }
+
+    // The minutes typed into the dialog's field; null (and the browser's own hint) when
+    // they are no whole number the box takes
+    _sleepOwn(host) {
+      const input = host?.querySelector(".sleep-own");
+      if (!input) return null;
+      if (!input.reportValidity()) return null;
+      return Number(input.value);
     }
 
     // While the favourites steer the figure on the box: a button that lets it play
