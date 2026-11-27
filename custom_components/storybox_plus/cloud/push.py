@@ -111,6 +111,7 @@ class PushClient:
         port: int = PORT,
     ) -> None:
         """Deliver messages to on_event; on_connected tells when the channel is up or down."""
+        self.seen_keys: dict[str, frozenset[str]] = {}
         self._auth = auth
         self._user_id = user_id
         self._ssl = ssl_context
@@ -293,6 +294,9 @@ class PushClient:
                 return None
         if not isinstance(data, dict):
             data = {}
+        if data:
+            # For the check of the interface: the keys of the last message per topic
+            self.seen_keys[subtopic] = frozenset(data)
         if subtopic == TOPIC_BATTERY:
             return PushEvent(mac, subtopic, parse_battery(data))
         if subtopic == TOPIC_ONLINE:

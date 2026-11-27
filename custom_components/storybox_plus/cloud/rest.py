@@ -6,6 +6,7 @@ community project HA-Toniebox (MIT); the code is our own.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import re
 import time
@@ -158,6 +159,9 @@ class CloudClient:
         self._session = session
         self._auth = auth
         self._base = base_url.rstrip("/")
+        # Told every answer of a read request: method, path, body sent, answer. For the
+        # check of the interface (contract.py); nothing else listens
+        self.watch: Callable[[str, str, Any, Any], None] | None = None
 
     # ------------------------------------------------------------ requests
 
@@ -217,11 +221,14 @@ class CloudClient:
                 if resp.status == 204 or resp.content_length == 0:
                     return None
                 try:
-                    return await resp.json(content_type=None)
+                    answer = await resp.json(content_type=None)
                 except ValueError as err:
                     raise CloudResponseError(
                         f"{method} {path} answered no JSON", resp.status
                     ) from err
+                if self.watch is not None and not write:
+                    self.watch(method, path, json, answer)
+                return answer
         except TimeoutError as err:
             _LOGGER.log(
                 logging.WARNING if write else logging.DEBUG,
