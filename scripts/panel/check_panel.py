@@ -731,7 +731,17 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             not errors or "An alarm of a bedtime is set" in errors[0],
             f"the sleep timer failed on the page: {errors}",
         )
-        await panel.evaluate("(el) => el._loadOverview()")
+        # The refusal leaves the card for the pictures that follow
+        await panel.evaluate(
+            """(el) => {
+              el._ctlError = null;
+              el._loadOverview();
+            }"""
+        )
+        await _until(
+            lambda: _gone(cards.nth(0).locator("ha-alert[alert-type=error]")),
+            "the refusal gone again",
+        )
         minis = page.locator(f"{PANEL} .grid > ha-card.mini-box")
         expect(await minis.count() == 1, f"{await minis.count()} small cards")
         expect(await minis.locator(".card-header, .dot").count() == 0, "heading or dot")
@@ -931,7 +941,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     async def battery() -> None:
         await _goto(page, instance, "boxes/overview", ".batt-btn")
-        level = page.locator(f"{PANEL} ha-button.batt-btn")
+        level = page.locator(f"{PANEL} .batt-btn")
         # Keyboard: Enter on the level opens the box's battery
         await level.focus()
         await page.keyboard.press("Enter")

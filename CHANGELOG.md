@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-28
+
+### Changed
+
+- The head of a box: the battery is drawn as large and in the colour of the volume's icon beside it, the two sit at the same distance, and on the page the battery is no longer a button with a button's padding and bold text. The head stays one line, the name giving way; on a phone the volume and the battery take a line of their own below the name.
+
 ## [1.4.0] - 2026-11-27
 
 ### Changed

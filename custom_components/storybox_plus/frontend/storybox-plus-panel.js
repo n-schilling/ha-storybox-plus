@@ -171,6 +171,7 @@ if (!customElements.get("storybox-plus-panel")) {
     .sched-form { padding: 8px 16px 12px; }
     .sched-form .haform { display: block; margin-bottom: 8px; }
     .batt-big { display: flex; align-items: center; gap: 8px; font-size: var(--ha-font-size-2xl, 24px); margin: 0 0 6px; }
+    .batt-big .batt { transform: scale(1.4); margin: 0 4px; }
     table { border-collapse: collapse; width: 100%; }
     table.cycles th, table.cycles td { padding: 4px 10px 4px 0; text-align: left; white-space: nowrap; font-variant-numeric: tabular-nums; }
     table.cycles th { font-weight: var(--ha-font-weight-normal, 400); font-size: var(--ha-font-size-xs, 12px); color: var(--secondary-text-color); }

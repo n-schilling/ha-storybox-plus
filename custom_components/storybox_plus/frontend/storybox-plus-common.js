@@ -695,6 +695,17 @@ export const STYLE = `
 * { box-sizing: border-box; }
 ha-card { display: block; overflow: hidden; }
 ha-card .card-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+/* A box's head stays one line: the name gives way, the volume, battery and cog keep their place */
+ha-card .card-header:has(> .status) { flex-wrap: nowrap; }
+.card-header > .box-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-header > .status { flex: none; }
+/* On a phone the volume and the battery take a line of their own below the name */
+@media (max-width: 450px) {
+  ha-card .card-header:has(> .status) { flex-wrap: wrap; row-gap: 2px; }
+  .card-header > .status { order: 1; flex-basis: 100%; margin-left: 0; }
+  .card-header > .status:empty { display: none; }
+  .card-header > .box-cog { margin-left: auto; }
+}
 .card-content { padding: 0 16px 16px; }
 .card-content.bare { padding-top: 16px; }
 ha-alert { display: block; }
@@ -705,7 +716,7 @@ ha-badge.chip.warn { --badge-color: var(--warning-color); color: var(--warning-c
 ha-badge.chip.on, ha-badge.chip.fav { --badge-color: var(--primary-color); color: var(--primary-color); }
 .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .tile-title { font-weight: var(--ha-font-weight-medium, 500); margin-bottom: 4px; }
-.status { display: inline-flex; align-items: center; gap: 14px; margin-left: auto; font-size: var(--ha-font-size-m, 14px);
+.status { display: inline-flex; align-items: center; gap: 16px; margin-left: auto; font-size: var(--ha-font-size-m, 14px);
   color: var(--secondary-text-color); font-weight: var(--ha-font-weight-normal, 400); }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--secondary-text-color); opacity: 0.6; }
 .dot.ok { background: var(--success-color); opacity: 1; }
@@ -715,12 +726,18 @@ ha-badge.chip.on, ha-badge.chip.fav { --badge-color: var(--primary-color); color
 .fact { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .fact ha-svg-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
 .fact.pending { opacity: .6; }
-ha-button.batt-btn { --ha-button-font-size: var(--ha-font-size-m, 14px); }
+.batt-btn { cursor: pointer; border-radius: 6px; }
+.batt-btn:hover { color: var(--primary-text-color); }
+.batt-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 .charge { display: inline-flex; align-items: center; color: var(--success-color); font-size: var(--ha-font-size-xs, 12px); }
 .charge ha-svg-icon, .state ha-svg-icon { --mdc-icon-size: 16px; color: inherit; }
-.batt { position: relative; width: 11px; height: 18px; border: 1.5px solid var(--secondary-text-color); border-radius: 2px; display: inline-block; }
-.batt::before { content: ""; position: absolute; top: -4px; left: 2px; right: 2px; height: 2px; background: var(--secondary-text-color); border-radius: 1px; }
-.batt i { position: absolute; left: 1px; right: 1px; bottom: 1px; background: var(--success-color); border-radius: 1px; }
+/* The battery drawn as large and in the colour of the icons beside it: a 20 px box like
+   theirs, the body as tall as their glyphs; red only when it runs low */
+.batt { position: relative; flex: none; width: 20px; height: 20px; display: inline-block; }
+.batt b { position: absolute; left: 6px; top: 4px; width: 8px; height: 14px; box-sizing: border-box;
+  border: 1.5px solid var(--secondary-text-color); border-radius: 2px; }
+.batt b::before { content: ""; position: absolute; top: -3.5px; left: 1.5px; right: 1.5px; height: 2px; background: var(--secondary-text-color); border-radius: 1px 1px 0 0; }
+.batt i { position: absolute; left: 1px; right: 1px; bottom: 1px; max-height: calc(100% - 2px); background: var(--secondary-text-color); border-radius: 0.5px; }
 .batt.low i { background: var(--error-color); }
 .play { display: flex; align-items: center; gap: 12px; }
 .now-star { flex: none; color: var(--secondary-text-color); }
@@ -896,7 +913,8 @@ export const BoxView = (Base) => class extends Base {
       const batt = !live || !show("battery") || !Number.isFinite(b.battery) ? "" : card
         ? `<span class="fact">${this._batteryLevel(b)}</span>`
         : b.battery_stats
-          ? `<ha-button appearance="plain" variant="neutral" size="s" class="batt-btn" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}"><span class="fact">${this._batteryLevel(b)}</span></ha-button>`
+          // A plain button, so it sits like the volume beside it, without a button's padding
+          ? `<span class="fact batt-btn" role="button" tabindex="0" data-act="battset:${esc(b.id)}" title="${esc(t.batteryDetails)}">${this._batteryLevel(b)}</span>`
           : `<span class="fact">${this._batteryLevel(b)}</span>`;
       // The volume sits in the head beside the battery
       let vol = "";
@@ -1115,7 +1133,7 @@ export const BoxView = (Base) => class extends Base {
       // On the battery's own page, while no level is known
       if (!Number.isFinite(b.battery)) return "–";
       const low = b.battery < 20 && !b.charging;
-      return `<span class="batt${low ? " low" : ""}" aria-hidden="true"><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></span>` +
+      return `<span class="batt${low ? " low" : ""}" aria-hidden="true"><b><i style="height:${Math.max(0, Math.min(100, b.battery))}%"></i></b></span>` +
         `${this._fmt(b.battery)} %${b.charging ? `<span class="charge">${icon("flash")}${esc(t.charging)}</span>` : ""}`;
     }
 
