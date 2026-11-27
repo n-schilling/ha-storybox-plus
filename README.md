@@ -194,7 +194,7 @@ stateDiagram-v2
     Free --> [*]: figure taken off
 ```
 
-The box itself knows no selection; the integration follows what it reports and sends it on through the cloud. So the start of a chapter that is left can be heard for a moment, and without the cloud or Home Assistant the box plays everything in its own order. What follows from that:
+The box itself knows no selection; the integration follows what it reports and sends it on through the cloud. So the start of a chapter that is left can be heard for a moment, and without the cloud or Home Assistant the box plays everything in its own order. Measured on a Toniebox 2 that was awake, about half a second lay between the report of the chapter to leave and the report of the chapter it was sent to. A box that was asleep is different: woken by a figure, it plays at once from where it was, and only once it has reached the cloud, about half a minute later, can it be sent to the first favourite. What follows from that:
 
 - The order begins when the figure is placed. A figure Home Assistant finds playing on a box it knows nothing of yet (the first use, right after the update) plays on where it is. The same figure taken off for less than two minutes (knocked over, lifted) plays on where it was. If its order was already over, it begins anew. An end of the figure that Home Assistant did not hear happen (after a restart) starts nothing. A box that was switched off for two minutes or more and wakes with a figure on it counts as placed too, because a sleeping box wakes when a figure is placed.
 - The buttons of the box and of Home Assistant (next, previous) move along the order. A chapter picked from a list (the page, the media browser, the app) plays, whatever the order says, and the order goes on from it.
@@ -416,7 +416,7 @@ actions:
 - Everything goes through the manufacturer's cloud. Without internet, or when the cloud is down, the entities are unavailable; the boxes keep playing on their own.
 - The box plays whatever figure stands on it; Home Assistant cannot choose a figure.
 - The listening times count from the setup on; the cloud offers no history.
-- Favourite chapters steer only a Toniebox 2 and only through the cloud; the start of a chapter that is left can be heard for a moment.
+- Favourite chapters steer only a Toniebox 2 and only through the cloud; the start of a chapter that is left can be heard for a moment (about half a second on a box that is awake). A box that was asleep plays from where it was for about half a minute after it is woken, until it has reached the cloud; only then do its favourites begin.
 - The alarm of a bedtime is set only while the box is online and Home Assistant runs; the box keeps one timer, so an alarm and a sleep timer exclude each other. The alarm tone is the one the app chose, or the app's first; the page does not choose tones.
 - Uploads go through Home Assistant's own file upload and take at most 100 MB per file. Which formats the cloud converts is its decision.
 - The cloud's API is not documented for third parties. If the manufacturer changes it, this integration needs an update.
