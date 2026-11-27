@@ -360,12 +360,18 @@ class Analytics:
 
 
 def _by_hour(start: datetime, end: datetime) -> list[tuple[str, str, int]]:
-    """Split a span into the hours it touches: ISO date, hour of the day, seconds."""
+    """Split a span into the hours it touches: ISO date, hour of the day, whole seconds."""
     parts: list[tuple[str, str, int]] = []
+    began = start
+    counted = 0
     while start < end:
         hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
         stop = min(end, hour_end)
-        seconds = int((stop - start).total_seconds())
+        # Whole seconds since the span began, so the parts add up to the span: cut
+        # each on its own, a span over the full hour would lose a second
+        until = int((stop - began).total_seconds())
+        seconds = until - counted
+        counted = until
         if seconds > 0:
             parts.append((start.date().isoformat(), str(start.hour), seconds))
         start = stop

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-27
+
 ### Added
 
 - Favourites play by a mode, set for the account under Setup → Preferences and, where a figure should differ, in the figure's settings: favourites first (placed on a Toniebox 2, the figure starts with its favourites and plays the other chapters after them), a random favourite first, only the favourites, only the favourites within a bedtime of the box, or as the box plays.
@@ -32,6 +34,7 @@ All notable changes to this project are documented here. The format follows
 - Two accounts of one household both steered the box they share; now the account that speaks for the box does, with the stars kept in one place.
 - A chapter chosen in Home Assistant before the box itself reported what it plays was refused as "another figure"; the figure the cloud names counts until then.
 - After a restart of Home Assistant the favourites steered a figure again that had been set free by pressing play; what a box plays of its figure is kept now.
+- Listening time that ran over a full hour lost a second in the sums per day, per chapter and per hour.
 
 ## [1.1.1] - 2026-11-26
 

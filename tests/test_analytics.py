@@ -387,3 +387,24 @@ async def test_keep_days_can_change(store: Mock, clock: Clock) -> None:
     store.async_delay_save.assert_called()
     analytics.set_keep_days(365)
     assert analytics.per_day() == {}
+
+
+def test_a_span_over_the_full_hour_keeps_its_seconds() -> None:
+    """Cut at the hour, the parts add up to the whole seconds of the span."""
+    from custom_components.storybox_plus.analytics import _by_hour
+
+    zone = ZoneInfo("Europe/Berlin")
+    start = datetime(2026, 11, 27, 9, 59, 11, 600_000, tzinfo=zone)
+    parts = _by_hour(start, start + timedelta(seconds=150))
+    assert parts == [("2026-11-27", "9", 48), ("2026-11-27", "10", 102)]
+    # Three hours and midnight in one span
+    late = datetime(2026, 11, 27, 22, 30, 0, 700_000, tzinfo=zone)
+    long = _by_hour(late, late + timedelta(hours=2, seconds=1))
+    assert [p[:2] for p in long] == [
+        ("2026-11-27", "22"),
+        ("2026-11-27", "23"),
+        ("2026-11-28", "0"),
+    ]
+    assert sum(p[2] for p in long) == 7201
+    # Less than a second counts nothing
+    assert _by_hour(start, start + timedelta(milliseconds=900)) == []
