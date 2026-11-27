@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-27
+
 ### Added
 
 - The page, the dashboard card and Home Assistant's texts of the integration speak French, Spanish, Italian, Dutch, Polish and Brazilian Portuguese besides English and German: the languages tonies offers figures in. A language other than English and German is fetched by the page when it is first needed. A check in CI makes sure every language has every text with its placeholders.
@@ -18,6 +20,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Tested with the cloud's release v2026.11.27: the check of the interface compared 16 of its 20 requests and messages on a real account and found them as expected; the other four (bedtimes, notifications, broadcasts, discs) had nothing to compare there.
 - A Toniebox 2 that has taken new settings says so through the push channel; the page's note that the box waits for them goes at once instead of with the next poll.
 - The volume of a figure explains, on the page and in the README, that its 13 levels are shares of the box's maximum volume: level 13 is that maximum, so a figure never plays louder than the maximum allows.
 

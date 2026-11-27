@@ -1,7 +1,7 @@
 # Storybox Plus
 
 [![Marketplace: default](https://img.shields.io/badge/Marketplace-default-41BDF5.svg)](#installation)
-![Tested with cloud backend v2026.11.10](https://img.shields.io/badge/cloud%20backend-v2026.11.10-informational.svg)
+![Tested with cloud backend v2026.11.27](https://img.shields.io/badge/cloud%20backend-v2026.11.27-informational.svg)
 
 A Home Assistant integration for the Toniebox. Every box becomes a device with the few entities automations need: is it online, how full is the battery, what plays, which figure was placed. The library of figures, their chapters, the listening times and how long a charge lasts live on a page in the sidebar, for administrators. The integration talks to the manufacturer's cloud, because the boxes have no local interface.
 
@@ -167,7 +167,7 @@ The cloud keeps notifications for the account that only the app shows: a chapter
 
 ### Version of the cloud
 
-The cloud's API is not documented for third parties and may change. Storybox Plus reads the version of the cloud's backend once an hour (it is public, no sign-in) and names it under Setup → Preferences. The cloud names its version as release and commit (`v2026.11.10/602b7aff2`); only the release counts. This version was tested with release **v2026.11.10**; when the cloud runs another release, the page says so, and the diagnostics carry it. Another release is no error: the cloud is updated often, mostly without changes to what the integration uses.
+The cloud's API is not documented for third parties and may change. Storybox Plus reads the version of the cloud's backend once an hour (it is public, no sign-in) and names it under Setup → Preferences. The cloud names its version as release and commit (`v2026.11.27/0499a8a21`); only the release counts. This version was tested with release **v2026.11.27**; when the cloud runs another release, the page says so, and the diagnostics carry it. Another release is no error: the cloud is updated often, mostly without changes to what the integration uses.
 
 Whether it still fits is checked: when the cloud reports a release this version was not tested with, the integration reads once everything it reads from the cloud and compares the answers with the fields it relies on (`cloud/contract.py` lists them per request). The result stands under Setup → Preferences beside the version, and the button **Test the cloud interface** there runs the check again. Requests that answer differently are listed, and **Report on GitHub** opens an issue with that list. The check only reads; its result names requests by their shape, fields, kinds and versions, nothing of the account. What a box sends live is compared too, as far as messages came by since Home Assistant started.
 

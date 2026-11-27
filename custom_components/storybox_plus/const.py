@@ -25,9 +25,9 @@ CLASSIC_ONLINE_WINDOW = timedelta(minutes=30)
 # The pictures of the boxes and the cloud's version are read this often
 CLOUD_INFO_INTERVAL = timedelta(hours=1)
 # The release of the cloud's backend this version was tested with. The cloud names
-# its version as release and commit ("v2026.11.10/602b7aff2"); only the release is
+# its version as release and commit ("v2026.11.27/0499a8a21"); only the release is
 # compared, and the settings tab says so when the cloud runs another one
-TESTED_BACKEND_RELEASE = "v2026.11.10"
+TESTED_BACKEND_RELEASE = "v2026.11.27"
 
 STORAGE_VERSION = 1
 ANALYTICS_KEEP_DAYS = 730

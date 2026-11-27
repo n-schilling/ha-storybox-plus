@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.storybox_plus import fetcher
-from custom_components.storybox_plus.const import DOMAIN
+from custom_components.storybox_plus.const import DOMAIN, TESTED_BACKEND_RELEASE
 from custom_components.storybox_plus.websocket import content_type
 
 from .conftest import (
@@ -98,8 +98,8 @@ async def test_overview(
             "speech_auto": None,
             "cloud": {
                 "version": BACKEND_VERSION,
-                "release": "v2026.11.10",
-                "tested": "v2026.11.10",
+                "release": TESTED_BACKEND_RELEASE,
+                "tested": TESTED_BACKEND_RELEASE,
                 "matches": True,
                 "check": None,
             },
