@@ -39,9 +39,11 @@ if (!customElements.get("storybox-plus-panel")) {
   // The addresses of before the areas (#tab), as bookmarks still have them
   const OLD_HASH = { boxes: "boxes/overview", figures: "figures/list", listening: "listening/summary", preferences: "setup/preferences" };
   // The views of a box and of a figure: view, text
-  const BOX_VIEWS = [["settings", "vSettings"], ["night", "vNight"], ["bedtimes", "vBedtimes"], ["battery", "vBattery"]];
-  const FIG_VIEWS = [["chapters", "vChapters"], ["settings", "vSettings"], ["tune", "vTune"], ["add", "vAdd"]];
+  const BOX_VIEWS = [["settings", "vSettings"], ["night", "vNight"], ["bedtimes", "vBedtimes"], ["battery", "vBattery"], ["automations", "vAutomations"]];
+  const FIG_VIEWS = [["chapters", "vChapters"], ["settings", "vSettings"], ["tune", "vTune"], ["add", "vAdd"], ["automations", "vAutomations"]];
   const KINDS = ["all", "content", "creative", "disc"];
+  // Home Assistant's editor for a new automation; a snippet is pasted there in YAML
+  const AUTOMATION_NEW_PATH = "/config/automation/edit/new";
   // Period, days asked from the backend (null: since the setup)
   const RANGES = [["7", 7], ["30", 30], ["365", 365], ["all", null]];
   // The settings of a box by topic: group, settings
@@ -81,6 +83,9 @@ if (!customElements.get("storybox-plus-panel")) {
     #refresh.spin { animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .subname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .snippet { font-family: var(--ha-font-family-code, ui-monospace, monospace); font-size: 12px; line-height: 1.5;
+      margin: 8px 0 0; padding: 8px 12px; overflow: auto; white-space: pre; border-radius: var(--ha-border-radius-md, 8px);
+      background: var(--secondary-background-color); color: var(--primary-text-color); }
     .log { font-family: var(--ha-font-family-code, ui-monospace, monospace); font-size: 12px; line-height: 1.5;
       max-height: 70vh; overflow: auto; }
     .log-line { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--divider-color); }
@@ -782,6 +787,12 @@ if (!customElements.get("storybox-plus-panel")) {
         case "logcopy":
           this._copyLog();
           return;
+        case "autocopy":
+          this._copySnippet(Number(arg));
+          return;
+        case "autonew":
+          this._go(AUTOMATION_NEW_PATH);
+          return;
         case "logsave":
           this._downloadLog();
           return;
@@ -1025,12 +1036,13 @@ if (!customElements.get("storybox-plus-panel")) {
 
     _boxViews(b) {
       return BOX_VIEWS.filter(([v]) => (v === "settings" && b.settings) || (v === "night" && b.night) ||
-        (v === "bedtimes" && b.bedtime) || (v === "battery" && b.battery_stats));
+        (v === "bedtimes" && b.bedtime) || (v === "battery" && b.battery_stats) || (v === "automations" && b.entities?.player));
     }
 
     _figViews(f) {
       return FIG_VIEWS.filter(([v]) => v === "chapters" || v === "settings" ||
-        (v === "tune" && (this._tuneOn(f.id) || this._tunesFor(f.id).length)) || (v === "add" && f.kind === "creative"));
+        (v === "tune" && (this._tuneOn(f.id) || this._tunesFor(f.id).length)) || (v === "add" && f.kind === "creative") ||
+        (v === "automations" && (f.kind === "creative" || this._liveBoxes().length > 0)));
     }
 
     _render() {
@@ -1257,6 +1269,7 @@ if (!customElements.get("storybox-plus-panel")) {
         case "night": return this._nightView(b);
         case "bedtimes": return this._bedtimes(b);
         case "battery": return this._battery(b);
+        case "automations": return this._automationView(this._boxSnippets(b));
         default: return this._section("", `<div class="muted">${esc(t.noSettings)}</div>`);
       }
     }
@@ -1666,6 +1679,7 @@ if (!customElements.get("storybox-plus-panel")) {
         case "settings": return this._figureSettings(f);
         case "tune": return this._tuneView(f);
         case "add": return this._addView(f);
+        case "automations": return this._automationView(this._figureSnippets(f));
         default: return this._chaptersView(f);
       }
     }
@@ -2528,6 +2542,83 @@ if (!customElements.get("storybox-plus-panel")) {
         : "";
       html += this._section(t.logLines, body, { help: log.days ? t.logLinesHint : t.logLinesMemoryHint, actions });
       return html;
+    }
+
+    // ---- Automations ----
+
+    // The Tonieboxes 2 with the entities automations need, their names beside them
+    _liveBoxes() {
+      return (this._overview?.boxes || []).filter((b) => b.entities?.player && b.entities?.figure);
+    }
+
+    // Ready-made automations for one figure, with its ID and the boxes' entities filled in.
+    // The ID, not the name: a figure renamed later keeps its automations
+    _figureSnippets(f) {
+      const t = this._t;
+      const q = (v) => JSON.stringify(v);
+      const out = [];
+      const boxes = this._liveBoxes();
+      if (boxes.length) {
+        const triggers = boxes.map((b) => `  - trigger: state\n    entity_id: ${b.entities.figure}\n` +
+          `    not_from: [unavailable, unknown]\n    id: ${b.entities.player}`).join("\n");
+        const test = `{{ trigger.to_state.attributes.event_type == 'placed' and trigger.to_state.attributes.tonie_id == '${f.id}' }}`;
+        out.push([t.autoPlacedTitle, t.autoPlacedHint,
+          `alias: ${q(fill(t.autoPlacedAlias, { n: f.name }))}\ntriggers:\n${triggers}\nconditions:\n` +
+          `  - condition: template\n    value_template: ${q(test)}\nactions:\n` +
+          "  - action: storybox_plus.set_sleep_timer\n    target:\n      entity_id: \"{{ trigger.id }}\"\n    data:\n      minutes: 45\n"]);
+      }
+      if (f.kind === "creative") {
+        out.push([t.autoGreetTitle, t.autoGreetHint,
+          `alias: ${q(fill(t.autoGreetAlias, { n: f.name }))}\ntriggers:\n  - trigger: time\n    at: "18:30:00"\nactions:\n` +
+          `  - action: storybox_plus.add_chapter\n    data:\n      figure: ${q(f.id)}\n      text: ${q(t.autoGreetText)}\n` +
+          `      title: ${q(t.autoGreetChapter)}\n      replace: true\n`]);
+        out.push([t.autoShuffleTitle, t.autoShuffleHint,
+          `alias: ${q(fill(t.autoShuffleAlias, { n: f.name }))}\ntriggers:\n  - trigger: time\n    at: "07:00:00"\nactions:\n` +
+          `  - action: storybox_plus.shuffle_chapters\n    data:\n      figure: ${q(f.id)}\n`]);
+        out.push([t.autoCleanTitle, t.autoCleanHint,
+          `alias: ${q(fill(t.autoCleanAlias, { n: f.name }))}\ntriggers:\n  - trigger: time\n    at: "20:00:00"\n    weekday: sun\nactions:\n` +
+          `  - action: storybox_plus.remove_chapters\n    data:\n      figure: ${q(f.id)}\n      keep_last: 10\n`]);
+      }
+      return out;
+    }
+
+    // Ready-made automations for a Toniebox 2: quieter in the evening, back in the morning
+    _boxSnippets(b) {
+      const t = this._t;
+      const q = (v) => JSON.stringify(v);
+      const usual = b.settings?.values?.max_volume ?? 75;
+      const evening = Math.max(1, Math.min(usual, Math.round(usual * 0.6)));
+      return [[t.autoQuietTitle, t.autoQuietHint,
+        `alias: ${q(fill(t.autoQuietAlias, { n: b.name || b.id }))}\ntriggers:\n` +
+        `  - trigger: time\n    at: "19:00:00"\n    id: evening\n  - trigger: time\n    at: "07:00:00"\n    id: morning\nactions:\n` +
+        `  - action: storybox_plus.set_box_settings\n    target:\n      entity_id: ${b.entities.player}\n    data:\n` +
+        `      max_volume: "{{ ${evening} if trigger.id == 'evening' else ${usual} }}"\n`]];
+    }
+
+    // The view: how to use a snippet, then each with its copy button
+    _automationView(snippets) {
+      const t = this._t;
+      this._snippets = snippets.map(([, , yaml]) => yaml);
+      let html = this._section(t.vAutomations, `<div class="muted">${esc(t.autoIntro)}</div>`,
+        { help: t.autoIntroHelp, actions: this._btn("autonew", t.autoNew, "plus") });
+      if (!snippets.length) return html + this._section("", `<div class="muted">${esc(t.autoNoBox)}</div>`);
+      snippets.forEach(([title, hint, yaml], i) => {
+        html += this._section(title, `<div class="muted">${esc(hint)}</div><pre class="snippet">${esc(yaml)}</pre>`,
+          { actions: this._btn(`autocopy:${i}`, t.autoCopy, "copy") });
+      });
+      return html;
+    }
+
+    async _copySnippet(i) {
+      const text = this._snippets?.[i];
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        this._done = { kind: "success", text: this._t.autoCopied };
+      } catch (err) {
+        this._note = this._error(err);
+      }
+      this._render();
     }
 
     _logTime(iso) {

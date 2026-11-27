@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows
 
 - Actions for automations (the page stays the easy way by hand): `storybox_plus.add_chapter` adds a chapter to a creative figure from a media source, a text spoken by the account's voice or a video link, and with `replace` removes the older chapters of the same title; `storybox_plus.remove_chapters` removes the chapters of a title or all but the last ones; `storybox_plus.shuffle_chapters` shuffles a creative figure; `storybox_plus.set_box_settings` changes settings of a Toniebox 2. The chapter actions name the figure by its name or ID and answer with the figure. They are for administrators and automations.
 
+- The page has a view **Automations** for every figure and every Toniebox 2: ready-made automations with the figure's ID and the boxes' entities filled in, valid YAML, copied with one button and pasted into a new automation; a button opens Home Assistant's editor.
+
 ### Changed
 
 - A Toniebox 2 that has taken new settings says so through the push channel; the page's note that the box waits for them goes at once instead of with the next poll.

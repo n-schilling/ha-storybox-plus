@@ -25,6 +25,7 @@ from homeassistant.components.websocket_api.decorators import (
 )
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
 from homeassistant.util.hass_dict import HassKey
 
@@ -55,6 +56,7 @@ from .coordinator import (
 )
 from .favourites import MODES as FAVOURITE_MODES
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
+from .ids import box_unique_id
 from .log import LEVELS, MAX_DAYS, async_get_log
 from .night import NightMode
 from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB, PRESENCE_DOMAINS, PRESENCE_LAG
@@ -349,6 +351,23 @@ def _box_dict(
         "bedtime": _bedtime_dict(coordinator, box_state),
         "settings": _settings_dict(box_state),
         "night": _night_dict(coordinator, box_state),
+        "entities": _box_entities(entry, coordinator, box_state),
+    }
+
+
+def _box_entities(
+    entry: StoryboxConfigEntry, coordinator: StoryboxCoordinator, box_state: BoxState
+) -> dict[str, str | None]:
+    """The entity IDs automations need of a box: its media player and its figure event."""
+    registry = er.async_get(coordinator.hass)
+    box_id = box_state.box.id
+    return {
+        "player": registry.async_get_entity_id(
+            "media_player", DOMAIN, box_unique_id(entry, box_id)
+        ),
+        "figure": registry.async_get_entity_id(
+            "event", DOMAIN, box_unique_id(entry, box_id, "figure")
+        ),
     }
 
 

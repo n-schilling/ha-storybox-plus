@@ -132,6 +132,7 @@ async def test_overview(
         "bedtime": {"schedules": [], "next_alarm": None},
         "settings": {"values": {"max_volume": 10}, "offline_mode": None, "applied": None},
         "night": {"mode": None, "phase": None},
+        "entities": {"player": "media_player.kinderzimmer", "figure": "event.kinderzimmer_figure"},
     }
     received_at = playback.pop("received_at")
     assert isinstance(received_at, str)
@@ -158,6 +159,8 @@ async def test_overview(
     assert classic["online"] is True
     assert classic["battery"] is None
     assert classic["volume"] is None
+    # A Toniebox 1 has no entities for automations
+    assert classic["entities"] == {"player": None, "figure": None}
     assert classic["sleep_timer"] is None
     assert classic["playback"] is None
     assert classic["battery_stats"] is None

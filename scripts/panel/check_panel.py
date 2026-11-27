@@ -43,6 +43,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 from playwright.async_api import Browser, Page, async_playwright
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 INTEGRATION = ROOT / "custom_components" / "storybox_plus"
@@ -727,7 +728,8 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _header(page)
         views = await page.locator(f"{PANEL} #views ha-tab-group-tab").all_inner_texts()
         expect(
-            [v.strip() for v in views] == ["Settings", "Night mode", "Bedtimes", "Battery"],
+            [v.strip() for v in views]
+            == ["Settings", "Night mode", "Bedtimes", "Battery", "Automations"],
             str(views),
         )
         await _rows_have_help(page)
@@ -1043,6 +1045,53 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     await checks.run(
         "a creative figure: name, live mode and shuffling as settings", creative_settings
+    )
+
+    async def automations() -> None:
+        # Ready-made automations with the figure's ID and the boxes' entities, valid YAML each,
+        # copied to the clipboard; the button opens Home Assistant's editor for a new one
+        await page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+
+        async def snippets(path: str, count: int) -> list[dict[str, Any]]:
+            await _goto(page, instance, path, "pre.snippet")
+            texts = await page.locator(f"{PANEL} pre.snippet").all_inner_texts()
+            expect(len(texts) == count, f"{path}: {len(texts)} snippets")
+            parsed = [yaml.safe_load(text) for text in texts]
+            for item in parsed:
+                expect(bool(item["alias"]) and item["triggers"] and item["actions"], str(item))
+            return parsed
+
+        creative = await snippets("figures/list?key=fig-grandma&view=automations", 4)
+        placed = creative[0]
+        expect("fig-grandma" in placed["conditions"][0]["value_template"], str(placed))
+        expect(all(t["entity_id"].startswith("event.") for t in placed["triggers"]), str(placed))
+        expect(all(t["id"].startswith("media_player.") for t in placed["triggers"]), str(placed))
+        expect(
+            [a["action"] for item in creative[1:] for a in item["actions"]]
+            == [
+                "storybox_plus.add_chapter",
+                "storybox_plus.shuffle_chapters",
+                "storybox_plus.remove_chapters",
+            ],
+            str(creative),
+        )
+        expect(all(i["actions"][0]["data"]["figure"] == "fig-grandma" for i in creative[1:]), "id")
+        await snippets("figures/list?key=fig-fox&view=automations", 1)
+        (quiet,) = await snippets(f"boxes/overview?key={demo_cloud.KIDS_BOX}&view=automations", 1)
+        expect(quiet["actions"][0]["target"]["entity_id"].startswith("media_player."), str(quiet))
+        await page.locator(f"{PANEL} [data-act='autocopy:0']").click()
+        await _until(
+            lambda: _attr(page.locator(f"{PANEL} ha-alert").first, "alert-type", "success"),
+            "the copy is confirmed",
+        )
+        copied = await page.evaluate("navigator.clipboard.readText()")
+        expect("storybox_plus.set_box_settings" in copied, copied)
+        await page.locator(f"{PANEL} [data-act='autonew']").click()
+        await page.wait_for_url("**/config/automation/edit/new")
+        await page.go_back()
+
+    await checks.run(
+        "automations: snippets per figure and box, copied, the editor opened", automations
     )
 
     async def rearrange() -> None:
