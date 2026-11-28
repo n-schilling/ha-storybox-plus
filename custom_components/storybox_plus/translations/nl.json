@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "Een wekker (van een bedtijdschema of de lichtwekker) gaat om {time} af; dit zou hem annuleren. Zet die wekker eerst uit op de Storybox Plus-pagina."
     },
-    "alarm_past": {
-      "message": "{time} is voorbij; een lichtwekker heeft een komende tijd nodig."
+    "alarm_too_soon": {
+      "message": "{time} is minder dan 5 minuten weg; de box neemt een lichtwekker pas vanaf 5 minuten vooruit aan."
     },
     "no_alarm": {
       "message": "Deze box heeft geen wekker."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Lichtwekker zetten",
-      "description": "Laat de box één keer afgaan op een eigen tijd, met een toon, een volume en het zonsopkomstlicht, zoals de lichtwekker van de app. Een eerdere lichtwekker wordt vervangen. Hij wordt gezet zodra hij minder dan 18 uur weg is en de box online is.",
+      "description": "Laat de box één keer afgaan op een eigen tijd, met een toon, een volume en het zonsopkomstlicht, zoals de lichtwekker van de app. Een eerdere lichtwekker wordt vervangen. Hij wordt gezet zodra hij minder dan 18 uur weg is en de box online is. Hij heeft een tijd minstens 5 minuten vooruit nodig; een dichterbij liggende wekker negeert de box.",
       "fields": {
         "time": {
           "name": "Tijd",

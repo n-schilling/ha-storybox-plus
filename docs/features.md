@@ -200,13 +200,14 @@ flowchart LR
 - What counts as set is what the box reports back, never what was sent. A box that does not confirm is asked three times, then again when it comes online anew; the log says so once.
 - An alarm set by the integration for a wake-up no bedtime wants any more, because a bedtime was switched off, changed or deleted, is cleared. An alarm set in the app is left alone until a bedtime's alarm is due.
 - While an alarm is due, the sleep timer actions and switching the box off are refused with the time of the alarm: each would replace the alarm.
+- The box takes an alarm only at least 5 minutes ahead and drops a closer one, as the app says too. A box that comes online less than 5 minutes before the wake-up gets none.
 - The tone is one of the app's five: Morgenglanz, Vogelgezwitscher-Rhythmus, Klanghüpfer, Aufwach-Ruf and Guten-Morgen-Beat (as the German app names them).
 
 ### Wake-up light
 
 The app's wake-up light ("Lichtwecker") is one alarm at a time of its own, not a bedtime; the app sends it to the box once and keeps nothing in the cloud. Storybox Plus keeps one per Toniebox 2 in its store, with its tone, volume and sunrise light, and arms it the same way as the alarm of a bedtime: within the timer's 18 hours, once the box is online, confirmed by what the box reports. Of the wake-up light and the bedtimes, the alarm that rings first is armed; the other one follows after it rang, if the box is online then. Once its time has passed, the wake-up light is forgotten: it rings once.
 
-It is set on the page, in the section **Wake-up light** above the bedtimes, or by the action `storybox_plus.set_wake_up_light` (see [automations](automations.md#actions)); a new one replaces the former. Cleared, it goes from the store and, if the box carries its alarm already, from the box too, also when Home Assistant was restarted in between. A wake-up light set in the app is the app's: Storybox Plus leaves it alone until an alarm of its own is due.
+It is set on the page, in the section **Wake-up light** above the bedtimes, or by the action `storybox_plus.set_wake_up_light` (see [automations](automations.md#actions)); a new one replaces the former. It needs a time at least 5 minutes ahead. Cleared, it goes from the store and, if the box carries its alarm already, from the box too, also when Home Assistant was restarted in between. A wake-up light set in the app is the app's: Storybox Plus leaves it alone until an alarm of its own is due.
 
 ## Listening times and battery
 

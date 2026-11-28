@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "Um alarme (de uma hora de dormir ou do despertador luminoso) toca às {time}; isso o cancelaria. Desligue antes esse alarme na página do Storybox Plus."
     },
-    "alarm_past": {
-      "message": "{time} já passou; um despertador luminoso precisa de um horário futuro."
+    "alarm_too_soon": {
+      "message": "{time} está a menos de 5 minutos; a caixa só aceita um despertador luminoso com pelo menos 5 minutos de antecedência."
     },
     "no_alarm": {
       "message": "Esta caixa não tem alarme."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Definir despertador luminoso",
-      "description": "Faz a caixa tocar uma vez em um horário próprio, com um toque, um volume e a luz do amanhecer, como o despertador luminoso do app. Um despertador luminoso anterior é substituído. Ele é armado assim que faltarem menos de 18 horas e a caixa estiver online.",
+      "description": "Faz a caixa tocar uma vez em um horário próprio, com um toque, um volume e a luz do amanhecer, como o despertador luminoso do app. Um despertador luminoso anterior é substituído. Ele é armado assim que faltarem menos de 18 horas e a caixa estiver online. Ele precisa de um horário com pelo menos 5 minutos de antecedência; a caixa descarta um alarme mais próximo.",
       "fields": {
         "time": {
           "name": "Horário",

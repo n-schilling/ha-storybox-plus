@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "O {time} zadzwoni budzik (z pory snu lub budzik świetlny); to polecenie by go anulowało. Najpierw wyłącz ten budzik na stronie Storybox Plus."
     },
-    "alarm_past": {
-      "message": "{time} już minęła; budzik świetlny potrzebuje przyszłej godziny."
+    "alarm_too_soon": {
+      "message": "Do {time} zostało mniej niż 5 minut; box przyjmuje budzik świetlny dopiero z 5-minutowym wyprzedzeniem."
     },
     "no_alarm": {
       "message": "Ten box nie ma budzika."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Ustaw budzik świetlny",
-      "description": "Box zadzwoni raz o wybranej godzinie, z dźwiękiem, głośnością i światłem wschodu słońca, jak budzik świetlny w aplikacji. Wcześniejszy budzik świetlny zostanie zastąpiony. Zostanie nastawiony, gdy do niego zostanie mniej niż 18 godzin, a box będzie online.",
+      "description": "Box zadzwoni raz o wybranej godzinie, z dźwiękiem, głośnością i światłem wschodu słońca, jak budzik świetlny w aplikacji. Wcześniejszy budzik świetlny zostanie zastąpiony. Zostanie nastawiony, gdy do niego zostanie mniej niż 18 godzin, a box będzie online. Wymaga godziny co najmniej 5 minut naprzód; bliższy budzik box odrzuca.",
       "fields": {
         "time": {
           "name": "Godzina",

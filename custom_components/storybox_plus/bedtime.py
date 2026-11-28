@@ -39,6 +39,9 @@ from .cloud import (
 ARM_WINDOW = timedelta(seconds=SLEEP_TIMER_MAX_SECONDS)
 # The box ignores commands for a moment after it came online
 SETTLE = timedelta(seconds=30)
+# The box drops an alarm set less than this far ahead: the app asks for five
+# minutes as well. One closer than that is not sent, and a wake-up light needs it
+LEAD = timedelta(minutes=5)
 # A box that did not confirm an alarm is asked again after this long
 RETRY = timedelta(minutes=2)
 # How often a step is sent to a box that does not confirm it, per time it comes online

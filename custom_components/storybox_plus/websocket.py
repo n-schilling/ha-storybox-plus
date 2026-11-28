@@ -891,7 +891,7 @@ _BOX_MESSAGES = {
     "invalid_value": "A classic box takes 25, 50, 75 or 100 percent",
     "unknown_household": "The account has no such household",
     "alarm_due": "The alarm of a bedtime is due; the sleep timer would cancel it",
-    "alarm_past": "That time has passed",
+    "alarm_too_soon": "That time is less than 5 minutes away",
     "nothing_plays": "No figure is on the box",
     "unknown_chapter": "The figure has no such chapter",
     "invalid_command": "The command needs a value",

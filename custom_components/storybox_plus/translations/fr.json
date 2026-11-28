@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "Une alarme (d'une routine du coucher ou du réveil lumineux) sonne à {time} ; cette action l'annulerait. Désactivez d'abord cette alarme sur la page Storybox Plus."
     },
-    "alarm_past": {
-      "message": "{time} est passé ; un réveil lumineux a besoin d'une heure à venir."
+    "alarm_too_soon": {
+      "message": "{time} est dans moins de 5 minutes ; la boîte n'accepte un réveil lumineux qu'au moins 5 minutes à l'avance."
     },
     "no_alarm": {
       "message": "Cette boîte n'a pas de réveil."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Régler le réveil lumineux",
-      "description": "Fait sonner la boîte une fois à une heure choisie, avec une sonnerie, un volume et la lumière du lever du soleil, comme le réveil lumineux de l'application. Un réveil lumineux précédent est remplacé. Il est armé dès qu'il est à moins de 18 heures et que la boîte est en ligne.",
+      "description": "Fait sonner la boîte une fois à une heure choisie, avec une sonnerie, un volume et la lumière du lever du soleil, comme le réveil lumineux de l'application. Un réveil lumineux précédent est remplacé. Il est armé dès qu'il est à moins de 18 heures et que la boîte est en ligne. Il faut une heure au moins 5 minutes à l'avance ; la boîte ignore une alarme plus proche.",
       "fields": {
         "time": {
           "name": "Heure",

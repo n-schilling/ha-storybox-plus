@@ -515,18 +515,20 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
         elif datetime is not None:
             at = datetime if datetime.tzinfo else datetime.replace(tzinfo=now.tzinfo)
         else:  # pragma: no cover - the schema asks for one of them
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="alarm_past")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="alarm_too_soon"
+            )
         alarm = Alarm(bedtime.TONE_BY_NAME[tone], volume, morning_light)
         try:
             await self.coordinator.async_set_wake_up_light(self._box_id, at, alarm)
         except BoxError as err:
-            if err.code != "alarm_past":
+            if err.code != "alarm_too_soon":
                 raise ServiceValidationError(
                     translation_domain=DOMAIN, translation_key="no_alarm"
                 ) from err
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
-                translation_key="alarm_past",
+                translation_key="alarm_too_soon",
                 translation_placeholders={"time": at.strftime("%Y-%m-%d %H:%M")},
             ) from err
 

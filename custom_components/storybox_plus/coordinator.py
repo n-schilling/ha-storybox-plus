@@ -108,7 +108,7 @@ class BoxError(HomeAssistantError):
 
     The code names why: "unknown_box", "no_alarm" (the box rings no alarms),
     "unknown_schedule", "not_supported" (a setting this box does not have) or
-    "alarm_past" (a wake-up light for a time that has passed).
+    "alarm_too_soon" (a wake-up light less than five minutes ahead).
     """
 
     def __init__(self, code: str) -> None:
@@ -1499,6 +1499,9 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         step = bedtime.decide(self._due(box_state), box_state.sleep_timer, armed)
         if step is None or not state.push_connected or box_state.online is not True:
             return
+        if step[0] == "arm" and step[1].at - now < bedtime.LEAD:
+            # The box would drop it: an alarm that came online too late is missed
+            return
         if box_state.online_since is not None and now - box_state.online_since < bedtime.SETTLE:
             self._check_alarm_later(box.id, bedtime.SETTLE - (now - box_state.online_since))
             return
@@ -1530,6 +1533,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             if step[0] == "arm":
                 alarm = step[1]
                 seconds = round((alarm.at - dt_util.utcnow()).total_seconds())
+                # Checked a moment ago; a few seconds late beats a dropped alarm
+                seconds = max(seconds, round(bedtime.LEAD.total_seconds()))
                 await self.push.async_set_alarm(mac, seconds, alarm.alarm)
                 self._armed[box_state.box.id] = alarm.at
                 _LOGGER.debug("Alarm armed for %s", alarm.at.isoformat())
@@ -1598,8 +1603,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         online, unless a schedule's alarm rings before it.
         """
         box_state = self._alarm_box(box_id)
-        if at <= dt_util.utcnow():
-            raise BoxError("alarm_past")
+        if at - dt_util.utcnow() < bedtime.LEAD:
+            raise BoxError("alarm_too_soon")
         self._forget_light(box_state)
         self.preferences.set_wake_up_light(box_id, bedtime.OneTimeAlarm(at, alarm))
         _LOGGER.info("Wake-up light of %s set for %s", box_state.box.name, at.isoformat())

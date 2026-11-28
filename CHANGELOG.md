@@ -10,11 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- The wake-up light of a Toniebox 2, as the app's "Lichtwecker": one alarm at a time of its own, with one of the app's five tones, a volume and the sunrise light. It is set and cleared on the page, under a box's bedtimes, or by the actions `storybox_plus.set_wake_up_light` (a time of day or a date with a time) and `storybox_plus.clear_wake_up_light`. It is kept across restarts and armed like the alarm of a bedtime: as soon as it is within the box's timer (about 18 hours) and the box is online, the earlier of the two alarms first. Once it has rung, it is gone. The sensor of the next alarm counts it and says so in the attribute `wake_up_light`.
+- The wake-up light of a Toniebox 2, as the app's "Lichtwecker": one alarm at a time of its own, with one of the app's five tones, a volume and the sunrise light. It is set and cleared on the page, under a box's bedtimes, or by the actions `storybox_plus.set_wake_up_light` (a time of day or a date with a time) and `storybox_plus.clear_wake_up_light`. It is kept across restarts and armed like the alarm of a bedtime: as soon as it is within the box's timer (about 18 hours) and the box is online, the earlier of the two alarms first. It needs a time at least 5 minutes ahead, as in the app: the box drops a closer alarm, and none is sent that late. Once it has rung, it is gone. The sensor of the next alarm counts it and says so in the attribute `wake_up_light`.
 - The alarm of a bedtime takes one of the app's five tones on the page; until now it kept the tone the app had chosen.
 
 ### Changed
 
+- The alarm of a bedtime is no longer sent less than 5 minutes before it rings: the box dropped it anyway.
 - The page and the texts call the morning light the sunrise light, as the app does; refusals of the sleep timer name any alarm, a bedtime's or the wake-up light.
 - The pictures in the README and under `docs/` show the head with volume and battery and the sleep timer's dialog; their descriptions and the texts on the sleep timer say so. The page check takes the pictures without a highlight left on a button.
 

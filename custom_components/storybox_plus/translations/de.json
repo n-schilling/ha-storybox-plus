@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "Um {time} klingelt ein Wecker (einer Schlafenszeit oder der Lichtwecker); das würde ihn löschen. Zuerst diesen Wecker auf der Seite Storybox Plus ausschalten."
     },
-    "alarm_past": {
-      "message": "{time} ist vorbei; ein Lichtwecker braucht eine kommende Zeit."
+    "alarm_too_soon": {
+      "message": "{time} ist weniger als 5 Minuten entfernt; die Box nimmt einen Lichtwecker erst ab 5 Minuten im Voraus an."
     },
     "no_alarm": {
       "message": "Diese Box hat keinen Wecker."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Lichtwecker stellen",
-      "description": "Lässt die Box einmal zu einer eigenen Zeit klingeln, mit Ton, Lautstärke und Sonnenaufgangs-Licht, wie der Lichtwecker der App. Ein früherer Lichtwecker wird ersetzt. Er wird gestellt, sobald er weniger als 18 Stunden entfernt ist und die Box online ist.",
+      "description": "Lässt die Box einmal zu einer eigenen Zeit klingeln, mit Ton, Lautstärke und Sonnenaufgangs-Licht, wie der Lichtwecker der App. Ein früherer Lichtwecker wird ersetzt. Er wird gestellt, sobald er weniger als 18 Stunden entfernt ist und die Box online ist. Er braucht eine Zeit mindestens 5 Minuten im Voraus; einen näheren Wecker verwirft die Box.",
       "fields": {
         "time": {
           "name": "Uhrzeit",

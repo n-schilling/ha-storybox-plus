@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "An alarm (of a bedtime or the wake-up light) rings at {time}; this would cancel it. Switch that alarm off on the Storybox Plus page first."
     },
-    "alarm_past": {
-      "message": "{time} has passed; a wake-up light needs a time to come."
+    "alarm_too_soon": {
+      "message": "{time} is less than 5 minutes away; the box takes a wake-up light only from 5 minutes ahead."
     },
     "no_alarm": {
       "message": "This box rings no alarms."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Set wake-up light",
-      "description": "Lets the box ring once at a time of its own, with a tone, a volume and the sunrise light, like the app's wake-up light. A former wake-up light is replaced. It is armed as soon as it is less than 18 hours away and the box is online.",
+      "description": "Lets the box ring once at a time of its own, with a tone, a volume and the sunrise light, like the app's wake-up light. A former wake-up light is replaced. It is armed as soon as it is less than 18 hours away and the box is online. It needs a time at least 5 minutes ahead; the box drops a closer alarm.",
       "fields": {
         "time": {
           "name": "Time",

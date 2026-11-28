@@ -116,6 +116,37 @@ async def test_action_arms_it_and_it_is_forgotten_once_rung(
     assert _alarm_commands(push)[-1][1]["state"] == "on"
 
 
+async def test_five_minutes_ahead_at_least(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The box drops an alarm closer than five minutes: none is sent that late, and it is missed."""
+    await _setup(hass, cloud, config_entry, freezer, schedules=[])
+    push.last.connect()
+    await _later(hass, freezer, bedtime.SETTLE.total_seconds() + 1)
+    # Exactly five minutes ahead is taken, and a moment's delay does not shorten it
+    at = datetime.now(BERLIN).replace(microsecond=0) + bedtime.LEAD
+    await _set(hass, datetime=at.strftime("%Y-%m-%d %H:%M:%S"))
+    freezer.tick(timedelta(seconds=2))
+    await hass.async_block_till_done()
+    assert [p["duration"] for c, p in _alarm_commands(push) if c == "stl"] == [300]
+
+    # A box that comes online less than five minutes before misses it
+    push.last.connect(False)
+    await hass.async_block_till_done()
+    sent = len(_alarm_commands(push))
+    at = datetime.now(BERLIN).replace(microsecond=0) + timedelta(minutes=30)
+    await _set(hass, datetime=at.strftime("%Y-%m-%d %H:%M:%S"))
+    freezer.move_to(at - timedelta(minutes=4))
+    push.last.connect()
+    await _later(hass, freezer, bedtime.SETTLE.total_seconds() + 1)
+    await _later(hass, freezer, bedtime.RETRY.total_seconds() + 10)
+    assert len(_alarm_commands(push)) == sent
+
+
 async def test_the_earlier_alarm_is_armed_first(
     hass: HomeAssistant,
     cloud: FakeCloud,
@@ -177,13 +208,14 @@ async def test_refusals(
     config_entry: MockConfigEntry,
     freezer: FrozenDateTimeFactory,
 ) -> None:
-    """A time that passed is refused; while the light is due, the sleep timer is."""
+    """A time less than five minutes ahead is refused; while the light is due, the sleep timer is."""
     await _setup(hass, cloud, config_entry, freezer, schedules=[])
     push.last.connect()
-    with pytest.raises(ServiceValidationError) as err:
-        await _set(hass, datetime="2026-11-09 17:00:00")
-    assert err.value.translation_key == "alarm_past"
-    assert err.value.translation_placeholders == {"time": "2026-11-09 17:00"}
+    for at in ("2026-11-09 17:00", "2026-11-09 18:04"):
+        with pytest.raises(ServiceValidationError) as err:
+            await _set(hass, datetime=f"{at}:00")
+        assert err.value.translation_key == "alarm_too_soon"
+        assert err.value.translation_placeholders == {"time": at}
     await _set(hass, time="21:00")
     with pytest.raises(ServiceValidationError) as err:
         await hass.services.async_call(
@@ -255,7 +287,7 @@ async def test_page_sets_and_clears_it(
         }
     )
     result = await client.receive_json()
-    assert result["error"]["code"] == "alarm_past"
+    assert result["error"]["code"] == "alarm_too_soon"
 
     await client.send_json_auto_id({"type": f"{DOMAIN}/alarm/clear", "box_id": BOX_ID})
     result = await client.receive_json()

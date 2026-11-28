@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "Alle {time} suona una sveglia (di un'ora della nanna o la sveglia luminosa): questo la annullerebbe. Prima disattiva quella sveglia nella pagina di Storybox Plus."
     },
-    "alarm_past": {
-      "message": "{time} è passato; una sveglia luminosa ha bisogno di un orario futuro."
+    "alarm_too_soon": {
+      "message": "{time} è a meno di 5 minuti; il box accetta una sveglia luminosa solo con almeno 5 minuti di anticipo."
     },
     "no_alarm": {
       "message": "Questo box non ha la sveglia."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Imposta sveglia luminosa",
-      "description": "Fa suonare il box una volta a un orario scelto, con un suono, un volume e la luce dell'alba, come la sveglia luminosa dell'app. Una sveglia luminosa precedente viene sostituita. Viene attivata appena mancano meno di 18 ore e il box è online.",
+      "description": "Fa suonare il box una volta a un orario scelto, con un suono, un volume e la luce dell'alba, come la sveglia luminosa dell'app. Una sveglia luminosa precedente viene sostituita. Viene attivata appena mancano meno di 18 ore e il box è online. Richiede un orario con almeno 5 minuti di anticipo; il box scarta una sveglia più vicina.",
       "fields": {
         "time": {
           "name": "Ora",

@@ -163,8 +163,8 @@
     "alarm_due": {
       "message": "Una alarma (de una hora de dormir o del despertador de luz) suena a las {time}; esto la cancelaría. Antes, desactiva esa alarma en la página de Storybox Plus."
     },
-    "alarm_past": {
-      "message": "{time} ya pasó; un despertador de luz necesita una hora futura."
+    "alarm_too_soon": {
+      "message": "{time} está a menos de 5 minutos; la caja solo acepta un despertador de luz con al menos 5 minutos de antelación."
     },
     "no_alarm": {
       "message": "Esta caja no tiene alarma."
@@ -232,7 +232,7 @@
     },
     "set_wake_up_light": {
       "name": "Poner despertador de luz",
-      "description": "Hace sonar la caja una vez a una hora propia, con un tono, un volumen y la luz de amanecer, como el despertador de luz de la app. Un despertador de luz anterior se reemplaza. Se activa en cuanto falten menos de 18 horas y la caja esté en línea.",
+      "description": "Hace sonar la caja una vez a una hora propia, con un tono, un volumen y la luz de amanecer, como el despertador de luz de la app. Un despertador de luz anterior se reemplaza. Se activa en cuanto falten menos de 18 horas y la caja esté en línea. Necesita una hora con al menos 5 minutos de antelación; la caja descarta una alarma más cercana.",
       "fields": {
         "time": {
           "name": "Hora",
