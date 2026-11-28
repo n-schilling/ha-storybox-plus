@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format follows
 - The binary sensor `alarm_ringing` of a Toniebox 2 is on while its alarm rings, as the box reports it the moment it starts and stops, with the tone as an attribute.
 - A box's card on the page shows whether the box carries the next alarm, with its tone, volume and sunrise light; while it rings, a band in the colours of a sunrise with a shaking alarm clock takes its place, still for whoever asks for less motion. The dashboard card shows it too, the details as a tooltip.
 - The sensor of the next alarm tells with `armed` whether the box carries it, and with `tone`, `volume` and `morning_light` how it rings.
+- Setup → Log records the live channel for 24 or 48 hours: every message of every Toniebox 2 raw, the app's commands included, as lines of the source `live`, kept out of Home Assistant's log. Meanwhile a box is followed on all its topics, each message still read once; the recording ends by itself, also across restarts.
 
 ### Changed
 

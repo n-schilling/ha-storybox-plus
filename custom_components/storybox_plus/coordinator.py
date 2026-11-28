@@ -91,6 +91,8 @@ from .shuffle import MIN_CHAPTERS, ShuffleOnSwap, new_order
 from .volumes import FigureVolumes
 
 _LOGGER = logging.getLogger(__name__)
+# The recorded live channel (log.py): its lines go to the page, not to Home Assistant's log
+_LIVE = logging.getLogger(f"{__package__}.live")
 
 # A box that is still offline this long after it said so went to sleep
 ASLEEP_AFTER = timedelta(seconds=30)
@@ -842,6 +844,13 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         return box_state
 
     # ------------------------------------------------------------ push
+
+    def capture_push(self, mac: str, topic: str, payload: bytes) -> None:
+        """Write one message of the live channel raw to the log, under the box's name."""
+        box_state = self.data.box_by_mac(mac) if self.data is not None else None
+        name = box_state.box.name if box_state is not None else mac
+        text = payload.decode("utf-8", errors="replace").strip()
+        _LIVE.debug("%s %s %s", name, topic, text or "(empty)")
 
     @callback
     def handle_push(self, event: PushEvent) -> None:

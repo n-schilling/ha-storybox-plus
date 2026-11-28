@@ -12,6 +12,11 @@ written and the page shows the lines since the start only.
 
 Turning on debug logging on Home Assistant's own integration page still
 works and wins until it is turned off again or Home Assistant restarts.
+
+The live channel can be recorded for a while: every message of every
+Toniebox 2 raw, the app's commands included, as lines of the source "live".
+They go to the page and the files only, not to Home Assistant's log, and
+the recording ends by itself at the time chosen.
 """
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import json
 import logging
 from pathlib import Path
@@ -28,7 +33,7 @@ from typing import Any
 
 from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_point_in_utc_time, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
@@ -37,6 +42,10 @@ from .cloud.rest import short_ids
 from .const import DOMAIN, STORAGE_VERSION
 
 LOGGER_NAME = f"custom_components.{DOMAIN}"
+# The recorded live channel; its lines stay out of Home Assistant's log
+LIVE_LOGGER_NAME = f"{LOGGER_NAME}.live"
+# The longest a recording of the live channel may run (h)
+MAX_CAPTURE_HOURS = 168
 LEVELS = {
     "debug": logging.DEBUG,
     "info": logging.INFO,
@@ -185,6 +194,27 @@ class IntegrationLog:
         self._handler = _Keeper(self._keep)
         self._unsub: CALLBACK_TYPE | None = None
         self._unsub_final: CALLBACK_TYPE | None = None
+        # Until when the live channel is recorded; None: it is not
+        self.capture_until: datetime | None = None
+        self._unsub_capture: CALLBACK_TYPE | None = None
+        self._capture_listeners: list[Callable[[bool], None]] = []
+
+    @property
+    def capturing(self) -> bool:
+        """Whether the live channel is recorded now."""
+        return self.capture_until is not None and self.capture_until > dt_util.utcnow()
+
+    @callback
+    def async_listen_capture(self, listener: Callable[[bool], None]) -> CALLBACK_TYPE:
+        """Call the listener when recording starts or ends; returns how to stop."""
+        self._capture_listeners.append(listener)
+
+        @callback
+        def _remove() -> None:
+            if listener in self._capture_listeners:
+                self._capture_listeners.remove(listener)
+
+        return _remove
 
     def _keep(self, line: LogLine) -> None:
         self.lines.append(line)
@@ -200,10 +230,19 @@ class IntegrationLog:
             days = raw.get("days")
             if isinstance(days, int) and not isinstance(days, bool) and 0 <= days <= MAX_DAYS:
                 self.days = days
+            until = dt_util.parse_datetime(raw.get("capture_until") or "")
+            if until is not None and until > dt_util.utcnow():
+                self.capture_until = until
+                self._end_capture_at(until)
         self._apply()
         logger = logging.getLogger(LOGGER_NAME)
         if self._handler not in logger.handlers:
             logger.addHandler(self._handler)
+        live = logging.getLogger(LIVE_LOGGER_NAME)
+        live.propagate = False
+        live.setLevel(logging.DEBUG)
+        if self._handler not in live.handlers:
+            live.addHandler(self._handler)
         await self._async_prune()
         # The timer ends with Home Assistant; the last lines are written at its final write
         self._unsub = async_track_time_interval(
@@ -220,6 +259,10 @@ class IntegrationLog:
     async def async_close(self) -> None:
         """Stop keeping lines and write the last ones; the settings stay."""
         logging.getLogger(LOGGER_NAME).removeHandler(self._handler)
+        logging.getLogger(LIVE_LOGGER_NAME).removeHandler(self._handler)
+        if self._unsub_capture is not None:
+            self._unsub_capture()
+            self._unsub_capture = None
         if self._unsub is not None:
             self._unsub()
             self._unsub = None
@@ -249,8 +292,17 @@ class IntegrationLog:
         keep_from = dt_util.now().date() - timedelta(days=self.days - 1) if self.days else None
         await self._hass.async_add_executor_job(_prune, self.folder, keep_from)
 
-    async def async_set(self, level: str | None = None, days: int | None = None) -> None:
-        """Change level and retention, now and for the next start."""
+    async def async_set(
+        self,
+        level: str | None = None,
+        days: int | None = None,
+        capture_hours: int | None = None,
+    ) -> None:
+        """Change level, retention and the recording of the live channel, now and for the next start.
+
+        capture_hours starts a recording that ends that many hours from now;
+        0 ends one.
+        """
         if level is not None:
             if level not in LEVELS:
                 raise ValueError(level)
@@ -263,7 +315,40 @@ class IntegrationLog:
             if not days:
                 self._pending.clear()
             await self._async_prune()
-        await self._store.async_save({"level": self.level, "days": self.days})
+        if capture_hours is not None:
+            if not 0 <= capture_hours <= MAX_CAPTURE_HOURS:
+                raise ValueError(capture_hours)
+            until = dt_util.utcnow() + timedelta(hours=capture_hours) if capture_hours else None
+            self._set_capture(until)
+        await self._async_save()
+
+    async def _async_save(self) -> None:
+        data: dict[str, Any] = {"level": self.level, "days": self.days}
+        if self.capture_until is not None:
+            data["capture_until"] = self.capture_until.isoformat()
+        await self._store.async_save(data)
+
+    def _set_capture(self, until: datetime | None) -> None:
+        was = self.capturing
+        self.capture_until = until
+        if self._unsub_capture is not None:
+            self._unsub_capture()
+            self._unsub_capture = None
+        if until is not None:
+            self._end_capture_at(until)
+        if self.capturing != was:
+            for listener in list(self._capture_listeners):
+                listener(self.capturing)
+
+    def _end_capture_at(self, until: datetime) -> None:
+        @callback
+        def _end(_now: datetime) -> None:
+            self._unsub_capture = None
+            self._set_capture(None)
+            logging.getLogger(LOGGER_NAME).info("Recording of the live channel ended")
+            self._hass.async_create_task(self._async_save(), f"{DOMAIN} log save")
+
+        self._unsub_capture = async_track_point_in_utc_time(self._hass, _end, until)
 
     def _apply(self) -> None:
         logging.getLogger(LOGGER_NAME).setLevel(LEVELS[self.level])
@@ -283,6 +368,9 @@ class IntegrationLog:
         return {
             "level": self.level,
             "days": self.days,
+            "capture_until": self.capture_until.isoformat()
+            if self.capturing and self.capture_until
+            else None,
             "effective": logging.getLevelName(
                 logging.getLogger(LOGGER_NAME).getEffectiveLevel()
             ).lower(),

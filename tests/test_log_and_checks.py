@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant.typing import ClientSessionGenerator, WebSocketGenerator
 
 from homeassistant.core import HomeAssistant
@@ -23,6 +23,7 @@ from custom_components.storybox_plus.log import DATA_LOG, LOGGER_NAME, async_get
 from .conftest import (
     CREATIVE_ID,
     HOUSEHOLD_ID,
+    MAC,
     VIDEO_URL,
     FakeCloud,
     FakeFetcher,
@@ -126,6 +127,87 @@ async def test_log_level_comes_back_after_a_restart(
     hass_storage[f"{DOMAIN}.log"]["data"] = {"level": "loud"}
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     assert (await async_get_log(hass)).level == "debug"
+
+
+async def test_the_live_channel_is_recorded_for_a_while(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    setup_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+    hass_storage: dict[str, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Switched on, every message goes raw into the lines of the source live, not into Home Assistant's log; it ends by itself."""
+    client = await hass_ws_client(hass)
+    channel = push.last
+    assert channel._capture is None
+    result = await _ask(client, {"type": f"{DOMAIN}/log/set", "capture_hours": 24})
+    assert result["success"], result
+    until = dt_util.parse_datetime(result["result"]["capture_until"])
+    assert until is not None
+    assert timedelta(hours=23) < until - dt_util.utcnow() <= timedelta(hours=24)
+    assert hass_storage[f"{DOMAIN}.log"]["data"]["capture_until"] == until.isoformat()
+    assert channel._capture is not None
+
+    caplog.clear()
+    channel._capture(MAC, "app-control/stl", b'{"state": "off"}')
+    channel._capture(MAC, "volume/state", b"")
+    lines = (await _ask(client, {"type": f"{DOMAIN}/log"}))["result"]["lines"]
+    live = [line for line in lines if line["source"] == "live"]
+    assert [line["message"].split(" ", 1)[1] for line in live] == [
+        "volume/state (empty)",
+        'app-control/stl {"state": "off"}',
+    ]
+    assert all(line["level"] == "debug" for line in live)
+    assert not [r for r in caplog.records if r.name == f"{LOGGER_NAME}.live"]
+
+    # It ends at its time, and the next start knows it ended
+    async_fire_time_changed(hass, until + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    assert channel._capture is None
+    assert (await _ask(client, {"type": f"{DOMAIN}/log"}))["result"]["capture_until"] is None
+    assert "capture_until" not in hass_storage[f"{DOMAIN}.log"]["data"]
+
+    # Switched off by hand; more than a week is refused
+    await _ask(client, {"type": f"{DOMAIN}/log/set", "capture_hours": 48})
+    assert channel._capture is not None
+    result = await _ask(client, {"type": f"{DOMAIN}/log/set", "capture_hours": 0})
+    assert result["result"]["capture_until"] is None
+    assert channel._capture is None
+    refused = await _ask(client, {"type": f"{DOMAIN}/log/set", "capture_hours": 169})
+    assert not refused["success"]
+
+
+async def test_a_recording_goes_on_after_a_restart(
+    hass: HomeAssistant,
+    cloud: FakeCloud,
+    push: PushChannels,
+    config_entry: MockConfigEntry,
+    hass_storage: dict[str, Any],
+) -> None:
+    """A recording still running is taken up again; one whose time passed is not."""
+    until = dt_util.utcnow() + timedelta(hours=5)
+    hass_storage[f"{DOMAIN}.log"] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"{DOMAIN}.log",
+        "data": {"level": "info", "days": 7, "capture_until": until.isoformat()},
+    }
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    log = await async_get_log(hass)
+    assert log.capturing
+    assert push.last._capture is not None
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    assert log._handler not in logging.getLogger(f"{LOGGER_NAME}.live").handlers
+
+    hass_storage[f"{DOMAIN}.log"]["data"]["capture_until"] = "2020-01-01T00:00:00+00:00"
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert not (await async_get_log(hass)).capturing
+    assert push.last._capture is None
 
 
 async def test_removing_the_last_account_forgets_the_level(

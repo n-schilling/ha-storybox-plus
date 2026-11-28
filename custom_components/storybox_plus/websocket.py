@@ -60,7 +60,7 @@ from .coordinator import (
 from .favourites import MODES as FAVOURITE_MODES
 from .fetcher import FetchCancelled, FetcherError, FetcherUnavailable
 from .ids import box_unique_id
-from .log import LEVELS, MAX_DAYS, async_get_log
+from .log import LEVELS, MAX_CAPTURE_HOURS, MAX_DAYS, async_get_log
 from .night import NightMode
 from .preferences import ANALYTICS_DAYS, FETCH_MAX_MB, PRESENCE_DOMAINS, PRESENCE_LAG
 from .repeat import MODES
@@ -1590,16 +1590,25 @@ async def websocket_log(
         probatio.Required("type"): f"{DOMAIN}/log/set",
         probatio.Optional("level"): probatio.In(list(LEVELS)),
         probatio.Optional("days"): probatio.All(int, probatio.Range(min=0, max=MAX_DAYS)),
+        # Record the live channel for that many hours from now; 0 ends a recording
+        probatio.Optional("capture_hours"): probatio.All(
+            int, probatio.Range(min=0, max=MAX_CAPTURE_HOURS)
+        ),
     }
 )
 @async_response
 async def websocket_log_set(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Change the log level or how many days the lines are kept, now and for the next start."""
+    """Change the log level, how many days the lines are kept, or the recording of the live channel."""
     log = await async_get_log(hass)
-    await log.async_set(msg.get("level"), msg.get("days"))
+    await log.async_set(msg.get("level"), msg.get("days"), msg.get("capture_hours"))
     _LOGGER.info("Log level %s, lines kept for %s days", log.level, log.days)
+    if "capture_hours" in msg:
+        if log.capture_until is not None:
+            _LOGGER.info("Live channel recorded until %s", log.capture_until.isoformat())
+        else:
+            _LOGGER.info("Recording of the live channel ended")
     connection.send_result(msg["id"], await log.async_as_dict(0))
 
 

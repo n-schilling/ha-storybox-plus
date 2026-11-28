@@ -106,7 +106,7 @@ def night_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
 async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> bool:
     """Set up one cloud account."""
     # The log level comes first, so the setup is logged at it
-    await async_get_log(hass)
+    log = await async_get_log(hass)
     session = async_get_clientsession(hass)
 
     @callback
@@ -204,6 +204,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: StoryboxConfigEntry) -> 
         preferences=preferences,
         shuffles=shuffles,
     )
+
+    @callback
+    def _capture(on: bool) -> None:
+        """Record the live channel into the log while that is switched on."""
+        push.set_capture(coordinator.capture_push if on else None)
+
+    _capture(log.capturing)
+    entry.async_on_unload(log.async_listen_capture(_capture))
 
     await async_register_frontend(hass)
     await async_register_card(hass)

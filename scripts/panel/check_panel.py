@@ -1546,6 +1546,36 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     await checks.run("setup: three steps done, the household renamed, a preference saved", setup)
 
+    async def live_recording() -> None:
+        await _goto(page, instance, "setup/log", "ha-settings-row")
+        row = page.locator(f"{PANEL} ha-settings-row", has_text="Record the live channel")
+        field = row.locator("ha-select")
+        await field.click()
+        # Home Assistant's select lists its choices as items of a menu
+        await field.get_by_role("menuitem", name="For 24 hours").click()
+        await _save(page)
+
+        async def recording() -> str | None:
+            reply = await api.ws(instance.token, {"type": "storybox_plus/log"})
+            until: str | None = reply["result"]["capture_until"]
+            return until
+
+        await _until(lambda: _is_set(recording), "the recording switched on")
+
+        # The field now holds the running recording, named by its end
+        async def running() -> bool:
+            return bool(await field.evaluate("el => el.value") == "on")
+
+        await _until(running, "the field holding the running recording")
+        await field.click()
+        until = field.get_by_role("menuitem", name=re.compile(r"^Running until "))
+        expect(await until.count() == 1, "no choice saying until when")
+        await field.get_by_role("menuitem", name="Off").click()
+        await _save(page)
+        await _until(lambda: _negate(lambda: _is_set(recording)), "the recording switched off")
+
+    await checks.run("log: the live channel recorded for a day, then switched off", live_recording)
+
     async def numbers_in_german() -> None:
         # A German page writes numbers as German does and takes a comma back
         await page.evaluate("localStorage.setItem('selectedLanguage', JSON.stringify('de'))")
@@ -2354,6 +2384,10 @@ async def _negate(check: Callable[[], Awaitable[bool]]) -> bool:
 
 async def _count_is(locator: Any, count: int) -> bool:
     return bool(await locator.count() == count)
+
+
+async def _is_set(read: Callable[[], Awaitable[Any]]) -> bool:
+    return bool(await read())
 
 
 async def _has_text(locator: Any, text: str) -> bool:

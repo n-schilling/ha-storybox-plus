@@ -173,8 +173,8 @@ For administrators only; the page uses them. Their answers serve the page and ar
 | `storybox_plus/figure/lock` | `tonie_id` (a bought figure or disc), `locked` |
 | `storybox_plus/cloud/check` | `entry_id`; reads everything the integration reads and answers with what differs from the fields it relies on (per request `ok`, `changed`, `failed`, `empty`, `unseen`) |
 | `storybox_plus/preferences/set` | `entry_id` and any of `analytics`, `auto_lock`, `mark_read`, `analytics_days` (365, 730, 1825 or 0 for always), `speech_engine` (a `tts` entity; null: Piper), `voice` with `voice_language` (null: the engine's default), `fetch_max_mb` (10–2000), `favourites_mode` (`first`, `random`, `only`, `bedtime`, `off`); switching `analytics` sets the account up anew |
-| `storybox_plus/log` | optional `limit`; the log level, the days kept and the latest lines, newest first (without a limit, all lines kept) |
-| `storybox_plus/log/set` | any of `level` (`debug`, `info`, `warning`, `error`), `days` (0–90) |
+| `storybox_plus/log` | optional `limit`; the log level, the days kept, until when the live channel is recorded (`capture_until`, null while it is not) and the latest lines, newest first (without a limit, all lines kept) |
+| `storybox_plus/log/set` | any of `level` (`debug`, `info`, `warning`, `error`), `days` (0–90), `capture_hours` (records the live channel for that many hours from now, at most 168; 0 ends it) |
 | `storybox_plus/figure/volume` | `tonie_id`, `level` (1 to 13, or null for the box's own volume) |
 | `storybox_plus/bedtime/save` | `box_id`, optional `schedule_id` (none: a new bedtime, which needs `sleep_time`, `wakeup_time`, `days`), `name`, `sleep_time` and `wakeup_time` (`HH:MM`), `days` (`monday` … `sunday`), `enabled`, `alarm_enabled`, `alarm_tone` (`alarmLoop1.opus` … `alarmLoop5.opus`), `alarm_volume` (0 to 100), `alarm_morning_light`; answers with the box |
 | `storybox_plus/bedtime/delete` | `box_id`, `schedule_id`; answers with the box |

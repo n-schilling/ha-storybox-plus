@@ -38,6 +38,7 @@ from custom_components.storybox_plus.cloud import (
 )
 from custom_components.storybox_plus.cloud.push import (
     BACKOFF_FIRST,
+    EVERYTHING,
     HOST,
     PORT,
     SESSION_EXPIRY,
@@ -630,3 +631,59 @@ async def test_unexpected_failure_reconnects(
     assert channel.connections == [True, False, True]
     assert sleeps == [BACKOFF_FIRST]
     assert "Push channel failed" in caplog.text
+
+
+async def test_recording_follows_every_topic_once(
+    broker: FakeBroker, sleeps: list[float], channel: Channel
+) -> None:
+    """Recorded, a box is followed on all its topics instead of the read ones; each message counts once."""
+    client = broker.current
+    raw: list[tuple[str, str, bytes]] = []
+
+    def sink(mac: str, topic: str, payload: bytes) -> None:
+        raw.append((mac, topic, payload))
+
+    channel.push.set_capture(sink)
+    everything = f"{TOPIC_PREFIX}/{MAC}/#"
+    await channel.until(lambda: everything in client.subscriptions)
+    assert set(client.unsubscriptions) == topics(MAC)
+    # Setting it again changes nothing
+    channel.push.set_capture(sink)
+    await asyncio.sleep(0)
+    assert client.subscriptions.count(everything) == 1
+
+    client.feed(f"{TOPIC_PREFIX}/{MAC}/app-reply/alarm", b'{"tone": "alarmLoop3.opus"}')
+    client.feed(f"{TOPIC_PREFIX}/{MAC}/app-control/stl", b'{"state": "off"}')
+    client.feed(f"{TOPIC_PREFIX}/{MAC}/volume/state", b"")
+    await channel.until(lambda: len(channel.events) == 2)
+    # The app's command is recorded only; what the box reports is read as before
+    assert [e.topic for e in channel.events] == ["app-reply/alarm", "volume/state"]
+    assert channel.push.seen_keys == {"app-reply/alarm": frozenset({"tone"})}
+
+    # Ended while the channel is down: the next session drops what the broker kept
+    await channel.stop()
+    channel.push.set_capture(None)
+    channel.start()
+    await channel.until(lambda: len(broker.clients) == 2 and channel.push.connected)
+    assert broker.current.unsubscriptions == [everything]
+    assert set(broker.current.subscriptions) == topics(MAC)
+    broker.current.feed(f"{TOPIC_PREFIX}/{MAC}/app-reply/alarm", b'{"tone": null}')
+    await channel.until(lambda: len(channel.events) == 3)
+    assert len(raw) == 3
+    assert raw[0] == (MAC, "app-reply/alarm", b'{"tone": "alarmLoop3.opus"}')
+    assert raw[1] == (MAC, "app-control/stl", b'{"state": "off"}')
+    assert raw[2] == (MAC, "volume/state", b"")
+
+
+async def test_a_box_gone_meanwhile_is_dropped(
+    broker: FakeBroker, sleeps: list[float], channel: Channel
+) -> None:
+    """A box left while the channel was down goes from the broker's session with the next one."""
+    channel.push.set_capture(lambda mac, topic, payload: None)
+    await channel.until(lambda: f"{TOPIC_PREFIX}/{MAC}/#" in broker.current.subscriptions)
+    await channel.stop()
+    channel.push.set_boxes([OTHER_MAC])
+    channel.start()
+    await channel.until(lambda: len(broker.clients) == 2 and channel.push.connected)
+    assert broker.current.subscriptions == [f"{TOPIC_PREFIX}/{OTHER_MAC}/{EVERYTHING[0]}"]
+    assert broker.current.unsubscriptions == [f"{TOPIC_PREFIX}/{MAC}/#"]

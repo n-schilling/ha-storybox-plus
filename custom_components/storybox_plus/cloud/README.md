@@ -51,6 +51,7 @@ written from scratch and imports nothing from Home Assistant.
   - `app-reply/alarm` `{tone}`: the tone the alarm rings right now, `{tone: null}` once it stopped, also when it was stopped with an ear on the box (seen 28 November 2026: rang 14:22:32 to the second, stopped 14:22:45). The sunrise light begins about two to three minutes before the tone without any message.
   - Going offline, the box first empties what the broker keeps for it: an empty payload on every topic, then `online-state` `offline`.
   - `settings-applied`: the box took the settings saved in the cloud (`settingsApplied` turns true); its payload is not read.
+- While the live channel is recorded (Setup → Log), each box is followed on `external/toniebox/{MAC}/#` instead of the topics above, so the app's commands arrive too; every message still arrives once. The broker keeps a session's subscriptions across reconnects, so the client drops what the session held before when the recording was switched meanwhile.
 - Commands go to `external/toniebox/{MAC}/app-control/…`:
   - `playback` `{action: "start"|"pause"|"setPosition", chapter, ms}`.
   - `volume` `{level}`.

@@ -554,7 +554,7 @@ if (!customElements.get("storybox-plus-panel")) {
           favourites_mode: p.favourites_mode || "first",
         };
       }
-      if (kind === "log") return this._log ? { level: this._log.level, days: this._log.days } : null;
+      if (kind === "log") return this._log ? { level: this._log.level, days: this._log.days, capture: this._log.capture_until ? "on" : "off" } : null;
       return null;
     }
 
@@ -683,8 +683,9 @@ if (!customElements.get("storybox-plus-panel")) {
           msg.days = num(ch.days);
           if (msg.days < 0 || msg.days > LOG_MAX_DAYS) invalid();
         }
+        if ("capture" in ch && ch.capture !== "on") msg.capture_hours = ch.capture === "off" ? 0 : Number(ch.capture);
         const answer = await ws(msg);
-        this._log = { ...this._log, level: answer.level, days: answer.days, effective: answer.effective };
+        this._log = { ...this._log, level: answer.level, days: answer.days, effective: answer.effective, capture_until: answer.capture_until };
         this._loadLog();
       } else if (kind === "pref") {
         const entry = this._loadedEntries().find((e) => e.entry_id === id);
@@ -2662,6 +2663,13 @@ if (!customElements.get("storybox-plus-panel")) {
       const options = LOG_LEVELS.map((l) => ({ value: l, label: t[`logL_${l}`] }));
       let level = this._row("log:all", "level", t.logLevel, t.logLevelHint, { select: { mode: "dropdown", options } }) +
         this._row("log:all", "days", t.logDays, t.logDaysHint, { text: { suffix: t.logDaysUnit } }, true);
+      // Recording the live channel: for a day or two, then it ends by itself
+      const capture = [{ value: "off", label: t.logCaptureOff }, { value: "24", label: t.logCapture24 }, { value: "48", label: t.logCapture48 }];
+      if (log.capture_until) {
+        const until = new Date(time(log.capture_until)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
+        capture.unshift({ value: "on", label: fill(t.logCaptureUntil, { t: until }) });
+      }
+      level += this._row("log:all", "capture", t.logCapture, t.logCaptureHint, { select: { mode: "dropdown", options: capture } });
       if (LOG_LEVELS.indexOf(log.effective) >= 0 && LOG_LEVELS.indexOf(log.effective) < LOG_LEVELS.indexOf(log.level)) {
         level += this._alert(fill(t.logEffective, { l: t[`logL_${log.effective}`] }), "info");
       }

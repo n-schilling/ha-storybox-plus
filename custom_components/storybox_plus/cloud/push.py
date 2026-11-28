@@ -68,6 +68,8 @@ SUBSCRIBED = (
     TOPIC_SETTINGS_APPLIED,
     TOPIC_ALARM,
 )
+# While the channel is recorded: every topic of a box, the app's commands included
+EVERYTHING = ("#",)
 
 COMMAND_PLAYBACK = "playback"
 COMMAND_VOLUME = "volume"
@@ -90,6 +92,8 @@ EXPIRY_GRACE = 15
 SESSION_EXPIRY = 600
 
 type PushData = Battery | Playback | Volume | SleepTimer | Headphones | AlarmRing | bool | None
+# Gets every message raw while the channel is recorded: the box's MAC, the topic below it, the payload
+type CaptureSink = Callable[[str, str, bytes], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +129,9 @@ class PushClient:
         self._host = host
         self._port = port
         self._macs: set[str] = set()
+        # What the broker's session holds per box; it outlives a connection
+        self._held: dict[str, tuple[str, ...]] = {}
+        self._capture: CaptureSink | None = None
         self._client: aiomqtt.Client | None = None
         self._connected = False
         self._resubscribe = asyncio.Event()
@@ -143,6 +150,21 @@ class PushClient:
             return
         self._macs = wanted
         self._resubscribe.set()
+
+    def set_capture(self, sink: CaptureSink | None) -> None:
+        """Record every message raw into sink, or stop recording with None.
+
+        While recording, a box is followed on all of its topics instead of
+        the ones read; each message still arrives once.
+        """
+        if (sink is None) == (self._capture is None):
+            self._capture = sink
+            return
+        self._capture = sink
+        self._resubscribe.set()
+
+    def _topics(self) -> tuple[str, ...]:
+        return EVERYTHING if self._capture is not None else SUBSCRIBED
 
     async def async_run(self) -> None:
         """Keep the channel open until cancelled.
@@ -228,7 +250,7 @@ class PushClient:
             timeout=30,
         ) as client:
             self._client = client
-            subscribed: set[str] = set()
+            subscribed: dict[str, tuple[str, ...]] = {}
             await self._async_subscribe(client, subscribed)
             self._set_connected(True)
             _LOGGER.log(
@@ -250,6 +272,14 @@ class PushClient:
         async for message in client.messages:
             # One message that cannot be handled must not cost the channel
             try:
+                if (sink := self._capture) is not None:
+                    parts = str(message.topic).split("/", 3)
+                    payload = message.payload
+                    sink(
+                        parts[2] if len(parts) > 2 else "",
+                        parts[3] if len(parts) > 3 else str(message.topic),
+                        bytes(payload) if isinstance(payload, bytes | bytearray) else b"",
+                    )
                 event = self._parse(str(message.topic), message.payload)
                 _LOGGER.debug(
                     "Push message on …/%s: %s",
@@ -261,21 +291,39 @@ class PushClient:
             except Exception:
                 _LOGGER.exception("Push message on %s not handled", message.topic)
 
-    async def _async_follow_boxes(self, client: aiomqtt.Client, subscribed: set[str]) -> None:
+    async def _async_follow_boxes(
+        self, client: aiomqtt.Client, subscribed: dict[str, tuple[str, ...]]
+    ) -> None:
         while True:
             await self._resubscribe.wait()
             self._resubscribe.clear()
             await self._async_subscribe(client, subscribed)
 
-    async def _async_subscribe(self, client: aiomqtt.Client, subscribed: set[str]) -> None:
-        for mac in self._macs - subscribed:
-            for topic in SUBSCRIBED:
+    async def _async_subscribe(
+        self, client: aiomqtt.Client, subscribed: dict[str, tuple[str, ...]]
+    ) -> None:
+        """Follow the wanted boxes on the topics wanted now, and nothing else.
+
+        The broker keeps a session's subscriptions across reconnects, so what
+        it holds from before (recording switched meanwhile) is dropped first:
+        a message must not arrive twice.
+        """
+        wanted = self._topics()
+        for mac in sorted(self._macs):
+            if subscribed.get(mac) == wanted:
+                continue
+            held = self._held.get(mac)
+            if held is not None and held != wanted:
+                for topic in held:
+                    await client.unsubscribe(f"{TOPIC_PREFIX}/{mac}/{topic}")
+            for topic in wanted:
                 await client.subscribe(f"{TOPIC_PREFIX}/{mac}/{topic}", qos=1)
-            subscribed.add(mac)
-        for mac in subscribed - self._macs:
-            for topic in SUBSCRIBED:
+            subscribed[mac] = self._held[mac] = wanted
+        for mac in sorted((subscribed.keys() | self._held.keys()) - self._macs):
+            topics = subscribed.pop(mac, None) or self._held[mac]
+            for topic in topics:
                 await client.unsubscribe(f"{TOPIC_PREFIX}/{mac}/{topic}")
-            subscribed.discard(mac)
+            self._held.pop(mac, None)
 
     def _set_connected(self, connected: bool) -> None:
         if connected == self._connected:
@@ -299,7 +347,7 @@ class PushClient:
                 return None
         if not isinstance(data, dict):
             data = {}
-        if data and (subtopic != TOPIC_PLAYBACK or data.get("tonie")):
+        if data and subtopic in SUBSCRIBED and (subtopic != TOPIC_PLAYBACK or data.get("tonie")):
             # For the check of the interface: the keys of the last message per topic.
             # A box whose figure was taken off names no more than that
             self.seen_keys[subtopic] = frozenset(data)
