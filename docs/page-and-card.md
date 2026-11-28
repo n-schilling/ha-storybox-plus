@@ -33,7 +33,7 @@ The preferences of an account in the area Setup:
 
 A new bedtime with its days, times and alarm:
 
-<img src="screenshots/bedtime.png" alt="The bedtimes of a Toniebox 2 with the form for a new one: name, days of the wake-up, bedtime and wake-up time, switches for active, alarm and morning light, and the alarm volume" width="400">
+<img src="screenshots/bedtime.png" alt="The bedtimes of a Toniebox 2 with the form for a new one: name, days of the wake-up, bedtime and wake-up time, switches for active and alarm, the alarm tone, the alarm volume and the sunrise light" width="400">
 
 The chapters of a creative figure being rearranged, sorted by title or shuffled; the changes go to the cloud together when saved:
 
