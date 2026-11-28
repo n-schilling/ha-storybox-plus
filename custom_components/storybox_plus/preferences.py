@@ -35,6 +35,9 @@ Three preferences, each per account:
   after a restart.
 - presence_lag (20 minutes by default): per Toniebox 1 how long it stays in
   the network after its last use, by the entity; taken off its active time.
+- wake_up_light (none by default): per Toniebox 2 the one alarm at a time of
+  its own (the app's "Lichtwecker") with its tone, volume and morning light;
+  forgotten once its time has passed (see bedtime).
 
 The figures that were already in the account when the integration first ran
 count as known: whether they are locked stays as it was.
@@ -42,11 +45,14 @@ count as known: whether they are locked stays as it was.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
-from .cloud import Tonie, TonieKind
+from .bedtime import OneTimeAlarm
+from .cloud import ALARM_TONES, Alarm, Tonie, TonieKind
 from .favourites import DEFAULT_MODE, MODES, Mode
 
 DEFAULT_ANALYTICS = True
@@ -88,6 +94,8 @@ class Preferences:
         self.repeat: dict[str, tuple[str, str]] = {}
         # box_id -> minutes, where it differs from the default
         self._presence_lag: dict[str, int] = {}
+        # box_id -> the wake-up light
+        self.wake_up_light: dict[str, OneTimeAlarm] = {}
         self._known: set[str] = set()
         # None until the figures of the first run were taken as known
         self._started = False
@@ -147,6 +155,13 @@ class Preferences:
                 if isinstance(lag, int)
                 and not isinstance(lag, bool)
                 and PRESENCE_LAG[0] <= lag <= PRESENCE_LAG[1]
+            }
+        lights = raw.get("wake_up_light")
+        if isinstance(lights, dict):
+            self.wake_up_light = {
+                box: light
+                for box, item in lights.items()
+                if (light := _read_light(item)) is not None
             }
         known = raw.get("known")
         if isinstance(known, list):
@@ -233,6 +248,15 @@ class Preferences:
             self.repeat[box_id] = (mode, tonie_id)
         self._store.async_delay_save(self._data, 2)
 
+    def set_wake_up_light(self, box_id: str, light: OneTimeAlarm | None) -> None:
+        """Keep or drop the wake-up light of a box; written after a short delay."""
+        if light is None:
+            if self.wake_up_light.pop(box_id, None) is None:
+                return
+        else:
+            self.wake_up_light[box_id] = light
+        self._store.async_delay_save(self._data, 2)
+
     def presence_lag(self, box_id: str) -> int:
         """Return the minutes taken off each stretch of active time of a Toniebox 1."""
         return self._presence_lag.get(box_id, DEFAULT_PRESENCE_LAG)
@@ -290,5 +314,33 @@ class Preferences:
             "repeat": {
                 box: {"mode": mode, "tonie": tonie} for box, (mode, tonie) in self.repeat.items()
             },
+            "wake_up_light": {
+                box: {
+                    "at": light.at.isoformat(),
+                    "tone": light.alarm.tone,
+                    "volume": light.alarm.volume,
+                    "morning_light": light.alarm.morning_light,
+                }
+                for box, light in self.wake_up_light.items()
+            },
             "known": sorted(self._known),
         }
+
+
+def _read_light(item: Any) -> OneTimeAlarm | None:
+    """Read a stored wake-up light; anything odd is dropped."""
+    if not isinstance(item, dict):
+        return None
+    at = dt_util.parse_datetime(str(item.get("at", "")))
+    volume = item.get("volume")
+    if (
+        not isinstance(at, datetime)
+        or at.tzinfo is None
+        or item.get("tone") not in ALARM_TONES
+        or not isinstance(volume, int)
+        or isinstance(volume, bool)
+        or not 0 <= volume <= 100
+        or not isinstance(item.get("morning_light"), bool)
+    ):
+        return None
+    return OneTimeAlarm(at, Alarm(item["tone"], volume, item["morning_light"]))

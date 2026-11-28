@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Vence"
+          },
+          "wake_up_light": {
+            "name": "Despertador de luz"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "No hay ninguna figura sobre la caja."
     },
     "alarm_due": {
-      "message": "Una alarma de una hora de dormir suena a las {time}; esto la cancelaría. Antes, desactiva la alarma de esa hora de dormir en la página de Storybox Plus."
+      "message": "Una alarma (de una hora de dormir o del despertador de luz) suena a las {time}; esto la cancelaría. Antes, desactiva esa alarma en la página de Storybox Plus."
+    },
+    "alarm_past": {
+      "message": "{time} ya pasó; un despertador de luz necesita una hora futura."
+    },
+    "no_alarm": {
+      "message": "Esta caja no tiene alarma."
     },
     "unknown_chapter": {
       "message": "La figura no tiene ese capítulo."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Borrar temporizador de sueño",
       "description": "Cancela el temporizador de sueño en marcha de la caja."
+    },
+    "set_wake_up_light": {
+      "name": "Poner despertador de luz",
+      "description": "Hace sonar la caja una vez a una hora propia, con un tono, un volumen y la luz de amanecer, como el despertador de luz de la app. Un despertador de luz anterior se reemplaza. Se activa en cuanto falten menos de 18 horas y la caja esté en línea.",
+      "fields": {
+        "time": {
+          "name": "Hora",
+          "description": "Una hora del día; la próxima en la zona horaria de la caja (hoy o mañana)."
+        },
+        "datetime": {
+          "name": "Fecha y hora",
+          "description": "Una fecha con hora, en la zona horaria de la caja. Usa esto o la hora."
+        },
+        "tone": {
+          "name": "Tono",
+          "description": "El tono que suena."
+        },
+        "volume": {
+          "name": "Volumen",
+          "description": "Volumen del tono en porcentaje."
+        },
+        "morning_light": {
+          "name": "Luz de amanecer",
+          "description": "El anillo de luz se aclara antes de que suene el tono."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Quitar despertador de luz",
+      "description": "Quita el despertador de luz de la caja y, si ya estaba activado, su alarma en la caja."
     },
     "set_favourite": {
       "name": "Marcar capítulo favorito",
@@ -337,6 +376,17 @@
           "name": "Avanzar inclinando",
           "description": "Inclinar la caja avanza o retrocede la reproducción."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Brillo matutino",
+        "birdsong": "Ritmo de pájaros",
+        "sound_hopper": "Saltasonidos",
+        "wake_up_call": "Llamada de despertar",
+        "good_morning_beat": "Ritmo de buenos días"
       }
     }
   }

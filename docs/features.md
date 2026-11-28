@@ -180,13 +180,13 @@ It acts on the change only, not on every poll: a brightness set in the app in be
 
 ## Bedtimes and the alarm
 
-A Toniebox 2 knows bedtimes, as the app keeps them in the cloud: a name, the days, the time to sleep and the time to wake up, and whether an alarm rings then, with its volume and the morning light. The page lists them on the box's card with a switch each; they are added, changed and deleted there.
+A Toniebox 2 knows bedtimes, as the app keeps them in the cloud: a name, the days, the time to sleep and the time to wake up, and whether an alarm rings then, with its tone, volume and the sunrise light. The page lists them on the box's card with a switch each; they are added, changed and deleted there.
 
 The box keeps one timer, and the alarm rings when that timer ends; the app sets it only once, so a bedtime alone makes no box ring again. Storybox Plus sets it itself:
 
 ```mermaid
 flowchart LR
-    poll["every poll, the box coming online,<br/>a changed bedtime"] --> next{"next wake-up of the<br/>active bedtimes with alarm<br/>within 18 hours?"}
+    poll["every poll, the box coming online,<br/>a changed bedtime or wake-up light"] --> next{"next wake-up of the<br/>active bedtimes with alarm<br/>and the wake-up light<br/>within 18 hours?"}
     next -->|no| stale{"an alarm of ours<br/>nobody wants any more?"}
     stale -->|yes| clear["clear it"]
     next -->|yes| armed{"box reports this<br/>alarm already?"}
@@ -200,6 +200,13 @@ flowchart LR
 - What counts as set is what the box reports back, never what was sent. A box that does not confirm is asked three times, then again when it comes online anew; the log says so once.
 - An alarm set by the integration for a wake-up no bedtime wants any more, because a bedtime was switched off, changed or deleted, is cleared. An alarm set in the app is left alone until a bedtime's alarm is due.
 - While an alarm is due, the sleep timer actions and switching the box off are refused with the time of the alarm: each would replace the alarm.
+- The tone is one of the app's five: Morgenglanz, Vogelgezwitscher-Rhythmus, Klanghüpfer, Aufwach-Ruf and Guten-Morgen-Beat (as the German app names them).
+
+### Wake-up light
+
+The app's wake-up light ("Lichtwecker") is one alarm at a time of its own, not a bedtime; the app sends it to the box once and keeps nothing in the cloud. Storybox Plus keeps one per Toniebox 2 in its store, with its tone, volume and sunrise light, and arms it the same way as the alarm of a bedtime: within the timer's 18 hours, once the box is online, confirmed by what the box reports. Of the wake-up light and the bedtimes, the alarm that rings first is armed; the other one follows after it rang, if the box is online then. Once its time has passed, the wake-up light is forgotten: it rings once.
+
+It is set on the page, in the section **Wake-up light** above the bedtimes, or by the action `storybox_plus.set_wake_up_light` (see [automations](automations.md#actions)); a new one replaces the former. Cleared, it goes from the store and, if the box carries its alarm already, from the box too, also when Home Assistant was restarted in between. A wake-up light set in the app is the app's: Storybox Plus leaves it alone until an alarm of its own is due.
 
 ## Listening times and battery
 

@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Gaat af"
+          },
+          "wake_up_light": {
+            "name": "Lichtwekker"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "Er staat geen figuur op de box."
     },
     "alarm_due": {
-      "message": "Een wekker van een bedtijdschema gaat om {time} af; dit zou hem annuleren. Zet eerst de wekker van het schema uit op de Storybox Plus-pagina."
+      "message": "Een wekker (van een bedtijdschema of de lichtwekker) gaat om {time} af; dit zou hem annuleren. Zet die wekker eerst uit op de Storybox Plus-pagina."
+    },
+    "alarm_past": {
+      "message": "{time} is voorbij; een lichtwekker heeft een komende tijd nodig."
+    },
+    "no_alarm": {
+      "message": "Deze box heeft geen wekker."
     },
     "unknown_chapter": {
       "message": "De figuur heeft geen zo'n hoofdstuk."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Slaaptimer wissen",
       "description": "Annuleert de lopende slaaptimer van de box."
+    },
+    "set_wake_up_light": {
+      "name": "Lichtwekker zetten",
+      "description": "Laat de box één keer afgaan op een eigen tijd, met een toon, een volume en het zonsopkomstlicht, zoals de lichtwekker van de app. Een eerdere lichtwekker wordt vervangen. Hij wordt gezet zodra hij minder dan 18 uur weg is en de box online is.",
+      "fields": {
+        "time": {
+          "name": "Tijd",
+          "description": "Een tijdstip; het eerstvolgende in de tijdzone van de box (vandaag of morgen)."
+        },
+        "datetime": {
+          "name": "Datum en tijd",
+          "description": "Een datum met tijd, in de tijdzone van de box. Gebruik dit of de tijd."
+        },
+        "tone": {
+          "name": "Wektoon",
+          "description": "De toon die klinkt."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume van de wektoon in procent."
+        },
+        "morning_light": {
+          "name": "Zonsopkomstlicht",
+          "description": "De lichtring wordt lichter voordat de toon klinkt."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Lichtwekker wissen",
+      "description": "Wist de lichtwekker van de box en, als hij al gezet is, zijn wekker op de box."
     },
     "set_favourite": {
       "name": "Favoriet hoofdstuk instellen",
@@ -337,6 +376,17 @@
           "name": "Spoelen door te kantelen",
           "description": "Kantelen van de box spoelt vooruit of terug."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Ochtendgloed",
+        "birdsong": "Vogelritme",
+        "sound_hopper": "Klankhopper",
+        "wake_up_call": "Wekroep",
+        "good_morning_beat": "Goedemorgenbeat"
       }
     }
   }

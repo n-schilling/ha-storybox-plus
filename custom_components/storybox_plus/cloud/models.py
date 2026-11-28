@@ -17,8 +17,11 @@ from typing import Any
 VOLUME_LEVELS = 13
 # The days of a bedtime schedule, as the cloud names them
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# The alarm tones the app offers, in its order (measured with the app, 28.11.2026):
+# Morgenglanz, Vogelgezwitscher-Rhythmus, Klanghüpfer, Aufwach-Ruf, Guten-Morgen-Beat
+ALARM_TONES = tuple(f"alarmLoop{n}.opus" for n in range(1, 6))
 # The alarm tone the app uses unless another is chosen
-DEFAULT_ALARM_TONE = "alarmLoop1.opus"
+DEFAULT_ALARM_TONE = ALARM_TONES[0]
 
 
 class Generation(StrEnum):

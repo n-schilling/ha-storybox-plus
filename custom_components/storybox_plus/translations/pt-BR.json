@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Previsto para"
+          },
+          "wake_up_light": {
+            "name": "Despertador luminoso"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "Não há nenhum Tonie na caixa."
     },
     "alarm_due": {
-      "message": "Um alarme de uma hora de dormir toca às {time}; isso o cancelaria. Desligue antes o alarme dessa hora de dormir na página do Storybox Plus."
+      "message": "Um alarme (de uma hora de dormir ou do despertador luminoso) toca às {time}; isso o cancelaria. Desligue antes esse alarme na página do Storybox Plus."
+    },
+    "alarm_past": {
+      "message": "{time} já passou; um despertador luminoso precisa de um horário futuro."
+    },
+    "no_alarm": {
+      "message": "Esta caixa não tem alarme."
     },
     "unknown_chapter": {
       "message": "O Tonie não tem esse capítulo."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Cancelar timer de sono",
       "description": "Cancela o timer de sono em andamento da caixa."
+    },
+    "set_wake_up_light": {
+      "name": "Definir despertador luminoso",
+      "description": "Faz a caixa tocar uma vez em um horário próprio, com um toque, um volume e a luz do amanhecer, como o despertador luminoso do app. Um despertador luminoso anterior é substituído. Ele é armado assim que faltarem menos de 18 horas e a caixa estiver online.",
+      "fields": {
+        "time": {
+          "name": "Horário",
+          "description": "Um horário; o próximo no fuso horário da caixa (hoje ou amanhã)."
+        },
+        "datetime": {
+          "name": "Data e hora",
+          "description": "Uma data com horário, no fuso horário da caixa. Use isto ou o horário."
+        },
+        "tone": {
+          "name": "Toque",
+          "description": "O toque que soa."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume do toque em porcentagem."
+        },
+        "morning_light": {
+          "name": "Luz do amanhecer",
+          "description": "O anel de luz clareia antes de o toque soar."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Remover despertador luminoso",
+      "description": "Remove o despertador luminoso da caixa e, se já armado, o alarme dele na caixa."
     },
     "set_favourite": {
       "name": "Definir capítulo favorito",
@@ -337,6 +376,17 @@
           "name": "Avançar inclinando",
           "description": "Inclinar a caixa avança ou volta a reprodução."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Brilho da manhã",
+        "birdsong": "Ritmo dos passarinhos",
+        "sound_hopper": "Pula-som",
+        "wake_up_call": "Chamada para acordar",
+        "good_morning_beat": "Batida de bom dia"
       }
     }
   }

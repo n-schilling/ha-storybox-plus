@@ -27,13 +27,16 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
+from homeassistant.util import dt as dt_util
 from homeassistant.util.hass_dict import HassKey
 
 from . import bedtime, fetcher, speech
 from .cloud import (
+    ALARM_TONES,
     SLEEP_TIMER_MAX_MINUTES,
     VOLUME_LEVELS,
     WEEKDAYS,
+    Alarm,
     BedtimeSchedule,
     CloudError,
     Member,
@@ -135,6 +138,8 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     async_register_command(hass, websocket_redeem_token)
     async_register_command(hass, websocket_save_schedule)
     async_register_command(hass, websocket_delete_schedule)
+    async_register_command(hass, websocket_set_wake_up_light)
+    async_register_command(hass, websocket_clear_wake_up_light)
     async_register_command(hass, websocket_box_settings)
     async_register_command(hass, websocket_night_mode)
 
@@ -411,6 +416,7 @@ def _schedule_dict(schedule: BedtimeSchedule) -> dict[str, Any]:
         "days": list(schedule.days),
         "enabled": schedule.enabled,
         "alarm_enabled": schedule.alarm_enabled,
+        "alarm_tone": alarm.tone,
         "alarm_volume": alarm.volume,
         "alarm_morning_light": alarm.morning_light,
     }
@@ -421,16 +427,27 @@ def _bedtime_dict(coordinator: StoryboxCoordinator, box_state: BoxState) -> dict
     if not box_state.box.alarm_capable:
         return None
     schedules = box_state.schedules
-    upcoming = (
-        bedtime.next_alarm(schedules, coordinator.now_at(box_state.box)) if schedules else None
-    )
+    upcoming = coordinator.next_alarm(box_state)
+    light = coordinator.wake_up_light(box_state.box.id)
     return {
         # None: the schedules could not be read yet
         "schedules": None if schedules is None else [_schedule_dict(s) for s in schedules],
+        "wake_up_light": (
+            {
+                # The box's own time, as the page shows and takes it
+                "at": light.at.astimezone(coordinator.now_at(box_state.box).tzinfo).isoformat(),
+                "tone": light.alarm.tone,
+                "volume": light.alarm.volume,
+                "morning_light": light.alarm.morning_light,
+            }
+            if light
+            else None
+        ),
         "next_alarm": (
             {
                 "at": upcoming.at.isoformat(),
-                "schedule_id": upcoming.schedule.id,
+                # None: the wake-up light
+                "schedule_id": upcoming.schedule.id if upcoming.schedule else None,
                 "armed": bedtime.armed_for(box_state.sleep_timer, upcoming.at),
                 "due": coordinator.due_alarm(box_state.box.id) is not None,
             }
@@ -874,6 +891,7 @@ _BOX_MESSAGES = {
     "invalid_value": "A classic box takes 25, 50, 75 or 100 percent",
     "unknown_household": "The account has no such household",
     "alarm_due": "The alarm of a bedtime is due; the sleep timer would cancel it",
+    "alarm_past": "That time has passed",
     "nothing_plays": "No figure is on the box",
     "unknown_chapter": "The figure has no such chapter",
     "invalid_command": "The command needs a value",
@@ -910,6 +928,7 @@ _SCHEDULE_FIELDS = {
     "days": "days",
     "enabled": "enabled",
     "alarm_enabled": "alarmEnabled",
+    "alarm_tone": "alarmTone",
     "alarm_volume": "alarmVolume",
     "alarm_morning_light": "alarmMorningLight",
 }
@@ -953,6 +972,7 @@ async def _answer_with_box(
         probatio.Optional("days"): [probatio.In(WEEKDAYS)],
         probatio.Optional("enabled"): bool,
         probatio.Optional("alarm_enabled"): bool,
+        probatio.Optional("alarm_tone"): probatio.In(ALARM_TONES),
         probatio.Optional("alarm_volume"): probatio.All(int, probatio.Range(min=0, max=100)),
         probatio.Optional("alarm_morning_light"): bool,
     }
@@ -1074,6 +1094,62 @@ async def websocket_night_mode(
     coordinator = entry.runtime_data.coordinator
     await _answer_with_box(
         connection, msg, entry, coordinator.async_set_night_mode(msg["box_id"], mode)
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/alarm/set",
+        probatio.Required("box_id"): str,
+        # The box's own time: "YYYY-MM-DDTHH:MM", as the schedules are local to the box
+        probatio.Required("at"): probatio.Match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$"),
+        probatio.Required("tone"): probatio.In(ALARM_TONES),
+        probatio.Required("volume"): probatio.All(int, probatio.Range(min=0, max=100)),
+        probatio.Required("morning_light"): bool,
+    }
+)
+@async_response
+async def websocket_set_wake_up_light(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Set the wake-up light of a box: one alarm at a time of its own."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    box = coordinator.data.boxes[msg["box_id"]].box
+    local = dt_util.parse_datetime(msg["at"])
+    if local is None:
+        connection.send_error(msg["id"], "invalid_format", "No valid time")
+        return
+    at = local.replace(tzinfo=coordinator.now_at(box).tzinfo)
+    alarm = Alarm(msg["tone"], msg["volume"], msg["morning_light"])
+    await _answer_with_box(
+        connection, msg, entry, coordinator.async_set_wake_up_light(box.id, at, alarm)
+    )
+
+
+@require_admin
+@websocket_command(
+    {
+        probatio.Required("type"): f"{DOMAIN}/alarm/clear",
+        probatio.Required("box_id"): str,
+    }
+)
+@async_response
+async def websocket_clear_wake_up_light(
+    hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Drop the wake-up light of a box."""
+    entry = _entry_for_box(hass, msg["box_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "unknown_box", _BOX_MESSAGES["unknown_box"])
+        return
+    coordinator = entry.runtime_data.coordinator
+    await _answer_with_box(
+        connection, msg, entry, coordinator.async_clear_wake_up_light(msg["box_id"])
     )
 
 

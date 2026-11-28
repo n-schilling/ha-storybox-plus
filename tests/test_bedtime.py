@@ -424,10 +424,12 @@ async def test_overview_tells_the_next_alarm(
             "days": list(SCHOOL_DAYS),
             "enabled": True,
             "alarm_enabled": True,
+            "alarm_tone": "alarmLoop1.opus",
             "alarm_volume": 40,
             "alarm_morning_light": False,
         }
     ]
+    assert seen["wake_up_light"] is None
     assert seen["next_alarm"] == {
         "at": TUESDAY_WAKEUP.isoformat(),
         "schedule_id": "s1",
@@ -453,6 +455,7 @@ async def test_next_alarm_sensor(
     assert hass.states.get(sensor).state == TUESDAY_WAKEUP.astimezone(UTC).isoformat()
     # Monday evening the alarm is within the timer's reach
     assert hass.states.get(sensor).attributes["due"] is True
+    assert hass.states.get(sensor).attributes["wake_up_light"] is False
     # A Toniebox 1 rings no alarm
     assert (
         er.async_get(hass).async_get_entity_id(

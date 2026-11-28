@@ -59,6 +59,8 @@ if (!customElements.get("storybox-plus-panel")) {
   const ISSUES_URL = "https://github.com/n-schilling/ha-storybox-plus/issues";
   // How the favourites of a figure play on a Toniebox 2
   const FAV_MODES = ["first", "random", "only", "bedtime", "off"];
+  // The alarm tones the app offers, in its order; the page names them tone1 to tone5
+  const TONES = ["alarmLoop1.opus", "alarmLoop2.opus", "alarmLoop3.opus", "alarmLoop4.opus", "alarmLoop5.opus"];
   // How long listening sums are kept (days, 0: all) and the bounds of the file size from the app (MB)
   const ANALYTICS_DAYS = ["365", "730", "1825", "0"];
   const FETCH_MB = [10, 2000];
@@ -255,6 +257,8 @@ if (!customElements.get("storybox-plus-panel")) {
       this._tunePick = {};
       // The bedtime being edited: { box, id (null: new), data, saving, confirm }
       this._sched = null;
+      // The wake-up light being set: { box, data, saving, existing }
+      this._light = null;
       this._uploadTarget = null;
       // The forms on the sheet: id -> { schema, data, onChange, aria }, drawn as ha-form
       this._forms = {};
@@ -355,6 +359,7 @@ if (!customElements.get("storybox-plus-panel")) {
         this._done = null;
         this._drafts = {};
         this._sched = null;
+        this._light = null;
         this._edit = null;
       }
       this._ensure(fresh);
@@ -396,7 +401,7 @@ if (!customElements.get("storybox-plus-panel")) {
       if (live && !this._poll) {
         // While a bedtime or a setting is being changed, the page stays as it is
         this._poll = window.setInterval(() => {
-          if (!this._sched && !this._dirty && !this._typing()) this._loadOverview();
+          if (!this._sched && !this._light && !this._dirty && !this._typing()) this._loadOverview();
         }, REFRESH);
         this._ticker = window.setInterval(() => this._tick(), 1000);
       } else if (!live && this._poll) {
@@ -907,6 +912,7 @@ if (!customElements.get("storybox-plus-panel")) {
           break;
       }
       if (/^s(add|edit|save|cancel|del|delok|delno|on)$/.test(verb)) this._scheduleAction(verb, arg);
+      else if (/^l(edit|save|cancel|del)$/.test(verb)) this._lightAction(verb, arg);
       else this._chapterAction(verb, arg);
     }
 
@@ -1396,8 +1402,10 @@ if (!customElements.get("storybox-plus-panel")) {
       if (next) {
         const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
         const state = next.armed ? t.alarmArmed : next.due ? t.alarmPending : t.alarmLater;
-        html += `<ha-alert alert-type="${next.armed ? "success" : "info"}" class="alarm-next">${esc(`${fill(t.nextAlarm, { t: when })} · ${state}`)}</ha-alert>`;
+        const what = next.schedule_id === null ? ` (${t.wakeUpLight})` : "";
+        html += `<ha-alert alert-type="${next.armed ? "success" : "info"}" class="alarm-next">${esc(`${fill(t.nextAlarm, { t: when })}${what} · ${state}`)}</ha-alert>`;
       }
+      html += this._wakeUpLight(b);
       if (!bt.schedules) return html + this._section(t.bedtimes, this._alertHelp("warning", t.schedulesUnknown, t.schedulesUnknownHelp), { help: t.alarmHint });
       let rows = bt.schedules.map((s) => {
         if (editing?.id === s.id) return this._scheduleForm(editing);
@@ -1413,6 +1421,109 @@ if (!customElements.get("storybox-plus-panel")) {
       if (!bt.schedules.length && !editing) rows = `<div class="item muted">${esc(t.noSchedules)}</div>`;
       const actions = editing ? "" : this._btn(`sadd:${b.id}`, t.addSchedule, "plus");
       return html + this._section(t.bedtimes, rows, { help: t.alarmHint, cls: "list", actions });
+    }
+
+    // The wake-up light: one alarm at a time of its own, as the app's
+    _wakeUpLight(b) {
+      const t = this._t;
+      const light = b.bedtime.wake_up_light;
+      const editing = this._light?.box === b.id ? this._light : null;
+      let rows;
+      if (editing) rows = this._lightForm(editing);
+      else if (light) {
+        const when = new Date(time(light.at)).toLocaleString(this._lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
+        const facts = [this._toneName(light.tone), `${light.volume} %`];
+        if (light.morning_light) facts.push(t.f_alarm_morning_light);
+        rows = `<div class="item"><div class="main" role="button" tabindex="0" data-act="ledit:${esc(b.id)}" aria-label="${esc(`${t.edit}: ${t.wakeUpLight}`)}">` +
+          `<div class="text"><span class="headline">${esc(when)} <span class="alarm-mark">${icon("alarm")}</span></span>` +
+          `<span class="supporting">${esc(facts.join(" · "))}</span></div>${icon("pencil")}</div></div>`;
+      } else rows = `<div class="item muted">${esc(t.noWakeUpLight)}</div>`;
+      const actions = editing || light || this._sched ? "" : this._btn(`ledit:${b.id}`, t.setWakeUpLight, "plus");
+      return this._section(t.wakeUpLight, rows, { help: t.wakeUpLightHint, cls: "list", actions });
+    }
+
+    _toneName(tone) {
+      const i = TONES.indexOf(tone);
+      return i < 0 ? tone : this._t[`tone${i + 1}`];
+    }
+
+    _toneSelector() {
+      return { select: { mode: "dropdown", options: TONES.map((v) => ({ value: v, label: this._toneName(v) })) } };
+    }
+
+    _lightForm(edit) {
+      const t = this._t;
+      const busy = edit.saving;
+      const schema = [
+        { name: "at", label: t.f_at, required: true, selector: { datetime: {} } },
+        { name: "tone", label: t.f_tone, required: true, selector: this._toneSelector() },
+        { name: "volume", label: t.f_alarm_volume, num: true, selector: { text: { suffix: "%" } } },
+        { name: "morning_light", label: t.f_alarm_morning_light, selector: { boolean: {} } },
+      ];
+      const form = this._formSlot("light", schema, edit.data, (v) => { edit.data = { ...v }; });
+      return `<div class="sched-form">${form}<div class="bar-row">` +
+        this._btn("lsave", t.save, "check", { look: "filled", disabled: busy }) + this._btn("lcancel", t.cancel, "close", { disabled: busy }) +
+        (edit.existing ? this._btn("ldel", t.deleteSchedule, "remove", { look: "danger", disabled: busy }) : "") + `</div></div>`;
+    }
+
+    _lightAction(verb, arg) {
+      const edit = this._light;
+      switch (verb) {
+        case "ledit": {
+          const box = this._boxById(arg);
+          if (!box?.bedtime || edit || this._sched) return;
+          const light = box.bedtime.wake_up_light;
+          // The form shows the box's own time, as the schedules do
+          const at = light ? light.at.slice(0, 16).replace("T", " ") : this._tomorrowAt("06:30");
+          this._light = { box: arg, saving: false, existing: !!light,
+            data: { at, tone: light?.tone ?? TONES[0], volume: light?.volume ?? 100, morning_light: light?.morning_light ?? true } };
+          break;
+        }
+        case "lcancel":
+          if (edit?.saving) return;
+          this._light = null;
+          break;
+        case "lsave":
+          this._saveLight();
+          return;
+        case "ldel":
+          this._saveLight(true);
+          return;
+        default:
+          return;
+      }
+      this._render();
+    }
+
+    _tomorrowAt(hhmm) {
+      const d = new Date(Date.now() + 86400000);
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hhmm}`;
+    }
+
+    async _saveLight(remove = false) {
+      const edit = this._light;
+      if (!edit || edit.saving || !this._hass) return;
+      const d = edit.data;
+      let msg;
+      if (remove) msg = { type: "storybox_plus/alarm/clear", box_id: edit.box };
+      else {
+        const volume = Number(d.volume ?? 100);
+        const at = String(d.at || "").trim().replace("T", " ");
+        msg = { type: "storybox_plus/alarm/set", box_id: edit.box, at, tone: TONES.includes(d.tone) ? d.tone : TONES[0],
+          volume: Math.round(volume), morning_light: !!d.morning_light };
+        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(at) || !Number.isFinite(volume) || volume < 0 || volume > 100) {
+          this._note = this._error({ code: "invalid_format", message: "" });
+          this._render();
+          return;
+        }
+      }
+      edit.saving = true;
+      this._note = null;
+      this._render();
+      const ok = await this._sendSchedule(msg);
+      if (ok && this._light === edit) this._light = null;
+      else edit.saving = false;
+      this._render();
     }
 
     _scheduleForm(edit) {
@@ -1443,6 +1554,7 @@ if (!customElements.get("storybox-plus-panel")) {
         ] },
         { name: "enabled", label: t.f_enabled, selector: { boolean: {} } },
         { name: "alarm_enabled", label: t.f_alarm_enabled, selector: { boolean: {} } },
+        { name: "alarm_tone", label: t.f_tone, required: true, selector: this._toneSelector() },
         { name: "alarm_volume", label: t.f_alarm_volume, num: true, selector: { text: { suffix: "%" } } },
         { name: "alarm_morning_light", label: t.f_alarm_morning_light, selector: { boolean: {} } },
       ];
@@ -1454,13 +1566,13 @@ if (!customElements.get("storybox-plus-panel")) {
       const edit = this._sched;
       switch (verb) {
         case "sadd":
-          if (!box || edit) return;
+          if (!box || edit || this._light) return;
           this._sched = { box: boxId, id: null, saving: false, confirm: false,
-            data: { name: "", days: WEEKDAYS.slice(0, 5), sleep_time: "19:00", wakeup_time: "06:30", enabled: true, alarm_enabled: true, alarm_volume: 50, alarm_morning_light: true } };
+            data: { name: "", days: WEEKDAYS.slice(0, 5), sleep_time: "19:00", wakeup_time: "06:30", enabled: true, alarm_enabled: true, alarm_tone: TONES[0], alarm_volume: 50, alarm_morning_light: true } };
           break;
         case "sedit": {
           const s = box?.bedtime?.schedules?.find((x) => x.id === id);
-          if (!s || edit) return;
+          if (!s || edit || this._light) return;
           const { id: _id, ...data } = s;
           this._sched = { box: boxId, id: s.id, saving: false, confirm: false, data: { ...data, days: [...s.days] } };
           break;
@@ -1510,6 +1622,7 @@ if (!customElements.get("storybox-plus-panel")) {
           enabled: !!d.enabled, alarm_enabled: !!d.alarm_enabled,
           alarm_volume: Math.round(volume), alarm_morning_light: !!d.alarm_morning_light,
         };
+        if (TONES.includes(d.alarm_tone)) msg.alarm_tone = d.alarm_tone;
         if (edit.id !== null) msg.schedule_id = edit.id;
         if (!msg.days.length || !msg.sleep_time || !msg.wakeup_time || !Number.isFinite(volume) || volume < 0 || volume > 100) {
           this._note = this._error({ code: "invalid_format", message: "" });

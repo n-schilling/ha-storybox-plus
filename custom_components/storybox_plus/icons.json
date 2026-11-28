@@ -38,6 +38,12 @@
     "clear_sleep_timer": {
       "service": "mdi:sleep-off"
     },
+    "set_wake_up_light": {
+      "service": "mdi:alarm"
+    },
+    "clear_wake_up_light": {
+      "service": "mdi:alarm-off"
+    },
     "set_favourite": {
       "service": "mdi:star"
     },

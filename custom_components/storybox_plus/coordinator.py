@@ -37,6 +37,7 @@ from .cloud import (
     TOPIC_SETTINGS_APPLIED,
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
+    Alarm,
     Auth,
     Battery,
     BedtimeSchedule,
@@ -106,7 +107,8 @@ class BoxError(HomeAssistantError):
     """A change to a box's settings or bedtimes that is refused before the cloud is asked.
 
     The code names why: "unknown_box", "no_alarm" (the box rings no alarms),
-    "unknown_schedule" or "not_supported" (a setting this box does not have).
+    "unknown_schedule", "not_supported" (a setting this box does not have) or
+    "alarm_past" (a wake-up light for a time that has passed).
     """
 
     def __init__(self, code: str) -> None:
@@ -1413,10 +1415,25 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         box_state = self.data.boxes.get(box_id)
         return self._due(box_state) if box_state is not None else None
 
+    def next_alarm(self, box_state: BoxState) -> bedtime.NextAlarm | None:
+        """Return the next wake-up of a box: of its schedules or of its wake-up light."""
+        if not box_state.box.alarm_capable:
+            return None
+        return bedtime.next_alarm(
+            box_state.schedules, self.now_at(box_state.box), self.wake_up_light(box_state.box.id)
+        )
+
+    def wake_up_light(self, box_id: str) -> bedtime.OneTimeAlarm | None:
+        """Return the wake-up light of a box, unless its time has passed."""
+        light = self.preferences.wake_up_light.get(box_id)
+        return light if light is not None and light.at > dt_util.utcnow() else None
+
     def _due(self, box_state: BoxState) -> bedtime.NextAlarm | None:
         if not box_state.box.alarm_capable:
             return None
-        return bedtime.due(box_state.schedules, self.now_at(box_state.box))
+        return bedtime.due(
+            box_state.schedules, self.now_at(box_state.box), self.wake_up_light(box_state.box.id)
+        )
 
     @callback
     def _check_alarm_later(self, box_id: str, delay: timedelta) -> None:
@@ -1470,6 +1487,10 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         if not box.alarm_capable or box.mac is None:
             return
         now = dt_util.utcnow()
+        light = self.preferences.wake_up_light.get(box.id)
+        if light is not None and light.at <= now:
+            # It rang (or the box was off then): a wake-up light rings once
+            self.preferences.set_wake_up_light(box.id, None)
         armed = self._armed.get(box.id)
         if armed is not None and armed <= now:
             # It rang (or the box was off): nothing of ours is armed any more
@@ -1509,7 +1530,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             if step[0] == "arm":
                 alarm = step[1]
                 seconds = round((alarm.at - dt_util.utcnow()).total_seconds())
-                await self.push.async_set_alarm(mac, seconds, alarm.schedule.alarm)
+                await self.push.async_set_alarm(mac, seconds, alarm.alarm)
                 self._armed[box_state.box.id] = alarm.at
                 _LOGGER.debug("Alarm armed for %s", alarm.at.isoformat())
             else:
@@ -1570,6 +1591,50 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         self.async_update_listeners()
         return box_state
 
+    async def async_set_wake_up_light(self, box_id: str, at: datetime, alarm: Alarm) -> BoxState:
+        """Set the wake-up light of a box: one alarm at that time; a former one is replaced.
+
+        It is armed as soon as it is within the timer's reach and the box is
+        online, unless a schedule's alarm rings before it.
+        """
+        box_state = self._alarm_box(box_id)
+        if at <= dt_util.utcnow():
+            raise BoxError("alarm_past")
+        self._forget_light(box_state)
+        self.preferences.set_wake_up_light(box_id, bedtime.OneTimeAlarm(at, alarm))
+        _LOGGER.info("Wake-up light of %s set for %s", box_state.box.name, at.isoformat())
+        return self._alarms_changed(box_state)
+
+    async def async_clear_wake_up_light(self, box_id: str) -> BoxState:
+        """Drop the wake-up light of a box, and its alarm on the box if armed."""
+        box_state = self._alarm_box(box_id)
+        if self._forget_light(box_state):
+            _LOGGER.info("Wake-up light of %s cleared", box_state.box.name)
+        return self._alarms_changed(box_state)
+
+    def _forget_light(self, box_state: BoxState) -> bool:
+        """Drop the wake-up light of a box; an alarm the box carries for it counts as ours.
+
+        After a restart the integration no longer knows what it armed; the
+        box's timer for the light's time is taken as its own, so the next
+        check clears it unless another alarm takes its place.
+        """
+        light = self.preferences.wake_up_light.get(box_state.box.id)
+        if light is None:
+            return False
+        if bedtime.armed_for(box_state.sleep_timer, light.at):
+            self._armed[box_state.box.id] = light.at
+        self.preferences.set_wake_up_light(box_state.box.id, None)
+        return True
+
+    def _alarms_changed(self, box_state: BoxState) -> BoxState:
+        """Act on a changed alarm at once, not after the retry time."""
+        self._alarm_sent.pop(box_state.box.id, None)
+        self._alarm_tries.pop(box_state.box.id, None)
+        self._check_alarm(box_state, self.data)
+        self.async_update_listeners()
+        return box_state
+
     def _alarm_box(self, box_id: str) -> BoxState:
         box_state = self.data.boxes.get(box_id)
         if box_state is None:
@@ -1580,12 +1645,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
 
     async def _async_schedules_changed(self, box_state: BoxState) -> BoxState:
         await self._async_read_schedules(box_state)
-        # A changed schedule is acted on at once, not after the retry time
-        self._alarm_sent.pop(box_state.box.id, None)
-        self._alarm_tries.pop(box_state.box.id, None)
-        self._check_alarm(box_state, self.data)
-        self.async_update_listeners()
-        return box_state
+        return self._alarms_changed(box_state)
 
     @callback
     def set_push_connected(self, connected: bool) -> None:

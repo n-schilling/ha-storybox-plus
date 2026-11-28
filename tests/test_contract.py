@@ -158,6 +158,8 @@ async def test_actions_and_websocket_commands(
         "remove_chapters",
         "shuffle_chapters",
         "set_box_settings",
+        "set_wake_up_light",
+        "clear_wake_up_light",
     }
     commands = {name for name in hass.data[WS_DOMAIN] if name.startswith(f"{DOMAIN}/")}
     assert commands == {
@@ -189,6 +191,8 @@ async def test_actions_and_websocket_commands(
         f"{DOMAIN}/log/set",
         f"{DOMAIN}/bedtime/save",
         f"{DOMAIN}/bedtime/delete",
+        f"{DOMAIN}/alarm/set",
+        f"{DOMAIN}/alarm/clear",
         f"{DOMAIN}/night/set",
     }
 
@@ -243,6 +247,7 @@ async def test_stores(
                 "speech_engine",
                 "voice",
                 "voice_language",
+                "wake_up_light",
             },
         ),
         "shuffle": (1, {"last", "tonies"}),

@@ -51,6 +51,12 @@ SERVICE_SET_FAVOURITE = "set_favourite"
 SERVICE_PLAY_FAVOURITE = "play_favourite"
 ATTR_CHAPTER = "chapter"
 ATTR_FAVOURITE = "favourite"
+SERVICE_SET_WAKE_UP_LIGHT = "set_wake_up_light"
+SERVICE_CLEAR_WAKE_UP_LIGHT = "clear_wake_up_light"
+ATTR_DATETIME = "datetime"
+ATTR_TONE = "tone"
+ATTR_VOLUME = "volume"
+ATTR_MORNING_LIGHT = "morning_light"
 
 # The page
 FRONTEND_URL_BASE = "/storybox_plus"

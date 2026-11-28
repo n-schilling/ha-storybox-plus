@@ -19,6 +19,54 @@ clear_sleep_timer:
       integration: storybox_plus
       domain: media_player
 
+set_wake_up_light:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player
+  fields:
+    time:
+      required: false
+      example: "06:45"
+      selector:
+        time:
+    datetime:
+      required: false
+      example: "2026-12-24 07:30:00"
+      selector:
+        datetime:
+    tone:
+      required: false
+      default: morning_glow
+      selector:
+        select:
+          translation_key: tone
+          options:
+            - morning_glow
+            - birdsong
+            - sound_hopper
+            - wake_up_call
+            - good_morning_beat
+    volume:
+      required: false
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    morning_light:
+      required: false
+      default: true
+      selector:
+        boolean:
+
+clear_wake_up_light:
+  target:
+    entity:
+      integration: storybox_plus
+      domain: media_player
+
 set_favourite:
   target:
     entity:

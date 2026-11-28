@@ -51,7 +51,7 @@ More pictures of the page are in [The page and the dashboard card](docs/page-and
 - The box plays whatever figure stands on it; Home Assistant cannot choose a figure.
 - The listening times count from the setup on; the cloud offers no history.
 - Favourite chapters steer only a Toniebox 2 and only through the cloud; the start of a chapter that is left can be heard for a moment (about half a second on a box that is awake). A box that was asleep plays from where it was for about half a minute after it is woken, until it has reached the cloud; only then do its favourites begin.
-- The alarm of a bedtime is set only while the box is online and Home Assistant runs; the box keeps one timer, so an alarm and a sleep timer exclude each other. The alarm tone is the one the app chose, or the app's first; the page does not choose tones.
+- The alarm of a bedtime is set only while the box is online and Home Assistant runs; the box keeps one timer, so an alarm and a sleep timer exclude each other. The same holds for the wake-up light.
 - Uploads go through Home Assistant's own file upload and take at most 100 MB per file. Which formats the cloud converts is its decision.
 - The cloud's API is not documented for third parties. If the manufacturer changes it, this integration needs an update.
 

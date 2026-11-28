@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Due"
+          },
+          "wake_up_light": {
+            "name": "Wake-up light"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "No figure is on the box."
     },
     "alarm_due": {
-      "message": "An alarm of a bedtime schedule rings at {time}; this would cancel it. Switch the schedule's alarm off on the Storybox Plus page first."
+      "message": "An alarm (of a bedtime or the wake-up light) rings at {time}; this would cancel it. Switch that alarm off on the Storybox Plus page first."
+    },
+    "alarm_past": {
+      "message": "{time} has passed; a wake-up light needs a time to come."
+    },
+    "no_alarm": {
+      "message": "This box rings no alarms."
     },
     "unknown_chapter": {
       "message": "The figure has no such chapter."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Clear sleep timer",
       "description": "Cancels the running sleep timer of the box."
+    },
+    "set_wake_up_light": {
+      "name": "Set wake-up light",
+      "description": "Lets the box ring once at a time of its own, with a tone, a volume and the sunrise light, like the app's wake-up light. A former wake-up light is replaced. It is armed as soon as it is less than 18 hours away and the box is online.",
+      "fields": {
+        "time": {
+          "name": "Time",
+          "description": "A time of day; the next one in the box's time zone (today, or tomorrow)."
+        },
+        "datetime": {
+          "name": "Date and time",
+          "description": "A date with a time, in the box's time zone. Use either this or the time."
+        },
+        "tone": {
+          "name": "Tone",
+          "description": "The tone that rings."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume of the tone in percent."
+        },
+        "morning_light": {
+          "name": "Sunrise light",
+          "description": "The light ring brightens before the tone rings."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Clear wake-up light",
+      "description": "Drops the wake-up light of the box, and its alarm on the box if already armed."
     },
     "set_favourite": {
       "name": "Set favourite chapter",
@@ -337,6 +376,17 @@
           "name": "Wind by tilting",
           "description": "Tilting the box winds forward or back."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Morning Glow",
+        "birdsong": "Birdsong Rhythm",
+        "sound_hopper": "Sound Hopper",
+        "wake_up_call": "Wake-up Call",
+        "good_morning_beat": "Good Morning Beat"
       }
     }
   }

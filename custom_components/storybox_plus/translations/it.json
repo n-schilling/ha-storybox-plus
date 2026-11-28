@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Scadenza"
+          },
+          "wake_up_light": {
+            "name": "Sveglia luminosa"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "Nessun personaggio è sulla box."
     },
     "alarm_due": {
-      "message": "Alle {time} suona la sveglia di un'ora della nanna: questo la annullerebbe. Prima disattiva la sveglia dell'orario nella pagina di Storybox Plus."
+      "message": "Alle {time} suona una sveglia (di un'ora della nanna o la sveglia luminosa): questo la annullerebbe. Prima disattiva quella sveglia nella pagina di Storybox Plus."
+    },
+    "alarm_past": {
+      "message": "{time} è passato; una sveglia luminosa ha bisogno di un orario futuro."
+    },
+    "no_alarm": {
+      "message": "Questo box non ha la sveglia."
     },
     "unknown_chapter": {
       "message": "Il personaggio non ha questo capitolo."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Annulla timer di spegnimento",
       "description": "Annulla il timer di spegnimento in corso della box."
+    },
+    "set_wake_up_light": {
+      "name": "Imposta sveglia luminosa",
+      "description": "Fa suonare il box una volta a un orario scelto, con un suono, un volume e la luce dell'alba, come la sveglia luminosa dell'app. Una sveglia luminosa precedente viene sostituita. Viene attivata appena mancano meno di 18 ore e il box è online.",
+      "fields": {
+        "time": {
+          "name": "Ora",
+          "description": "Un orario; il prossimo nel fuso orario del box (oggi o domani)."
+        },
+        "datetime": {
+          "name": "Data e ora",
+          "description": "Una data con orario, nel fuso orario del box. Usa questo oppure l'ora."
+        },
+        "tone": {
+          "name": "Suono",
+          "description": "Il suono che si sente."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume del suono in percentuale."
+        },
+        "morning_light": {
+          "name": "Luce dell'alba",
+          "description": "L'anello luminoso si schiarisce prima del suono."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Elimina sveglia luminosa",
+      "description": "Elimina la sveglia luminosa del box e, se già attivata, la sua sveglia sul box."
     },
     "set_favourite": {
       "name": "Imposta capitolo preferito",
@@ -337,6 +376,17 @@
           "name": "Scorri inclinando",
           "description": "Inclinando la box si va avanti o indietro."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Splendore del mattino",
+        "birdsong": "Ritmo degli uccellini",
+        "sound_hopper": "Saltasuoni",
+        "wake_up_call": "Richiamo del risveglio",
+        "good_morning_beat": "Beat del buongiorno"
       }
     }
   }

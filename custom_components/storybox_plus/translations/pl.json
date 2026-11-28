@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Termin"
+          },
+          "wake_up_light": {
+            "name": "Budzik świetlny"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "Na boxie nie stoi żadna figurka."
     },
     "alarm_due": {
-      "message": "O {time} zadzwoni budzik z pory snu; to polecenie by go anulowało. Najpierw wyłącz budzik tej pory snu na stronie Storybox Plus."
+      "message": "O {time} zadzwoni budzik (z pory snu lub budzik świetlny); to polecenie by go anulowało. Najpierw wyłącz ten budzik na stronie Storybox Plus."
+    },
+    "alarm_past": {
+      "message": "{time} już minęła; budzik świetlny potrzebuje przyszłej godziny."
+    },
+    "no_alarm": {
+      "message": "Ten box nie ma budzika."
     },
     "unknown_chapter": {
       "message": "Figurka nie ma takiego rozdziału."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Usuń wyłącznik czasowy",
       "description": "Anuluje trwający wyłącznik czasowy boxa."
+    },
+    "set_wake_up_light": {
+      "name": "Ustaw budzik świetlny",
+      "description": "Box zadzwoni raz o wybranej godzinie, z dźwiękiem, głośnością i światłem wschodu słońca, jak budzik świetlny w aplikacji. Wcześniejszy budzik świetlny zostanie zastąpiony. Zostanie nastawiony, gdy do niego zostanie mniej niż 18 godzin, a box będzie online.",
+      "fields": {
+        "time": {
+          "name": "Godzina",
+          "description": "Godzina; najbliższa w strefie czasowej boxa (dziś lub jutro)."
+        },
+        "datetime": {
+          "name": "Data i godzina",
+          "description": "Data z godziną, w strefie czasowej boxa. Użyj tego albo godziny."
+        },
+        "tone": {
+          "name": "Dźwięk",
+          "description": "Dźwięk, który zabrzmi."
+        },
+        "volume": {
+          "name": "Głośność",
+          "description": "Głośność dźwięku w procentach."
+        },
+        "morning_light": {
+          "name": "Światło wschodu słońca",
+          "description": "Pierścień świetlny rozjaśnia się przed dźwiękiem."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Usuń budzik świetlny",
+      "description": "Usuwa budzik świetlny boxa, a jeśli był już nastawiony, także jego budzik na boxie."
     },
     "set_favourite": {
       "name": "Ustaw ulubiony rozdział",
@@ -337,6 +376,17 @@
           "name": "Przewijanie przechyleniem",
           "description": "Przechylenie boxa przewija do przodu lub do tyłu."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Poranny blask",
+        "birdsong": "Ptasi rytm",
+        "sound_hopper": "Skaczący dźwięk",
+        "wake_up_call": "Pobudka",
+        "good_morning_beat": "Rytm dzień dobry"
       }
     }
   }

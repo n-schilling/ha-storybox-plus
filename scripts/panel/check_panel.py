@@ -728,7 +728,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         # The demo box has an alarm due, so it refuses the timer: in its own words
         errors = await cards.nth(0).locator("ha-alert[alert-type=error]").all_inner_texts()
         expect(
-            not errors or "An alarm of a bedtime is set" in errors[0],
+            not errors or "An alarm is set" in errors[0],
             f"the sleep timer failed on the page: {errors}",
         )
         # The refusal leaves the card for the pictures that follow
@@ -938,6 +938,38 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
         await _until(lambda: _has_schedule(api, instance, "Nap", False), "the bedtime deleted")
 
     await checks.run("bedtimes: next alarm, a switch per row, added and deleted", bedtimes)
+
+    async def wake_up_light() -> None:
+        await _goto(
+            page, instance, f"boxes/overview?key={demo_cloud.KIDS_BOX}&view=bedtimes", ".item"
+        )
+        card = page.locator(f"{PANEL} ha-card", has_text="Wake-up light")
+        expect("No wake-up light set." in await card.inner_text(), await card.inner_text())
+        await card.locator("ha-button[data-act^='ledit:']").click()
+        form = page.locator(f"{PANEL} [data-form=light] > ha-form")
+        await form.wait_for()
+        volume = form.get_by_role("textbox", name="Alarm volume")
+        expect(await volume.input_value() == "100", await volume.input_value())
+        await volume.fill("60")
+        await page.wait_for_timeout(300)
+        await page.locator(f"{PANEL} ha-button[data-act=lsave]").click()
+
+        async def light_is(volume: int | None) -> bool:
+            light = await _wake_up_light(api, instance)
+            return (light["volume"] if light else None) == volume
+
+        await _until(lambda: light_is(60), "the wake-up light set")
+        light = await _wake_up_light(api, instance)
+        expect(light["tone"] == "alarmLoop1.opus" and light["morning_light"], str(light))
+        await _until(lambda: _has_text(card, "Morning Glow"), "the wake-up light's row")
+        # The row opens its form by keyboard; delete clears it
+        row = card.locator(".item .main")
+        await row.focus()
+        await page.keyboard.press("Enter")
+        await page.locator(f"{PANEL} ha-button[data-act=ldel]").click()
+        await _until(lambda: light_is(None), "the wake-up light cleared")
+
+    await checks.run("wake-up light: set through the form, shown, cleared", wake_up_light)
 
     async def battery() -> None:
         await _goto(page, instance, "boxes/overview", ".batt-btn")
@@ -1885,7 +1917,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
             # The box takes the timer, or refuses it in words while an alarm is due
             async def started() -> bool:
                 text = await card.inner_text()
-                return "Sleep timer until" in text or "An alarm of a bedtime is set" in text
+                return "Sleep timer until" in text or "An alarm is set" in text
 
             await _until(started, "the answer to the sleep timer")
             stop = card.locator("[data-act$=':sleep_clear']")
@@ -1915,7 +1947,7 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
                   return box.textContent;
                 }"""
             )
-            expect(line == "An alarm of a bedtime is set; a sleep timer would cancel it.", line)
+            expect(line == "An alarm is set; a sleep timer would cancel it.", line)
             # The card picker knows the card once, it needs no configuration, and its
             # editor has a text for every field
             offered = await user.evaluate(
@@ -2282,6 +2314,14 @@ async def _count_is(locator: Any, count: int) -> bool:
 
 async def _has_text(locator: Any, text: str) -> bool:
     return text in await locator.inner_text()
+
+
+async def _wake_up_light(api: Api, instance: Instance) -> dict[str, Any] | None:
+    """The wake-up light of the Toniebox 2 as the integration has it."""
+    reply = await api.ws(instance.token, {"type": "storybox_plus/overview"})
+    box = next(b for b in reply["result"]["boxes"] if b["bedtime"])
+    light: dict[str, Any] | None = box["bedtime"]["wake_up_light"]
+    return light
 
 
 async def _has_schedule(api: Api, instance: Instance, name: str, present: bool) -> bool:

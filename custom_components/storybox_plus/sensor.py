@@ -104,7 +104,7 @@ class SleepTimerSensor(TimedBoxEntity, SensorEntity):
 
 
 class NextAlarmSensor(TimedBoxEntity, SensorEntity):
-    """When the next alarm of the box's bedtimes rings; unknown without one."""
+    """When the next alarm of the box rings (a bedtime's or the wake-up light); unknown without one."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -114,20 +114,26 @@ class NextAlarmSensor(TimedBoxEntity, SensorEntity):
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the next wake-up over the enabled bedtimes with an alarm."""
+        """Return the next wake-up over the enabled bedtimes with an alarm and the wake-up light."""
         box_state = self.box_state
-        if box_state is None or not box_state.schedules:
+        if box_state is None:
             return None
-        upcoming = bedtime.next_alarm(box_state.schedules, self.coordinator.now_at(box_state.box))
+        upcoming = self.coordinator.next_alarm(box_state)
         return upcoming.at if upcoming else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return whether the alarm is due: close enough for the box's timer to carry it.
+        """Return whether the alarm is due and whether it is the wake-up light.
 
-        While it is, the timer is the alarm's and a sleep timer is refused.
+        Due: close enough for the box's timer to carry it. While it is, the
+        timer is the alarm's and a sleep timer is refused.
         """
-        return {"due": self.coordinator.due_alarm(self._box_id) is not None}
+        box_state = self.box_state
+        upcoming = self.coordinator.next_alarm(box_state) if box_state else None
+        return {
+            "due": self.coordinator.due_alarm(self._box_id) is not None,
+            "wake_up_light": upcoming is not None and upcoming.schedule is None,
+        }
 
     def _next_change(self) -> datetime | None:
         """It becomes due first; once it rang, the one after it is next."""

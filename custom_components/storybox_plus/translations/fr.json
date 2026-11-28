@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Échéance"
+          },
+          "wake_up_light": {
+            "name": "Réveil lumineux"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "Aucune figurine n'est posée sur la boîte."
     },
     "alarm_due": {
-      "message": "Un réveil d'une routine du coucher sonne à {time} ; cette action l'annulerait. Désactivez d'abord le réveil de la routine sur la page Storybox Plus."
+      "message": "Une alarme (d'une routine du coucher ou du réveil lumineux) sonne à {time} ; cette action l'annulerait. Désactivez d'abord cette alarme sur la page Storybox Plus."
+    },
+    "alarm_past": {
+      "message": "{time} est passé ; un réveil lumineux a besoin d'une heure à venir."
+    },
+    "no_alarm": {
+      "message": "Cette boîte n'a pas de réveil."
     },
     "unknown_chapter": {
       "message": "La figurine n'a pas ce chapitre."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Annuler le minuteur de mise en veille",
       "description": "Annule le minuteur de mise en veille en cours de la boîte."
+    },
+    "set_wake_up_light": {
+      "name": "Régler le réveil lumineux",
+      "description": "Fait sonner la boîte une fois à une heure choisie, avec une sonnerie, un volume et la lumière du lever du soleil, comme le réveil lumineux de l'application. Un réveil lumineux précédent est remplacé. Il est armé dès qu'il est à moins de 18 heures et que la boîte est en ligne.",
+      "fields": {
+        "time": {
+          "name": "Heure",
+          "description": "Une heure de la journée ; la prochaine dans le fuseau horaire de la boîte (aujourd'hui ou demain)."
+        },
+        "datetime": {
+          "name": "Date et heure",
+          "description": "Une date avec une heure, dans le fuseau horaire de la boîte. Utilisez soit ceci, soit l'heure."
+        },
+        "tone": {
+          "name": "Sonnerie",
+          "description": "La sonnerie qui retentit."
+        },
+        "volume": {
+          "name": "Volume",
+          "description": "Volume de la sonnerie en pourcentage."
+        },
+        "morning_light": {
+          "name": "Lumière du lever du soleil",
+          "description": "L'anneau lumineux s'éclaircit avant la sonnerie."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Supprimer le réveil lumineux",
+      "description": "Supprime le réveil lumineux de la boîte, et son alarme sur la boîte si elle est déjà armée."
     },
     "set_favourite": {
       "name": "Définir un chapitre favori",
@@ -337,6 +376,17 @@
           "name": "Avancer en inclinant",
           "description": "Incliner la boîte fait avancer ou reculer la lecture."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Éclat du matin",
+        "birdsong": "Rythme des oiseaux",
+        "sound_hopper": "Sautille-son",
+        "wake_up_call": "Appel du réveil",
+        "good_morning_beat": "Beat du bonjour"
       }
     }
   }

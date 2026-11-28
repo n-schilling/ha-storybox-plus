@@ -8,6 +8,8 @@ the TLS context it wants used.
 from .auth import Auth, TokenSet
 from .errors import CloudAuthError, CloudConnectionError, CloudError, CloudResponseError
 from .models import (
+    ALARM_TONES,
+    DEFAULT_ALARM_TONE,
     VOLUME_LEVELS,
     WEEKDAYS,
     Alarm,
@@ -46,6 +48,8 @@ from .push import (
 from .rest import CloudClient
 
 __all__ = [
+    "ALARM_TONES",
+    "DEFAULT_ALARM_TONE",
     "SLEEP_TIMER_MAX_MINUTES",
     "SLEEP_TIMER_MAX_SECONDS",
     "TOPIC_BATTERY",

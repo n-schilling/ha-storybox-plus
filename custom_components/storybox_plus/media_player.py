@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
 import probatio
@@ -23,16 +23,24 @@ from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, CloudError, Playback, Tonie
+from . import bedtime
+from .cloud import SLEEP_TIMER_MAX_MINUTES, VOLUME_LEVELS, Alarm, CloudError, Playback, Tonie
 from .const import (
     ATTR_CHAPTER,
+    ATTR_DATETIME,
     ATTR_FAVOURITE,
     ATTR_MINUTES,
+    ATTR_MORNING_LIGHT,
+    ATTR_TIME,
+    ATTR_TONE,
+    ATTR_VOLUME,
     DOMAIN,
     SERVICE_CLEAR_SLEEP_TIMER,
+    SERVICE_CLEAR_WAKE_UP_LIGHT,
     SERVICE_PLAY_FAVOURITE,
     SERVICE_SET_FAVOURITE,
     SERVICE_SET_SLEEP_TIMER,
+    SERVICE_SET_WAKE_UP_LIGHT,
 )
 from .coordinator import BoxError, BoxState, ChapterError, StoryboxConfigEntry, StoryboxCoordinator
 from .entity import BoxEntity, async_follow_boxes
@@ -82,6 +90,30 @@ async def async_setup_entry(
         "async_set_favourite",
     )
     platform.async_register_entity_service(SERVICE_PLAY_FAVOURITE, None, "async_play_favourite")
+    platform.async_register_entity_service(
+        SERVICE_SET_WAKE_UP_LIGHT,
+        probatio.All(
+            cv.make_entity_service_schema(
+                {
+                    # Exactly one: a time of day (the next one) or a date with a time
+                    probatio.Exclusive(ATTR_TIME, "when"): cv.time,
+                    probatio.Exclusive(ATTR_DATETIME, "when"): cv.datetime,
+                    probatio.Optional(ATTR_TONE, default=bedtime.TONE_NAMES[0]): probatio.In(
+                        bedtime.TONE_NAMES
+                    ),
+                    probatio.Optional(ATTR_VOLUME, default=100): probatio.All(
+                        probatio.Coerce(int), probatio.Range(min=0, max=100)
+                    ),
+                    probatio.Optional(ATTR_MORNING_LIGHT, default=True): cv.boolean,
+                }
+            ),
+            cv.has_at_least_one_key(ATTR_TIME, ATTR_DATETIME),
+        ),
+        "async_set_wake_up_light",
+    )
+    platform.async_register_entity_service(
+        SERVICE_CLEAR_WAKE_UP_LIGHT, None, "async_clear_wake_up_light"
+    )
 
 
 class BoxPlayer(BoxEntity, MediaPlayerEntity):
@@ -342,7 +374,7 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
             raise
 
     def _refuse_if_alarm(self) -> None:
-        """Refuse a command that would replace the alarm of a bedtime schedule.
+        """Refuse a command that would replace the alarm of a bedtime or the wake-up light.
 
         The box keeps one timer; the sleep timer and putting the box to sleep
         would cancel the alarm the integration arms for the next wake-up.
@@ -463,6 +495,48 @@ class BoxPlayer(BoxEntity, MediaPlayerEntity):
                 translation_domain=DOMAIN,
                 translation_key="command_failed",
                 translation_placeholders={"error": str(err)},
+            ) from err
+
+    async def async_set_wake_up_light(
+        self,
+        tone: str,
+        volume: int,
+        morning_light: bool,
+        time: time | None = None,
+        datetime: datetime | None = None,
+    ) -> None:
+        """Set the wake-up light: one alarm at that time, in the box's own time zone."""
+        box_state = self.box_state
+        if box_state is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="box_unknown")
+        now = self.coordinator.now_at(box_state.box)
+        if time is not None:
+            at = bedtime.next_at(time, now)
+        elif datetime is not None:
+            at = datetime if datetime.tzinfo else datetime.replace(tzinfo=now.tzinfo)
+        else:  # pragma: no cover - the schema asks for one of them
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="alarm_past")
+        alarm = Alarm(bedtime.TONE_BY_NAME[tone], volume, morning_light)
+        try:
+            await self.coordinator.async_set_wake_up_light(self._box_id, at, alarm)
+        except BoxError as err:
+            if err.code != "alarm_past":
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="no_alarm"
+                ) from err
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="alarm_past",
+                translation_placeholders={"time": at.strftime("%Y-%m-%d %H:%M")},
+            ) from err
+
+    async def async_clear_wake_up_light(self) -> None:
+        """Drop the wake-up light, and its alarm on the box if armed."""
+        try:
+            await self.coordinator.async_clear_wake_up_light(self._box_id)
+        except BoxError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="no_alarm"
             ) from err
 
     async def async_clear_sleep_timer(self) -> None:

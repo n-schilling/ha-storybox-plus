@@ -75,6 +75,9 @@
         "state_attributes": {
           "due": {
             "name": "Fällig"
+          },
+          "wake_up_light": {
+            "name": "Lichtwecker"
           }
         }
       },
@@ -158,7 +161,13 @@
       "message": "Auf der Box liegt keine Figur."
     },
     "alarm_due": {
-      "message": "Um {time} klingelt der Wecker einer Schlafenszeit; das würde ihn löschen. Zuerst den Wecker der Schlafenszeit auf der Seite Storybox Plus ausschalten."
+      "message": "Um {time} klingelt ein Wecker (einer Schlafenszeit oder der Lichtwecker); das würde ihn löschen. Zuerst diesen Wecker auf der Seite Storybox Plus ausschalten."
+    },
+    "alarm_past": {
+      "message": "{time} ist vorbei; ein Lichtwecker braucht eine kommende Zeit."
+    },
+    "no_alarm": {
+      "message": "Diese Box hat keinen Wecker."
     },
     "unknown_chapter": {
       "message": "Die Figur hat dieses Kapitel nicht."
@@ -220,6 +229,36 @@
     "clear_sleep_timer": {
       "name": "Schlaftimer abbrechen",
       "description": "Bricht den laufenden Schlaftimer der Box ab."
+    },
+    "set_wake_up_light": {
+      "name": "Lichtwecker stellen",
+      "description": "Lässt die Box einmal zu einer eigenen Zeit klingeln, mit Ton, Lautstärke und Sonnenaufgangs-Licht, wie der Lichtwecker der App. Ein früherer Lichtwecker wird ersetzt. Er wird gestellt, sobald er weniger als 18 Stunden entfernt ist und die Box online ist.",
+      "fields": {
+        "time": {
+          "name": "Uhrzeit",
+          "description": "Eine Uhrzeit; die nächste in der Zeitzone der Box (heute oder morgen)."
+        },
+        "datetime": {
+          "name": "Datum und Uhrzeit",
+          "description": "Ein Datum mit Uhrzeit, in der Zeitzone der Box. Entweder dies oder die Uhrzeit."
+        },
+        "tone": {
+          "name": "Weckton",
+          "description": "Der Ton, der erklingt."
+        },
+        "volume": {
+          "name": "Lautstärke",
+          "description": "Lautstärke des Wecktons in Prozent."
+        },
+        "morning_light": {
+          "name": "Sonnenaufgangs-Licht",
+          "description": "Der Leuchtring wird vor dem Weckton heller."
+        }
+      }
+    },
+    "clear_wake_up_light": {
+      "name": "Lichtwecker löschen",
+      "description": "Löscht den Lichtwecker der Box und, falls schon gestellt, seinen Wecker auf der Box."
     },
     "set_favourite": {
       "name": "Favorit setzen",
@@ -337,6 +376,17 @@
           "name": "Spulen per Kippen",
           "description": "Kippen der Box spult vor oder zurück."
         }
+      }
+    }
+  },
+  "selector": {
+    "tone": {
+      "options": {
+        "morning_glow": "Morgenglanz",
+        "birdsong": "Vogelgezwitscher-Rhythmus",
+        "sound_hopper": "Klanghüpfer",
+        "wake_up_call": "Aufwach-Ruf",
+        "good_morning_beat": "Guten-Morgen-Beat"
       }
     }
   }

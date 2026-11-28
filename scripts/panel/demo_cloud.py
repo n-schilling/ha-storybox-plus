@@ -308,6 +308,7 @@ def install() -> None:
         "days": "days",
         "enabled": "enabled",
         "alarmEnabled": "alarm_enabled",
+        "alarmTone": "alarm_tone",
         "alarmVolume": "alarm_volume",
         "alarmMorningLight": "alarm_morning_light",
     }

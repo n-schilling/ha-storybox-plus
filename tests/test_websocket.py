@@ -130,7 +130,7 @@ async def test_overview(
         "sleep_timer": {"state": "on", "alarm": False, "until": "2026-11-04T20:00:00+00:00"},
         "battery_stats": {"current": None, "cycles": [], "count": 0, "average_full_hours": None},
         "battery_remaining_hours": None,
-        "bedtime": {"schedules": [], "next_alarm": None},
+        "bedtime": {"schedules": [], "wake_up_light": None, "next_alarm": None},
         "settings": {"values": {"max_volume": 10}, "offline_mode": None, "applied": None},
         "night": {"mode": None, "phase": None},
         "entities": {
