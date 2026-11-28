@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Modo noturno"
       },
+      "alarm_ringing": {
+        "name": "Alarme tocando",
+        "state_attributes": {
+          "tone": {
+            "name": "Toque",
+            "state": {
+              "morning_glow": "Brilho da manhã",
+              "birdsong": "Ritmo dos passarinhos",
+              "sound_hopper": "Pula-som",
+              "wake_up_call": "Chamada para acordar",
+              "good_morning_beat": "Batida de bom dia"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Canal ao vivo"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Previsto para"
           },
+          "armed": {
+            "name": "Armado na caixa"
+          },
           "wake_up_light": {
             "name": "Despertador luminoso"
+          },
+          "tone": {
+            "name": "Toque",
+            "state": {
+              "morning_glow": "Brilho da manhã",
+              "birdsong": "Ritmo dos passarinhos",
+              "sound_hopper": "Pula-som",
+              "wake_up_call": "Chamada para acordar",
+              "good_morning_beat": "Batida de bom dia"
+            }
+          },
+          "volume": {
+            "name": "Volume"
+          },
+          "morning_light": {
+            "name": "Luz do amanhecer"
           }
         }
       },

@@ -201,6 +201,8 @@ flowchart LR
 - An alarm set by the integration for a wake-up no bedtime wants any more, because a bedtime was switched off, changed or deleted, is cleared. An alarm set in the app is left alone until a bedtime's alarm is due.
 - While an alarm is due, the sleep timer actions and switching the box off are refused with the time of the alarm: each would replace the alarm.
 - The box takes an alarm only at least 5 minutes ahead and drops a closer one, as the app says too. A box that comes online less than 5 minutes before the wake-up gets none.
+- The box says the moment its alarm starts and stops ringing, also when it is stopped with an ear: the binary sensor `alarm_ringing` follows it, and the box's card on the page shows it as a band in the colours of a sunrise. The sunrise light begins two to three minutes before the tone; the box reports nothing for it.
+- A box's card shows the next alarm with its tone, volume and sunrise light, and whether the box carries it already.
 - The tone is one of the app's five: Morgenglanz, Vogelgezwitscher-Rhythmus, Klanghüpfer, Aufwach-Ruf and Guten-Morgen-Beat (as the German app names them).
 
 ### Wake-up light

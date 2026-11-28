@@ -30,6 +30,7 @@ from . import bedtime, fetcher, night, repeat, speech
 from .analytics import Analytics
 from .battery import BatteryStats
 from .cloud import (
+    TOPIC_ALARM,
     TOPIC_BATTERY,
     TOPIC_HEADPHONES,
     TOPIC_ONLINE,
@@ -38,6 +39,7 @@ from .cloud import (
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
     Alarm,
+    AlarmRing,
     Auth,
     Battery,
     BedtimeSchedule,
@@ -150,6 +152,8 @@ class BoxState:
     volume: Volume | None = None
     sleep_timer: SleepTimer | None = None
     headphones: Headphones | None = None
+    # The tone the box's alarm rings right now; None while none rings
+    ringing: str | None = None
     last_push: datetime | None = None
     # When the push channel last said the box came online
     online_since: datetime | None = None
@@ -860,6 +864,7 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
             box_state.online = event.data if isinstance(event.data, bool) else None
             if box_state.online is False:
                 self._stop_playing(box_state)
+                box_state.ringing = None
                 self._note_asleep_later(box_state.box.id)
             if box_state.online is True and was_online is not True:
                 box_state.online_since = box_state.last_push
@@ -895,6 +900,8 @@ class StoryboxCoordinator(DataUpdateCoordinator[CloudState]):
         elif event.topic == TOPIC_SLEEP_TIMER and isinstance(event.data, SleepTimer):
             box_state.sleep_timer = event.data
             self._check_alarm(box_state, self.data)
+        elif event.topic == TOPIC_ALARM and isinstance(event.data, AlarmRing):
+            box_state.ringing = event.data.tone
         elif (
             event.topic == TOPIC_SETTINGS_APPLIED
             and box_state.box.settings.settings_applied is False

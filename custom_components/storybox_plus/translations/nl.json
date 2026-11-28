@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Nachtmodus"
       },
+      "alarm_ringing": {
+        "name": "Wekker gaat af",
+        "state_attributes": {
+          "tone": {
+            "name": "Wektoon",
+            "state": {
+              "morning_glow": "Ochtendgloed",
+              "birdsong": "Vogelritme",
+              "sound_hopper": "Klankhopper",
+              "wake_up_call": "Wekroep",
+              "good_morning_beat": "Goedemorgenbeat"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Live-kanaal"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Gaat af"
           },
+          "armed": {
+            "name": "Op de box gezet"
+          },
           "wake_up_light": {
             "name": "Lichtwekker"
+          },
+          "tone": {
+            "name": "Wektoon",
+            "state": {
+              "morning_glow": "Ochtendgloed",
+              "birdsong": "Vogelritme",
+              "sound_hopper": "Klankhopper",
+              "wake_up_call": "Wekroep",
+              "good_morning_beat": "Goedemorgenbeat"
+            }
+          },
+          "volume": {
+            "name": "Volume"
+          },
+          "morning_light": {
+            "name": "Zonsopkomstlicht"
           }
         }
       },

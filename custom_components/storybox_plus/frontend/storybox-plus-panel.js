@@ -17,7 +17,7 @@ const WEEKS_FROM = 120;
 // What the page shares with the dashboard card; the version of this script keeps both in step
 const {
   MDI, esc, icon, iconButton, fill, time, safeUrl, pad, hm, mmss, hours, cap, dayKey, parseDay, WEEKDAYS, clock, STYLE, BoxView,
-  fieldNumber, numOrNull, timeOptions,
+  fieldNumber, numOrNull, timeOptions, TONES,
 } = await import(new URL(`./storybox-plus-common.js${new URL(import.meta.url).search}`, import.meta.url).href);
 
 if (!customElements.get("storybox-plus-panel")) {
@@ -59,8 +59,6 @@ if (!customElements.get("storybox-plus-panel")) {
   const ISSUES_URL = "https://github.com/n-schilling/ha-storybox-plus/issues";
   // How the favourites of a figure play on a Toniebox 2
   const FAV_MODES = ["first", "random", "only", "bedtime", "off"];
-  // The alarm tones the app offers, in its order; the page names them tone1 to tone5
-  const TONES = ["alarmLoop1.opus", "alarmLoop2.opus", "alarmLoop3.opus", "alarmLoop4.opus", "alarmLoop5.opus"];
   // How long listening sums are kept (days, 0: all) and the bounds of the file size from the app (MB)
   const ANALYTICS_DAYS = ["365", "730", "1825", "0"];
   const FETCH_MB = [10, 2000];
@@ -1440,11 +1438,6 @@ if (!customElements.get("storybox-plus-panel")) {
       } else rows = `<div class="item muted">${esc(t.noWakeUpLight)}</div>`;
       const actions = editing || light || this._sched ? "" : this._btn(`ledit:${b.id}`, t.setWakeUpLight, "plus");
       return this._section(t.wakeUpLight, rows, { help: t.wakeUpLightHint, cls: "list", actions });
-    }
-
-    _toneName(tone) {
-      const i = TONES.indexOf(tone);
-      return i < 0 ? tone : this._t[`tone${i + 1}`];
     }
 
     _toneSelector() {

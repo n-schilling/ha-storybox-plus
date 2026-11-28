@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Tryb nocny"
       },
+      "alarm_ringing": {
+        "name": "Budzik dzwoni",
+        "state_attributes": {
+          "tone": {
+            "name": "Dźwięk",
+            "state": {
+              "morning_glow": "Poranny blask",
+              "birdsong": "Ptasi rytm",
+              "sound_hopper": "Skaczący dźwięk",
+              "wake_up_call": "Pobudka",
+              "good_morning_beat": "Rytm dzień dobry"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Kanał na żywo"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Termin"
           },
+          "armed": {
+            "name": "Nastawiony na boxie"
+          },
           "wake_up_light": {
             "name": "Budzik świetlny"
+          },
+          "tone": {
+            "name": "Dźwięk",
+            "state": {
+              "morning_glow": "Poranny blask",
+              "birdsong": "Ptasi rytm",
+              "sound_hopper": "Skaczący dźwięk",
+              "wake_up_call": "Pobudka",
+              "good_morning_beat": "Rytm dzień dobry"
+            }
+          },
+          "volume": {
+            "name": "Głośność"
+          },
+          "morning_light": {
+            "name": "Światło wschodu słońca"
           }
         }
       },

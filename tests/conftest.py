@@ -31,11 +31,14 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from custom_components.storybox_plus import log as log_module
 from custom_components.storybox_plus.cloud import (
+    TOPIC_ALARM,
     TOPIC_BATTERY,
     TOPIC_ONLINE,
     TOPIC_PLAYBACK,
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
+    Alarm,
+    AlarmRing,
     CloudConnectionError,
     Playback,
     PushClient,
@@ -916,13 +919,20 @@ class FakePush(PushClient):
         self,
         state: str | None = "on",
         until: datetime | None = None,
-        alarm: bool = False,
+        alarm: bool | Alarm = False,
         mac: str = MAC,
     ) -> None:
-        """Deliver app-reply/bedtime-state."""
+        """Deliver app-reply/bedtime-state; alarm True: one with the app's defaults."""
+        carried = Alarm() if alarm is True else alarm or None
         self.send(
-            TOPIC_SLEEP_TIMER, SleepTimer(state=state, duration=600, until=until, alarm=alarm), mac
+            TOPIC_SLEEP_TIMER,
+            SleepTimer(state=state, duration=600, until=until, alarm=carried),
+            mac,
         )
+
+    def ring(self, tone: str | None, mac: str = MAC) -> None:
+        """Deliver app-reply/alarm: the tone that rings now, None once it stopped."""
+        self.send(TOPIC_ALARM, AlarmRing(tone), mac)
 
     async def async_command(self, mac: str, command: str, payload: dict[str, Any]) -> None:
         """Record the command instead of publishing it."""

@@ -18,12 +18,14 @@ import aiomqtt
 import pytest
 
 from custom_components.storybox_plus.cloud import (
+    TOPIC_ALARM,
     TOPIC_BATTERY,
     TOPIC_ONLINE,
     TOPIC_PLAYBACK,
     TOPIC_SETTINGS_APPLIED,
     TOPIC_SLEEP_TIMER,
     TOPIC_VOLUME,
+    AlarmRing,
     Battery,
     CloudAuthError,
     CloudConnectionError,
@@ -303,6 +305,10 @@ async def test_boxes_set_before_connecting(broker: FakeBroker, sleeps: list[floa
         (TOPIC_BATTERY, b"[1, 2]", Battery(None, None, None)),
         (TOPIC_SETTINGS_APPLIED, b'{"anything": 1}', True),
         (TOPIC_SETTINGS_APPLIED, b"", True),
+        (TOPIC_ALARM, b'{"tone": "alarmLoop3.opus"}', AlarmRing("alarmLoop3.opus")),
+        (TOPIC_ALARM, b'{"tone": null}', AlarmRing(None)),
+        # Going offline, the box empties what the broker keeps for it
+        (TOPIC_ALARM, b"", AlarmRing(None)),
     ],
 )
 async def test_messages_are_parsed(

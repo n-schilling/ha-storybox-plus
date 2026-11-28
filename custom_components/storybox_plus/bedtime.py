@@ -51,6 +51,7 @@ TOLERANCE = timedelta(minutes=2)
 # The names of the alarm tones in actions and translations, in the app's order
 TONE_NAMES = ("morning_glow", "birdsong", "sound_hopper", "wake_up_call", "good_morning_beat")
 TONE_BY_NAME = dict(zip(TONE_NAMES, ALARM_TONES, strict=True))
+TONE_NAME = dict(zip(ALARM_TONES, TONE_NAMES, strict=True))
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +162,7 @@ def armed_for(timer: SleepTimer | None, at: datetime) -> bool:
     return (
         timer is not None
         and timer.running
-        and timer.alarm
+        and timer.alarm is not None
         and timer.until is not None
         and abs(timer.until - at) <= TOLERANCE
     )

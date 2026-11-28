@@ -133,6 +133,7 @@ def install() -> None:
     from custom_components import storybox_plus as integration
     from custom_components.storybox_plus import config_flow
     from custom_components.storybox_plus.cloud import (
+        TOPIC_ALARM,
         TOPIC_BATTERY,
         TOPIC_HEADPHONES,
         TOPIC_ONLINE,
@@ -140,6 +141,7 @@ def install() -> None:
         TOPIC_SLEEP_TIMER,
         TOPIC_VOLUME,
         WEEKDAYS,
+        AlarmRing,
         Auth,
         Battery,
         BedtimeSchedule,
@@ -156,7 +158,6 @@ def install() -> None:
         Playback,
         PushClient,
         PushEvent,
-        SleepTimer,
         TokenSet,
         Tonie,
         TonieDetails,
@@ -164,7 +165,7 @@ def install() -> None:
         Tune,
         Volume,
     )
-    from custom_components.storybox_plus.cloud.models import SETTING_FIELDS
+    from custom_components.storybox_plus.cloud.models import SETTING_FIELDS, parse_sleep_timer
     from custom_components.storybox_plus.const import TESTED_BACKEND_RELEASE
 
     base = os.environ["STORYBOX_DEMO_BASE"]
@@ -579,7 +580,7 @@ def install() -> None:
                 self._on_event(PushEvent(KIDS_MAC, topic, data))
             # The room the box stands in: the page check writes into this file what
             # somebody does there (takes the figure off, puts it back, switches the box
-            # off), and the box reports it as a real one would
+            # off, its alarm rings and is stopped), and the box reports it as a real one would
             world = Path(os.environ["STORYBOX_DEMO_WORLD"])
             seen = ""
             while True:
@@ -590,6 +591,10 @@ def install() -> None:
                 seen = said
                 if said == "off":
                     self._on_event(PushEvent(KIDS_MAC, TOPIC_ONLINE, False))
+                    continue
+                if said in ("ring", "silent"):
+                    tone = "alarmLoop3.opus" if said == "ring" else None
+                    self._on_event(PushEvent(KIDS_MAC, TOPIC_ALARM, AlarmRing(tone)))
                     continue
                 if said == "removed":
                     playback = Playback(tonie_id=None)
@@ -623,11 +628,9 @@ def install() -> None:
             if command == "stl":
                 on = payload.get("state") == "on"
                 until = datetime.now(UTC) + timedelta(seconds=payload.get("duration", 0))
-                timer = SleepTimer(
-                    state=payload.get("state"),
-                    duration=payload.get("duration"),
-                    until=until if on else None,
-                    alarm=on and bool(payload.get("alarm")),
+                # As the box reports it, the alarm's settings included
+                timer = parse_sleep_timer(
+                    {"stl": {**payload, "until": until.timestamp()} if on else {"state": "off"}}
                 )
                 self._on_event(PushEvent(mac, TOPIC_SLEEP_TIMER, timer))
 

@@ -28,6 +28,7 @@ from typing import Any, Literal
 from .errors import CloudError, CloudResponseError
 from .models import CLASSIC_SETTINGS, FEATURE_SETTINGS, LIVE_SETTINGS, SETTING_FIELDS, Box
 from .push import (
+    TOPIC_ALARM,
     TOPIC_BATTERY,
     TOPIC_HEADPHONES,
     TOPIC_ONLINE,
@@ -362,6 +363,7 @@ TOPICS: Mapping[str, tuple[frozenset[str], tuple[frozenset[str], ...]]] = {
     TOPIC_VOLUME: (frozenset({"level"}), ()),
     TOPIC_SLEEP_TIMER: (frozenset({"stl"}), ()),
     TOPIC_HEADPHONES: (frozenset({"connected"}), ()),
+    TOPIC_ALARM: (frozenset({"tone"}), ()),
 }
 
 

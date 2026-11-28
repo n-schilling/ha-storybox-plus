@@ -388,6 +388,7 @@ export default {
   "nextAlarm": "Próximo alarme {t}",
   "alarmArmed": "programado na caixa",
   "alarmPending": "programado assim que a caixa estiver online",
+  "alarmRinging": "O alarme está tocando",
   "alarmLater": "programado na noite anterior",
   "alarmHint": "Uma hora de dormir com alarme acorda a criança nos dias escolhidos. O Home Assistant programa o alarme na caixa toda noite, assim que a caixa estiver online; o app o programa uma única vez. Enquanto há um alarme previsto, o timer de sono e desligar a caixa são recusados, porque a caixa guarda só um timer.",
   "f_name": "Nome",

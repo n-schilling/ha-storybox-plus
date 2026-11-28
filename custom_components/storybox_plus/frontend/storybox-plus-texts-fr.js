@@ -388,6 +388,7 @@ export default {
   "nextAlarm": "Prochain réveil {t}",
   "alarmArmed": "réglé sur la boîte",
   "alarmPending": "réglé dès que la boîte est en ligne",
+  "alarmRinging": "L'alarme sonne",
   "alarmLater": "réglé la veille au soir",
   "alarmHint": "Un coucher avec réveil réveille l'enfant les jours choisis. Home Assistant règle le réveil sur la boîte chaque soir, dès que la boîte est en ligne ; l'appli ne le règle qu'une seule fois. Tant qu'un réveil est prévu, le minuteur de mise en veille et l'extinction de la boîte sont refusés, car la boîte ne garde qu'un seul minuteur.",
   "f_name": "Nom",

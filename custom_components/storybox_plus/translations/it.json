@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Modalità notte"
       },
+      "alarm_ringing": {
+        "name": "Sveglia che suona",
+        "state_attributes": {
+          "tone": {
+            "name": "Suono",
+            "state": {
+              "morning_glow": "Splendore del mattino",
+              "birdsong": "Ritmo degli uccellini",
+              "sound_hopper": "Saltasuoni",
+              "wake_up_call": "Richiamo del risveglio",
+              "good_morning_beat": "Beat del buongiorno"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Canale live"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Scadenza"
           },
+          "armed": {
+            "name": "Impostata sul box"
+          },
           "wake_up_light": {
             "name": "Sveglia luminosa"
+          },
+          "tone": {
+            "name": "Suono",
+            "state": {
+              "morning_glow": "Splendore del mattino",
+              "birdsong": "Ritmo degli uccellini",
+              "sound_hopper": "Saltasuoni",
+              "wake_up_call": "Richiamo del risveglio",
+              "good_morning_beat": "Beat del buongiorno"
+            }
+          },
+          "volume": {
+            "name": "Volume"
+          },
+          "morning_light": {
+            "name": "Luce dell'alba"
           }
         }
       },

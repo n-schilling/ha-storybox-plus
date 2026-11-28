@@ -13,7 +13,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import night
+from . import bedtime, night
 from .coordinator import BoxState, StoryboxConfigEntry, StoryboxCoordinator
 from .entity import BoxEntity, TimedBoxEntity, account_device_info, async_follow_boxes
 
@@ -31,12 +31,15 @@ async def async_setup_entry(
         # A Toniebox 1 reports no connection state to the cloud: it gets no sensor
         if not box_state.box.live:
             return []
-        return [
+        entities: list[Entity] = [
             ConnectivitySensor(coordinator, box_state.box.id),
             ChargingSensor(coordinator, box_state.box.id),
             HeadphonesSensor(coordinator, box_state.box.id),
             NightModeSensor(coordinator, box_state.box.id),
         ]
+        if box_state.box.alarm_capable:
+            entities.append(AlarmRingingSensor(coordinator, box_state.box.id))
+        return entities
 
     async_follow_boxes(entry, async_add_entities, _factory)
     # Only a Toniebox 2 uses the live channel; without one it stays closed for good
@@ -142,6 +145,32 @@ class NightModeSensor(TimedBoxEntity, BinarySensorEntity):
         if box_state is None or mode is None or not mode.enabled:
             return None
         return night.next_change(mode, self.coordinator.now_at(box_state.box))
+
+
+class AlarmRingingSensor(BoxEntity, BinarySensorEntity):
+    """Whether the box's alarm rings right now, with its tone; off once it stopped.
+
+    The box says so itself the moment it starts and stops, also when a child
+    stops it on the box. A tone the app plays as a preview counts too.
+    """
+
+    def __init__(self, coordinator: StoryboxCoordinator, box_id: str) -> None:
+        """Initialize."""
+        super().__init__(coordinator, box_id, "alarm_ringing")
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return whether an alarm rings."""
+        box_state = self.box_state
+        if box_state is None or box_state.online is None:
+            return None
+        return box_state.ringing is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the tone it rings, by the name the actions use."""
+        tone = self.box_state.ringing if self.box_state else None
+        return {"tone": bedtime.TONE_NAME.get(tone, tone) if tone else None}
 
 
 class LiveChannelSensor(CoordinatorEntity[StoryboxCoordinator], BinarySensorEntity):

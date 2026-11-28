@@ -388,6 +388,7 @@ export default {
   "nextAlarm": "Następny budzik {t}",
   "alarmArmed": "ustawiony na boxie",
   "alarmPending": "zostanie ustawiony, gdy box będzie online",
+  "alarmRinging": "Budzik dzwoni",
   "alarmLater": "ustawiany poprzedniego wieczoru",
   "alarmHint": "Pora snu z budzikiem budzi dziecko w wybrane dni. Home Assistant ustawia budzik na boxie każdego wieczoru, gdy tylko box jest online; aplikacja ustawia go tylko raz. Gdy budzik ma zadzwonić, wyłącznik czasowy i wyłączenie boxa są odrzucane, bo box trzyma tylko jeden timer.",
   "f_name": "Nazwa",

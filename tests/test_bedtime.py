@@ -18,7 +18,7 @@ from homeassistant.helpers import entity_registry as er
 
 from custom_components.storybox_plus import bedtime
 from custom_components.storybox_plus.bedtime import armed_for, decide, due, next_alarm
-from custom_components.storybox_plus.cloud import BedtimeSchedule, SleepTimer
+from custom_components.storybox_plus.cloud import Alarm, BedtimeSchedule, SleepTimer
 from custom_components.storybox_plus.cloud.models import (
     parse_bedtime_schedule,
     parse_box,
@@ -169,9 +169,9 @@ def test_decide() -> None:
     """Arm what is due unless armed; clear only an alarm of ours that nothing wants."""
     alarm = next_alarm((schedule(),), MONDAY_EVENING)
     assert alarm is not None
-    armed = SleepTimer("on", until=TUESDAY_WAKEUP + timedelta(seconds=40), alarm=True)
-    plain = SleepTimer("on", until=TUESDAY_WAKEUP, alarm=False)
-    other = SleepTimer("on", until=TUESDAY_WAKEUP + timedelta(hours=1), alarm=True)
+    armed = SleepTimer("on", until=TUESDAY_WAKEUP + timedelta(seconds=40), alarm=Alarm())
+    plain = SleepTimer("on", until=TUESDAY_WAKEUP)
+    other = SleepTimer("on", until=TUESDAY_WAKEUP + timedelta(hours=1), alarm=Alarm())
     assert armed_for(armed, TUESDAY_WAKEUP)
     assert decide(alarm, armed, None) is None
     assert decide(alarm, plain, None) == ("arm", alarm)
@@ -435,6 +435,9 @@ async def test_overview_tells_the_next_alarm(
         "schedule_id": "s1",
         "armed": False,
         "due": True,
+        "tone": "alarmLoop1.opus",
+        "volume": 40,
+        "morning_light": False,
     }
     push.last.connect()
     push.last.sleep_timer("on", until=TUESDAY_WAKEUP, alarm=True)

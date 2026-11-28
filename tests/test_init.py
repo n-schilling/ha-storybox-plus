@@ -75,6 +75,7 @@ async def test_setup_creates_devices_and_entities(
         f"{BOX_ID}_battery",
         f"{BOX_ID}_headphones",
         f"{BOX_ID}_night_mode",
+        f"{BOX_ID}_alarm_ringing",
         f"{BOX_ID}_sleep_timer",
         f"{BOX_ID}_next_alarm",
         f"{BOX_ID}_figure",

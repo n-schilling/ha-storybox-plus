@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Modo noche"
       },
+      "alarm_ringing": {
+        "name": "Alarma sonando",
+        "state_attributes": {
+          "tone": {
+            "name": "Tono",
+            "state": {
+              "morning_glow": "Brillo matutino",
+              "birdsong": "Ritmo de pájaros",
+              "sound_hopper": "Saltasonidos",
+              "wake_up_call": "Llamada de despertar",
+              "good_morning_beat": "Ritmo de buenos días"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Canal en directo"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Vence"
           },
+          "armed": {
+            "name": "Puesta en la caja"
+          },
           "wake_up_light": {
             "name": "Despertador de luz"
+          },
+          "tone": {
+            "name": "Tono",
+            "state": {
+              "morning_glow": "Brillo matutino",
+              "birdsong": "Ritmo de pájaros",
+              "sound_hopper": "Saltasonidos",
+              "wake_up_call": "Llamada de despertar",
+              "good_morning_beat": "Ritmo de buenos días"
+            }
+          },
+          "volume": {
+            "name": "Volumen"
+          },
+          "morning_light": {
+            "name": "Luz de amanecer"
           }
         }
       },

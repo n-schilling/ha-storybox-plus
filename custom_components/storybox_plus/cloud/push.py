@@ -28,11 +28,13 @@ from .errors import CloudAuthError, CloudConnectionError, CloudError
 from .models import (
     VOLUME_LEVELS,
     Alarm,
+    AlarmRing,
     Battery,
     Headphones,
     Playback,
     SleepTimer,
     Volume,
+    parse_alarm_ring,
     parse_battery,
     parse_headphones,
     parse_online,
@@ -52,6 +54,8 @@ TOPIC_PLAYBACK = "playback/state"
 TOPIC_VOLUME = "volume/state"
 TOPIC_SLEEP_TIMER = "app-reply/bedtime-state"
 TOPIC_HEADPHONES = "metrics/headphones"
+# The tone an alarm rings now; {"tone": null} once it stopped
+TOPIC_ALARM = "app-reply/alarm"
 # The box took the settings saved in the cloud; what it sends with it is not read
 TOPIC_SETTINGS_APPLIED = "settings-applied"
 SUBSCRIBED = (
@@ -62,6 +66,7 @@ SUBSCRIBED = (
     TOPIC_SLEEP_TIMER,
     TOPIC_HEADPHONES,
     TOPIC_SETTINGS_APPLIED,
+    TOPIC_ALARM,
 )
 
 COMMAND_PLAYBACK = "playback"
@@ -84,7 +89,7 @@ EXPIRY_GRACE = 15
 # Seconds the broker should keep the session (and queue messages) between reconnects
 SESSION_EXPIRY = 600
 
-type PushData = Battery | Playback | Volume | SleepTimer | Headphones | bool | None
+type PushData = Battery | Playback | Volume | SleepTimer | Headphones | AlarmRing | bool | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,6 +318,8 @@ class PushClient:
             return PushEvent(mac, subtopic, parse_headphones(data))
         if subtopic == TOPIC_SETTINGS_APPLIED:
             return PushEvent(mac, subtopic, True)
+        if subtopic == TOPIC_ALARM:
+            return PushEvent(mac, subtopic, parse_alarm_ring(data))
         return None
 
     # ------------------------------------------------------------ commands

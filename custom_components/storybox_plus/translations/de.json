@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Nachtmodus"
       },
+      "alarm_ringing": {
+        "name": "Wecker klingelt",
+        "state_attributes": {
+          "tone": {
+            "name": "Weckton",
+            "state": {
+              "morning_glow": "Morgenglanz",
+              "birdsong": "Vogelgezwitscher-Rhythmus",
+              "sound_hopper": "Klanghüpfer",
+              "wake_up_call": "Aufwach-Ruf",
+              "good_morning_beat": "Guten-Morgen-Beat"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Live-Kanal"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Fällig"
           },
+          "armed": {
+            "name": "Auf der Box gestellt"
+          },
           "wake_up_light": {
             "name": "Lichtwecker"
+          },
+          "tone": {
+            "name": "Weckton",
+            "state": {
+              "morning_glow": "Morgenglanz",
+              "birdsong": "Vogelgezwitscher-Rhythmus",
+              "sound_hopper": "Klanghüpfer",
+              "wake_up_call": "Aufwach-Ruf",
+              "good_morning_beat": "Guten-Morgen-Beat"
+            }
+          },
+          "volume": {
+            "name": "Lautstärke"
+          },
+          "morning_light": {
+            "name": "Sonnenaufgangs-Licht"
           }
         }
       },

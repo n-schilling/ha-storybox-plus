@@ -388,6 +388,7 @@ export default {
   "nextAlarm": "Prossima sveglia {t}",
   "alarmArmed": "impostata sulla box",
   "alarmPending": "impostata appena la box è online",
+  "alarmRinging": "La sveglia sta suonando",
   "alarmLater": "impostata la sera prima",
   "alarmHint": "Un'ora della nanna con sveglia sveglia il bambino nei giorni scelti. Home Assistant imposta la sveglia sulla box ogni sera, appena la box è online; l'app la imposta una volta sola. Finché una sveglia è in arrivo, il timer di spegnimento e lo spegnimento della box vengono rifiutati, perché la box tiene un solo timer.",
   "f_name": "Nome",

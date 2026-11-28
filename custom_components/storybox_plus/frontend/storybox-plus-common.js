@@ -20,6 +20,7 @@ export const MDI = {
   pause: "M14,19H18V5H14M6,19H10V5H6V19Z",
   flash: "M7,2V13H10V22L17,10H13L17,2H7Z",
   volume: "M5,9V15H9L14,20V4L9,9M18.5,12C18.5,10.23 17.5,8.71 16,7.97V16C17.5,15.29 18.5,13.76 18.5,12Z",
+  alarmCheck: "M10.54,14.53L8.41,12.4L7.35,13.46L10.53,16.64L16.53,10.64L15.47,9.58L10.54,14.53M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22A9,9 0 0,0 21,13A9,9 0 0,0 12,4M7.88,3.39L6.6,1.86L2,5.71L3.29,7.24L7.88,3.39M22,5.72L17.4,1.86L16.11,3.39L20.71,7.25L22,5.72Z",
   alarm: "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22A9,9 0 0,0 21,13A9,9 0 0,0 12,4M12.5,8H11V14L15.75,16.85L16.5,15.62L12.5,13.25V8M7.88,3.39L6.6,1.86L2,5.71L3.29,7.24L7.88,3.39M22,5.72L17.4,1.86L16.11,3.39L20.71,7.25L22,5.72Z",
   plus: "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z",
   prev: "M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z",
@@ -53,6 +54,10 @@ export const MDI = {
   save: "M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z",
   chevronRight: "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z",
 };
+
+// The alarm tones the app offers, in its order, and their names in the actions; the texts name them tone1 to tone5
+export const TONES = ["alarmLoop1.opus", "alarmLoop2.opus", "alarmLoop3.opus", "alarmLoop4.opus", "alarmLoop5.opus"];
+export const TONE_NAMES = ["morning_glow", "birdsong", "sound_hopper", "wake_up_call", "good_morning_beat"];
 
 export const TEXTS = {
   en: {
@@ -241,7 +246,7 @@ export const TEXTS = {
     noSchedules: "No bedtime yet.", schedulesUnknown: "The bedtimes could not be read yet.",
     schedulesUnknownHelp: "The cloud names them with the next poll; refresh in a minute.",
     everyDay: "every day", alarmOn: "Alarm", scheduleOn: "Bedtime active", confirmDelete: "Delete the bedtime {name}?",
-    nextAlarm: "Next alarm {t}", alarmArmed: "set on the box", alarmPending: "set as soon as the box is online",
+    nextAlarm: "Next alarm {t}", alarmArmed: "set on the box", alarmPending: "set as soon as the box is online", alarmRinging: "Alarm ringing",
     alarmLater: "set the evening before",
     alarmHint: "A bedtime with an alarm wakes the child on the chosen days. Home Assistant sets the alarm on the box every evening, as soon as the box is online; the app sets it only once. While an alarm is due, the sleep timer and switching the box off are refused, because the box keeps only one timer.",
     f_name: "Name", f_days: "Days of the wake-up", f_sleep_time: "Bedtime", f_wakeup_time: "Wake-up",
@@ -511,7 +516,7 @@ export const TEXTS = {
     noSchedules: "Noch keine Schlafenszeit.", schedulesUnknown: "Die Schlafenszeiten ließen sich noch nicht lesen.",
     schedulesUnknownHelp: "Die Cloud nennt sie mit der nächsten Abfrage; in einer Minute aktualisieren.",
     everyDay: "täglich", alarmOn: "Wecker", scheduleOn: "Schlafenszeit aktiv", confirmDelete: "Die Schlafenszeit {name} löschen?",
-    nextAlarm: "Nächster Wecker {t}", alarmArmed: "auf der Box gestellt", alarmPending: "wird gestellt, sobald die Box online ist",
+    nextAlarm: "Nächster Wecker {t}", alarmArmed: "auf der Box gestellt", alarmPending: "wird gestellt, sobald die Box online ist", alarmRinging: "Der Wecker klingelt",
     alarmLater: "wird am Vorabend gestellt",
     alarmHint: "Eine Schlafenszeit mit Wecker weckt das Kind an den gewählten Tagen. Home Assistant stellt den Wecker jeden Abend auf der Box, sobald sie online ist; die App stellt ihn nur einmal. Solange ein Wecker ansteht, lehnt die Integration den Schlaf-Timer und das Ausschalten der Box ab, weil die Box nur einen Timer kennt.",
     f_name: "Name", f_days: "Tage des Weckens", f_sleep_time: "Schlafenszeit", f_wakeup_time: "Wecken",
@@ -730,6 +735,31 @@ ha-badge.chip.on, ha-badge.chip.fav { --badge-color: var(--primary-color); color
 .fact { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .fact ha-svg-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
 .fact.pending { opacity: .6; }
+.fact.alarm { align-items: flex-start; }
+.fact.alarm.armed ha-svg-icon { color: var(--success-color); }
+.alarm-text { display: flex; flex-direction: column; }
+.alarm-how { color: var(--secondary-text-color); font-size: var(--ha-font-size-s, 13px); }
+/* An alarm that rings: the box's sunrise as a band that glows, the clock shaking, two waves going out */
+.ringing { display: flex; align-items: center; gap: 14px; padding: 10px 16px; margin-bottom: 12px; border-radius: 12px;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--amber-color, #ffc107) 14%, transparent),
+    color-mix(in srgb, var(--orange-color, #ff9800) 32%, transparent), color-mix(in srgb, var(--amber-color, #ffc107) 14%, transparent));
+  background-size: 250% 100%; animation: sb-sunrise 2.4s ease-in-out infinite alternate; }
+.ring-bell { position: relative; display: inline-flex; flex: none; color: var(--orange-color, #ff9800); }
+.ring-bell ha-svg-icon { --mdc-icon-size: 30px; transform-origin: 50% 55%; animation: sb-ring 1.4s ease-in-out infinite; }
+.ring-bell::before, .ring-bell::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid currentColor;
+  opacity: 0; animation: sb-wave 1.4s ease-out infinite; }
+.ring-bell::after { animation-delay: .7s; }
+.ring-text { display: flex; flex-direction: column; min-width: 0; }
+.ring-title { font-weight: var(--ha-font-weight-medium, 500); }
+.ring-tone { color: var(--secondary-text-color); font-size: var(--ha-font-size-s, 13px); }
+@keyframes sb-sunrise { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@keyframes sb-ring { 0%, 45%, 100% { transform: rotate(0); } 5% { transform: rotate(18deg); } 10% { transform: rotate(-16deg); }
+  15% { transform: rotate(14deg); } 20% { transform: rotate(-12deg); } 25% { transform: rotate(9deg); } 30% { transform: rotate(-6deg); }
+  35% { transform: rotate(3deg); } 40% { transform: rotate(-1deg); } }
+@keyframes sb-wave { from { transform: scale(.9); opacity: .55; } to { transform: scale(1.9); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ringing, .ring-bell ha-svg-icon, .ring-bell::before, .ring-bell::after { animation: none; }
+}
 .batt-btn { cursor: pointer; border-radius: 6px; }
 .batt-btn:hover { color: var(--primary-text-color); }
 .batt-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
@@ -939,14 +969,13 @@ export const BoxView = (Base) => class extends Base {
       }
       const sleep = this._sleep(b.sleep_timer);
       if (sleep && show("sleep_timer")) facts.push(`<span class="fact">${icon("sleep")}${esc(sleep)}</span>`);
-      // The next alarm and a night mode at work stay on the card; the rest is behind the cog
-      const next = b.bedtime?.next_alarm;
-      if (next && show("next_alarm")) {
-        const when = new Date(time(next.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
-        facts.push(`<span class="fact">${icon("alarm")}${esc(fill(t.nextAlarm, { t: when }))}</span>`);
-      }
+      // The next alarm and a night mode at work stay on the card; the rest is behind the cog.
+      // An alarm that rings now takes the alarm's place
+      const alarm = show("next_alarm") && b.ringing == null ? this._alarmFact(b, !!card) : "";
+      if (alarm) facts.push(alarm);
       if (b.night?.mode?.enabled && b.night.phase === "night" && show("night_mode")) facts.push(this._chip(t.nightMode, "on"));
       let body = facts.length ? `<div class="facts">${facts.join("")}</div>` : "";
+      if (b.ringing != null && show("next_alarm")) body = this._ringing(b) + body;
       if (live) {
         // In parts the dashboard card can lay out side by side when it is wide
         // The dashboard card says in Home Assistant's word that a box is switched off
@@ -964,6 +993,45 @@ export const BoxView = (Base) => class extends Base {
       if (!live && b.last_seen) notes.push(fill(t.lastSeen, { t: this._relative(b.last_seen) }));
       if (notes.length) body += `<div class="muted small">${esc(notes.join(" · "))}</div>`;
       return { title, body };
+    }
+
+    // The next alarm: when, whether the box carries it already, and how it rings. An alarm
+    // the box reports carries the box's own settings, also one the app set. The dashboard
+    // card keeps it to one line: the icon says it is set, the rest is its tooltip
+    _alarmFact(b, compact = false) {
+      const t = this._t;
+      const next = b.bedtime?.next_alarm;
+      const timer = b.sleep_timer?.state === "on" && b.sleep_timer.alarm ? b.sleep_timer : null;
+      const onBox = timer && (!next || !next.armed) ? { at: timer.until, armed: true, ...timer.alarm } : null;
+      const a = onBox || next;
+      if (!a || !Number.isFinite(time(a.at))) return "";
+      const when = new Date(time(a.at)).toLocaleString(this._lang, { weekday: "short", hour: "2-digit", minute: "2-digit", ...timeOptions(this._hass) });
+      const state = a.armed ? t.alarmArmed : a.due ? t.alarmPending : "";
+      const how = [a.tone ? this._toneName(a.tone) : "", Number.isFinite(a.volume) ? `${this._fmt(a.volume)} %` : "",
+        a.morning_light ? t.f_alarm_morning_light : ""].filter(Boolean);
+      if (compact) {
+        const tip = [state, ...how].filter(Boolean).join(" · ");
+        return `<span class="fact alarm${a.armed ? " armed" : ""}"${tip ? ` title="${esc(tip)}"` : ""}>${icon(a.armed ? "alarmCheck" : "alarm")}` +
+          `${esc(fill(t.nextAlarm, { t: when }))}</span>`;
+      }
+      return `<span class="fact alarm${a.armed ? " armed" : ""}">${icon(a.armed ? "alarmCheck" : "alarm")}<span class="alarm-text">` +
+        `<span>${esc(fill(t.nextAlarm, { t: when }))}${state ? ` · ${esc(state)}` : ""}</span>` +
+        `${how.length ? `<span class="alarm-how">${esc(how.join(" · "))}</span>` : ""}</span></span>`;
+    }
+
+    // An alarm that rings now: a bell that shakes in a band of sunrise, still for those who ask for less motion
+    _ringing(b) {
+      const t = this._t;
+      const tone = this._toneName(b.ringing);
+      return `<div class="ringing" role="status"><span class="ring-bell" aria-hidden="true">${icon("alarm")}</span>` +
+        `<span class="ring-text"><span class="ring-title">${esc(t.alarmRinging)}</span>${tone ? `<span class="ring-tone">${esc(tone)}</span>` : ""}</span></div>`;
+    }
+
+    // A tone by the app's name for it, from its file or its name in the actions
+    _toneName(tone) {
+      let i = TONES.indexOf(tone);
+      if (i < 0) i = TONE_NAMES.indexOf(tone);
+      return i < 0 ? tone || "" : this._t[`tone${i + 1}`];
     }
 
     // Play, pause, chapters, volume and the sleep timer of a Toniebox 2 that is online

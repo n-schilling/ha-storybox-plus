@@ -23,7 +23,13 @@ const ACTIONS = [
   "storybox_plus.set_favourite", "media_player.play_media",
 ];
 // The entities of a box the card reads beside its media player, by the integration's own keys
-const KEYS = ["connectivity", "battery", "charging", "headphones", "night_mode", "sleep_timer", "next_alarm"];
+const KEYS = ["connectivity", "battery", "charging", "headphones", "night_mode", "sleep_timer", "next_alarm", "alarm_ringing"];
+// The next alarm as the shared drawing takes it, from its sensor's attributes
+const alarmOf = (s) => {
+  const a = s.attributes;
+  return { at: s.state, due: a.due === true, armed: a.armed === true, tone: a.tone || null,
+    volume: typeof a.volume === "number" ? a.volume : null, morning_light: a.morning_light === true };
+};
 // The card from most to least: what does not fit is left out in this order
 const SIZES = ["large", "medium", "small"];
 // What the card can leave out, from the least important to the most: the buttons
@@ -336,7 +342,9 @@ if (!customElements.get(CARD)) {
         volume_percent: level === null ? null : Math.round(level * 100),
         headphones: phones?.state === "on" ? { connected: true, battery: number(phones.attributes.battery) } : null,
         sleep_timer: of("sleep_timer") ? { state: "on", until: of("sleep_timer").state } : null,
-        bedtime: of("next_alarm") ? { next_alarm: { at: of("next_alarm").state, due: of("next_alarm").attributes.due === true } } : null,
+        bedtime: of("next_alarm") ? { next_alarm: alarmOf(of("next_alarm")) } : null,
+        // The tone that rings now, by its name in the actions
+        ringing: of("alarm_ringing")?.state === "on" ? of("alarm_ringing").attributes.tone || "" : null,
         night: of("night_mode")?.state === "on" ? { mode: { enabled: true }, phase: "night" } : null,
         playback: figure || playing || paused ? {
           tonie_id: figure || player,
@@ -449,7 +457,7 @@ if (!customElements.get(CARD)) {
       // The sizes that turned out too high for this space and these parts: Home
       // Assistant's buttons draw themselves after the card measured
       const shape = JSON.stringify([this.clientWidth, this.clientHeight, c, fixed,
-        boxes.map((b) => [b.online, !!b.playback, b.playback?.playing, !!b.headphones, !!b.sleep_timer, !!b.bedtime, !!b.night, b.battery === null])]);
+        boxes.map((b) => [b.online, !!b.playback, b.playback?.playing, !!b.headphones, !!b.sleep_timer, !!b.bedtime, !!b.night, b.battery === null, b.ringing !== null])]);
       if (shape !== this._shape) {
         this._shape = shape;
         this._over = new Set();

@@ -280,8 +280,8 @@ class SleepTimer:
     state: str | None
     duration: int | None = None
     until: datetime | None = None
-    # An alarm rings when the timer ends
-    alarm: bool = False
+    # The alarm that rings when the timer ends, as the box reports it; None: none
+    alarm: Alarm | None = None
 
     @property
     def running(self) -> bool:
@@ -787,8 +787,36 @@ def parse_sleep_timer(data: dict[str, Any]) -> SleepTimer:
         state=_text(stl, "state"),
         duration=_integer(stl.get("duration")),
         until=parse_datetime(stl.get("until")),
-        alarm=isinstance(stl.get("alarm"), dict) and bool(stl["alarm"]),
+        alarm=_alarm(stl.get("alarm")),
     )
+
+
+def _alarm(data: Any) -> Alarm | None:
+    """The alarm of a timer: what is missing is the app's default."""
+    if not isinstance(data, dict) or not data:
+        return None
+    volume = _integer(data.get("volume"))
+    light = _flag(data.get("morningLight"))
+    return Alarm(
+        tone=_text(data, "tone") or DEFAULT_ALARM_TONE,
+        volume=100 if volume is None else max(0, min(100, volume)),
+        morning_light=True if light is None else light,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AlarmRing:
+    """What the box reports on app-reply/alarm: the tone it rings now, None once it stopped.
+
+    It rings when an alarm goes off and while the app plays a tone as a preview.
+    """
+
+    tone: str | None
+
+
+def parse_alarm_ring(data: dict[str, Any]) -> AlarmRing:
+    """Parse app-reply/alarm."""
+    return AlarmRing(_text(data, "tone"))
 
 
 def _tonie_ids(items: Any) -> tuple[str, ...]:

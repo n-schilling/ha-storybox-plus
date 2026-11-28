@@ -9,6 +9,12 @@
       },
       "night_mode": {
         "default": "mdi:weather-night"
+      },
+      "alarm_ringing": {
+        "default": "mdi:alarm-off",
+        "state": {
+          "on": "mdi:alarm-bell"
+        }
       }
     },
     "event": {

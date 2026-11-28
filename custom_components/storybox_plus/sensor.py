@@ -94,7 +94,7 @@ class SleepTimerSensor(TimedBoxEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """Return the end of the timer while it runs."""
         timer = self.box_state.sleep_timer if self.box_state else None
-        if timer is None or not timer.running or timer.alarm or timer.until is None:
+        if timer is None or not timer.running or timer.alarm is not None or timer.until is None:
             return None
         return timer.until if timer.until > dt_util.utcnow() else None
 
@@ -123,16 +123,24 @@ class NextAlarmSensor(TimedBoxEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return whether the alarm is due and whether it is the wake-up light.
+        """Return whether the alarm is due and set on the box, how it rings, and whether it is the wake-up light.
 
         Due: close enough for the box's timer to carry it. While it is, the
-        timer is the alarm's and a sleep timer is refused.
+        timer is the alarm's and a sleep timer is refused. Armed: the box
+        reported it carries this alarm.
         """
         box_state = self.box_state
         upcoming = self.coordinator.next_alarm(box_state) if box_state else None
+        alarm = upcoming.alarm if upcoming else None
         return {
             "due": self.coordinator.due_alarm(self._box_id) is not None,
+            "armed": upcoming is not None
+            and box_state is not None
+            and bedtime.armed_for(box_state.sleep_timer, upcoming.at),
             "wake_up_light": upcoming is not None and upcoming.schedule is None,
+            "tone": bedtime.TONE_NAME.get(alarm.tone, alarm.tone) if alarm else None,
+            "volume": alarm.volume if alarm else None,
+            "morning_light": alarm.morning_light if alarm else None,
         }
 
     def _next_change(self) -> datetime | None:

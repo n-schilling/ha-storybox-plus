@@ -388,6 +388,7 @@ export default {
   "nextAlarm": "Próxima alarma {t}",
   "alarmArmed": "programada en la caja",
   "alarmPending": "se programa en cuanto la caja esté conectada",
+  "alarmRinging": "La alarma está sonando",
   "alarmLater": "se programa la tarde anterior",
   "alarmHint": "Una hora de dormir con alarma despierta al niño los días elegidos. Home Assistant programa la alarma en la caja cada tarde, en cuanto la caja está conectada; la app la programa solo una vez. Mientras haya una alarma pendiente, se rechazan el temporizador de sueño y el apagado de la caja, porque la caja guarda un solo temporizador.",
   "f_name": "Nombre",

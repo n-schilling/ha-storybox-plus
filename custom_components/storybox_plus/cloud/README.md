@@ -47,7 +47,9 @@ written from scratch and imports nothing from Home Assistant.
   - `online-state` `{onlineState: "online"|"offline"}`.
   - `playback/state` `{tonie: "<id>", paused, chapter, chapterUntilMs, chapterDuration, chapterPositionMs, ended, downloading, blocked}`; sent again at every chapter change; an **empty payload** means the figure was taken off. While playing the position follows from `chapterUntilMs`, while paused from `chapterPositionMs`. Right after a figure is placed the box sends `downloading: true` together with `chapterUntilMs` and plays; the flag stays until the next message, which comes with the next chapter (seen 27 November 2026, firmware 1.6.28).
   - `volume/state` `{level (0..13), hardwarePercentage}`. The level is a share of the box's `maxVolume`: level 13 is the maximum, and the box rescales the level when the maximum changes (HA-Toniebox #67).
-  - `app-reply/bedtime-state` `{stl: {state, duration, until, alarm}}`.
+  - `app-reply/bedtime-state` `{stl: {state, duration, defaultDuration, until, alarm}}`; `alarm` is `{volume, morningLight, tone}` while the timer ends in an alarm. When it rings, `state` turns `completed`, then `off` once it was stopped.
+  - `app-reply/alarm` `{tone}`: the tone the alarm rings right now, `{tone: null}` once it stopped, also when it was stopped with an ear on the box (seen 28 November 2026: rang 14:22:32 to the second, stopped 14:22:45). The sunrise light begins about two to three minutes before the tone without any message.
+  - Going offline, the box first empties what the broker keeps for it: an empty payload on every topic, then `online-state` `offline`.
   - `settings-applied`: the box took the settings saved in the cloud (`settingsApplied` turns true); its payload is not read.
 - Commands go to `external/toniebox/{MAC}/app-control/…`:
   - `playback` `{action: "start"|"pause"|"setPosition", chapter, ms}`.

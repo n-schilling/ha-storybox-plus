@@ -333,7 +333,8 @@ def _box_dict(
         "sleep_timer": (
             {
                 "state": box_state.sleep_timer.state,
-                "alarm": box_state.sleep_timer.alarm,
+                # The alarm the box carries, as it reports it
+                "alarm": _alarm_dict(box_state.sleep_timer.alarm),
                 "until": (
                     box_state.sleep_timer.until.isoformat() if box_state.sleep_timer.until else None
                 ),
@@ -341,6 +342,8 @@ def _box_dict(
             if box_state.sleep_timer
             else None
         ),
+        # The tone the box's alarm rings right now
+        "ringing": box_state.ringing,
         "playback": playback,
         # A Toniebox 2 only: the figure on it repeats ("all") or one chapter of it ("one")
         "repeat": coordinator.repeat_mode(box.id),
@@ -450,11 +453,18 @@ def _bedtime_dict(coordinator: StoryboxCoordinator, box_state: BoxState) -> dict
                 "schedule_id": upcoming.schedule.id if upcoming.schedule else None,
                 "armed": bedtime.armed_for(box_state.sleep_timer, upcoming.at),
                 "due": coordinator.due_alarm(box_state.box.id) is not None,
+                **(_alarm_dict(upcoming.alarm) or {}),
             }
             if upcoming
             else None
         ),
     }
+
+
+def _alarm_dict(alarm: Alarm | None) -> dict[str, Any] | None:
+    if alarm is None:
+        return None
+    return {"tone": alarm.tone, "volume": alarm.volume, "morning_light": alarm.morning_light}
 
 
 async def _about(hass: HomeAssistant) -> dict[str, str | None]:

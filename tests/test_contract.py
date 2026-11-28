@@ -62,6 +62,11 @@ async def test_entities(hass: HomeAssistant, setup_entry: MockConfigEntry) -> No
         "binary_sensor.kinderzimmer_charging": (f"{BOX_ID}_charging", "charging", True),
         "binary_sensor.kinderzimmer_headphones": (f"{BOX_ID}_headphones", "headphones", True),
         "binary_sensor.kinderzimmer_night_mode": (f"{BOX_ID}_night_mode", "night_mode", True),
+        "binary_sensor.kinderzimmer_alarm_ringing": (
+            f"{BOX_ID}_alarm_ringing",
+            "alarm_ringing",
+            True,
+        ),
         "sensor.kinderzimmer_battery": (f"{BOX_ID}_battery", "battery", True),
         "sensor.kinderzimmer_sleep_timer": (f"{BOX_ID}_sleep_timer", "sleep_timer", True),
         "sensor.kinderzimmer_next_alarm": (f"{BOX_ID}_next_alarm", "next_alarm", True),

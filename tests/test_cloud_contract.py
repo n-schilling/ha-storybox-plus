@@ -166,6 +166,7 @@ def test_topics_of_the_push_channel() -> None:
         Result("Push volume/state", "ok"),
         Result("Push app-reply/bedtime-state", "unseen"),
         Result("Push metrics/headphones", "unseen"),
+        Result("Push app-reply/alarm", "unseen"),
     ]
     assert Result("x", "changed", ("a is missing",)).as_dict() == {
         "name": "x",
@@ -236,6 +237,7 @@ async def test_an_account_that_answers_as_expected(
         "Push volume/state": "ok",
         "Push app-reply/bedtime-state": "unseen",
         "Push metrics/headphones": "unseen",
+        "Push app-reply/alarm": "unseen",
     }
     assert all(r["detail"] == [] for r in report["results"])
     # Nothing of the account: no ID, no name, no address

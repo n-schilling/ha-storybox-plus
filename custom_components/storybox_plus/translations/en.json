@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Night mode"
       },
+      "alarm_ringing": {
+        "name": "Alarm ringing",
+        "state_attributes": {
+          "tone": {
+            "name": "Tone",
+            "state": {
+              "morning_glow": "Morning Glow",
+              "birdsong": "Birdsong Rhythm",
+              "sound_hopper": "Sound Hopper",
+              "wake_up_call": "Wake-up Call",
+              "good_morning_beat": "Good Morning Beat"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Live channel"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Due"
           },
+          "armed": {
+            "name": "Set on the box"
+          },
           "wake_up_light": {
             "name": "Wake-up light"
+          },
+          "tone": {
+            "name": "Tone",
+            "state": {
+              "morning_glow": "Morning Glow",
+              "birdsong": "Birdsong Rhythm",
+              "sound_hopper": "Sound Hopper",
+              "wake_up_call": "Wake-up Call",
+              "good_morning_beat": "Good Morning Beat"
+            }
+          },
+          "volume": {
+            "name": "Volume"
+          },
+          "morning_light": {
+            "name": "Sunrise light"
           }
         }
       },

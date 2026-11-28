@@ -52,7 +52,7 @@ async def async_get_config_entry_diagnostics(
                     "sleep_timer": (
                         {
                             "state": box_state.sleep_timer.state,
-                            "alarm": box_state.sleep_timer.alarm,
+                            "alarm": box_state.sleep_timer.alarm is not None,
                         }
                         if box_state.sleep_timer
                         else None

@@ -59,6 +59,21 @@
       "night_mode": {
         "name": "Mode nuit"
       },
+      "alarm_ringing": {
+        "name": "Alarme en cours",
+        "state_attributes": {
+          "tone": {
+            "name": "Sonnerie",
+            "state": {
+              "morning_glow": "Éclat du matin",
+              "birdsong": "Rythme des oiseaux",
+              "sound_hopper": "Sautille-son",
+              "wake_up_call": "Appel du réveil",
+              "good_morning_beat": "Beat du bonjour"
+            }
+          }
+        }
+      },
       "live_channel": {
         "name": "Canal en direct"
       }
@@ -76,8 +91,27 @@
           "due": {
             "name": "Échéance"
           },
+          "armed": {
+            "name": "Réglée sur la boîte"
+          },
           "wake_up_light": {
             "name": "Réveil lumineux"
+          },
+          "tone": {
+            "name": "Sonnerie",
+            "state": {
+              "morning_glow": "Éclat du matin",
+              "birdsong": "Rythme des oiseaux",
+              "sound_hopper": "Sautille-son",
+              "wake_up_call": "Appel du réveil",
+              "good_morning_beat": "Beat du bonjour"
+            }
+          },
+          "volume": {
+            "name": "Volume"
+          },
+          "morning_light": {
+            "name": "Lumière du lever du soleil"
           }
         }
       },

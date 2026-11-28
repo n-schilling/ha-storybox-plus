@@ -971,6 +971,50 @@ async def check_page(browser: Browser, instance: Instance, api: Api, shots: Path
 
     await checks.run("wake-up light: set through the form, shown, cleared", wake_up_light)
 
+    async def alarm_in_the_player() -> None:
+        await _goto(page, instance, "boxes/overview", ".batt-btn")
+        card = page.locator(
+            f"{PANEL} ha-card", has=page.locator(f"[data-act='boxset:{demo_cloud.KIDS_BOX}']")
+        )
+        alarm = card.locator(".fact.alarm")
+        await alarm.wait_for()
+        text = await alarm.inner_text()
+        # When, and how it rings: the tone, its volume, the sunrise light
+        expect("Next alarm" in text and "%" in text, text)
+        if shots is not None:
+            await card.screenshot(path=str(shots / "alarm-next.png"))
+        # The box rings: a shaking clock in a glowing band instead of the alarm's line
+        instance.world.write_text("ring")
+        ringing = card.locator(".ringing")
+        await ringing.wait_for(timeout=20000)
+        text = await ringing.inner_text()
+        expect("Alarm ringing" in text and "Sound Hopper" in text, text)
+        if shots is not None:
+            await page.wait_for_timeout(400)
+            await card.screenshot(path=str(shots / "alarm-ringing.png"), animations="allow")
+        expect(await alarm.count() == 0, "the alarm's line beside the ringing")
+        moving = await ringing.evaluate(
+            """(el) => [getComputedStyle(el).animationName,
+                getComputedStyle(el.querySelector('.ring-bell ha-svg-icon')).animationName]"""
+        )
+        expect(moving == ["sb-sunrise", "sb-ring"], str(moving))
+        expect(await ringing.get_attribute("role") == "status", "the ringing is no status")
+        # Less motion asked for: it stands still
+        await page.emulate_media(reduced_motion="reduce")
+        still = await ringing.evaluate(
+            "(el) => getComputedStyle(el.querySelector('.ring-bell ha-svg-icon')).animationName"
+        )
+        await page.emulate_media(reduced_motion="no-preference")
+        expect(still == "none", still)
+        # Stopped on the box: the alarm's line again
+        instance.world.write_text("silent")
+        await ringing.wait_for(state="detached", timeout=20000)
+        await alarm.wait_for()
+
+    await checks.run(
+        "the player: the next alarm with its tone, the alarm ringing", alarm_in_the_player
+    )
+
     async def battery() -> None:
         await _goto(page, instance, "boxes/overview", ".batt-btn")
         level = page.locator(f"{PANEL} .batt-btn")

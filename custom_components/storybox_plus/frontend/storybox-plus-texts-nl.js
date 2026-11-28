@@ -388,6 +388,7 @@ export default {
   "nextAlarm": "Volgende wekker {t}",
   "alarmArmed": "ingesteld op de box",
   "alarmPending": "ingesteld zodra de box online is",
+  "alarmRinging": "De wekker gaat af",
   "alarmLater": "ingesteld de avond ervoor",
   "alarmHint": "Een bedtijd met wekker wekt het kind op de gekozen dagen. Home Assistant stelt de wekker elke avond op de box in, zodra de box online is; de app doet dat maar één keer. Zolang een wekker nog moet afgaan, worden de slaaptimer en het uitzetten van de box geweigerd, omdat de box maar één timer bewaart.",
   "f_name": "Naam",
